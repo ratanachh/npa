@@ -2,7 +2,9 @@ using System.Data;
 using System.Reflection;
 using Dapper;
 using Microsoft.Extensions.Logging;
+using NPA.Core.Annotations;
 using NPA.Core.Metadata;
+using NPA.Core.Query;
 
 namespace NPA.Core.Core;
 
@@ -46,21 +48,77 @@ public sealed class EntityManager : IEntityManager
         _logger?.LogDebug("Persisting entity of type {EntityType}", typeof(T).Name);
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = GenerateInsertSql(metadata);
-        var parameters = ExtractParameters(entity, metadata);
-
-        try
+        var entityId = GetEntityId(entity, metadata);
+        
+        // If entity already has an ID, check if it exists in the database
+        if (entityId != null)
         {
-            var id = await _connection.QuerySingleAsync<object>(sql, parameters);
-            SetEntityId(entity, id, metadata);
-            _changeTracker.Track(entity, EntityState.Added);
+            var existingEntity = await FindAsync<T>(entityId);
+            if (existingEntity != null)
+            {
+                // Entity exists, perform UPDATE
+                var sql = GenerateUpdateSql(metadata);
+                var parameters = ExtractParameters(entity, metadata);
 
-            _logger?.LogDebug("Successfully persisted entity of type {EntityType} with ID {Id}", typeof(T).Name, id);
+                try
+                {
+                    var rowsAffected = await _connection.ExecuteAsync(sql, parameters);
+                    if (rowsAffected > 0)
+                    {
+                        _changeTracker.Track(entity, EntityState.Modified);
+                        _logger?.LogDebug("Successfully updated existing entity of type {EntityType} with ID {Id}", typeof(T).Name, entityId);
+                    }
+                    else
+                    {
+                        _changeTracker.Track(entity, EntityState.Unchanged);
+                        _logger?.LogDebug("No changes made to entity of type {EntityType} with ID {Id}", typeof(T).Name, entityId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error updating entity of type {EntityType}", typeof(T).Name);
+                    throw;
+                }
+            }
+            else
+            {
+                // Entity has ID but doesn't exist, perform INSERT
+                await InsertEntityAsync(entity, metadata);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            _logger?.LogError(ex, "Error persisting entity of type {EntityType}", typeof(T).Name);
-            throw;
+            // Entity has no ID, perform INSERT
+            await InsertEntityAsync(entity, metadata);
+        }
+    }
+
+    private async Task InsertEntityAsync<T>(T entity, EntityMetadata metadata) where T : class
+    {
+        if (HasGeneratedId(metadata))
+        {
+            var sql = GenerateInsertSql(metadata);
+            var parameters = ExtractParameters(entity, metadata);
+
+            try
+            {
+                var id = await _connection.QuerySingleAsync<object>(sql, parameters);
+                SetEntityId(entity, id, metadata);
+                _changeTracker.Track(entity, EntityState.Added);
+
+                _logger?.LogDebug("Successfully inserted entity of type {EntityType} with ID {Id}", typeof(T).Name, id);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error inserting entity of type {EntityType}", typeof(T).Name);
+                throw;
+            }
+        }
+        else
+        {
+            // Queue the operation for batch execution
+            _changeTracker.Track(entity, EntityState.Added);
+            _logger?.LogDebug("Queued entity of type {EntityType} for batch persistence", typeof(T).Name);
         }
     }
 
@@ -78,9 +136,48 @@ public sealed class EntityManager : IEntityManager
 
         try
         {
-            var entity = await _connection.QueryFirstOrDefaultAsync<T>(sql, parameters);
-            if (entity != null)
+            // Query as dynamic first to get raw values
+            var rawEntity = await _connection.QueryFirstOrDefaultAsync(sql, parameters);
+            if (rawEntity == null)
             {
+                _logger?.LogDebug("Entity of type {EntityType} with ID {Id} not found", typeof(T).Name, id);
+                return null;
+            }
+
+            // Manually map to entity to handle PostgreSQL boolean values
+            var entity = Activator.CreateInstance<T>();
+            var rawDict = (IDictionary<string, object>)rawEntity;
+            
+            foreach (var prop in metadata.Properties.Values)
+            {
+                var entityProp = typeof(T).GetProperty(prop.PropertyName);
+                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.ColumnName, out var rawValue))
+                {
+                    // Handle PostgreSQL boolean string mapping
+                    if ((prop.PropertyType == typeof(bool) || prop.PropertyType == typeof(bool?)) && rawValue is string boolStr)
+                    {
+                        var boolValue = bool.Parse(boolStr);
+                        entityProp.SetValue(entity, boolValue);
+                    }
+                    else
+                    {
+                        entityProp.SetValue(entity, rawValue);
+                    }
+                }
+            }
+
+            // Check if entity is already tracked and return the tracked version
+            var trackedEntity = _changeTracker.GetTrackedEntityById<T>(id);
+            if (trackedEntity != null)
+            {
+                // Update the tracked entity with fresh data from database
+                _changeTracker.CopyEntityValues(entity, trackedEntity);
+                _changeTracker.SetState(trackedEntity, EntityState.Unchanged);
+                entity = trackedEntity;
+            }
+            else
+            {
+                // Track new entity
                 _changeTracker.Track(entity, EntityState.Unchanged);
             }
 
@@ -125,27 +222,37 @@ public sealed class EntityManager : IEntityManager
     }
 
     /// <inheritdoc />
-    public async Task MergeAsync<T>(T entity) where T : class
-    {
-        ThrowIfDisposed();
-        if (entity == null) throw new ArgumentNullException(nameof(entity));
-
-        _logger?.LogDebug("Merging entity of type {EntityType}", typeof(T).Name);
-
-        var metadata = _metadataProvider.GetEntityMetadata<T>();
-        
-        // Check if entity is already tracked
-        var currentState = _changeTracker.GetState(entity);
-        if (currentState == null)
+        public async Task MergeAsync<T>(T entity) where T : class
         {
-            // Entity not tracked, try to find it first
-            var id = GetEntityId(entity, metadata);
-            if (id != null)
+            ThrowIfDisposed();
+            if (entity == null) throw new ArgumentNullException(nameof(entity));
+
+            _logger?.LogDebug("Merging entity of type {EntityType}", typeof(T).Name);
+
+            var metadata = _metadataProvider.GetEntityMetadata<T>();
+            
+            // Check if entity is already tracked
+            var currentState = _changeTracker.GetState(entity);
+            _logger?.LogDebug("Entity state: {State}, HasChanges: {HasChanges}", currentState, _changeTracker.HasChanges(entity));
+            if (currentState == EntityState.Detached)
             {
-                var existingEntity = await FindAsync<T>(id);
-                if (existingEntity != null)
+                // Entity not tracked, try to find it first
+                var id = GetEntityId(entity, metadata);
+                if (id != null)
                 {
-                    _changeTracker.Track(entity, EntityState.Modified);
+                    var existingEntity = await FindAsync<T>(id);
+                    if (existingEntity != null)
+                    {
+                        // Copy the modified values to the tracked entity
+                        _changeTracker.CopyEntityValues(entity, existingEntity);
+                        _changeTracker.SetState(existingEntity, EntityState.Modified);
+                        entity = existingEntity; // Use the tracked entity for the update
+                    }
+                    else
+                    {
+                        await PersistAsync(entity);
+                        return;
+                    }
                 }
                 else
                 {
@@ -155,27 +262,96 @@ public sealed class EntityManager : IEntityManager
             }
             else
             {
-                await PersistAsync(entity);
-                return;
+                // Entity is already tracked, check if it has been modified
+                if (currentState == EntityState.Unchanged)
+                {
+                    // Check if the entity has been modified since it was tracked
+                    if (_changeTracker.HasChanges(entity))
+                    {
+                        _changeTracker.SetState(entity, EntityState.Modified);
+                        _logger?.LogDebug("Entity of type {EntityType} has been modified, updating state to Modified", typeof(T).Name);
+                    }
+                    else
+                    {
+                        _logger?.LogDebug("Entity of type {EntityType} has no changes, skipping update", typeof(T).Name);
+                        return;
+                    }
+                }
+                else if (currentState == EntityState.Added)
+                {
+                    // If entity is in Added state, it means it was just persisted
+                    // Check if it has been modified since persistence
+                    if (_changeTracker.HasChanges(entity))
+                    {
+                        _changeTracker.SetState(entity, EntityState.Modified);
+                        _logger?.LogDebug("Entity of type {EntityType} has been modified after persistence, updating state to Modified", typeof(T).Name);
+                    }
+                    else
+                    {
+                        _logger?.LogDebug("Entity of type {EntityType} has no changes after persistence, skipping update", typeof(T).Name);
+                        return;
+                    }
+                }
+                else
+                {
+                    _logger?.LogDebug("Entity of type {EntityType} is already in state {State}, proceeding with update", typeof(T).Name, currentState);
+                }
+            }
+
+            var sql = GenerateUpdateSql(metadata);
+            var parameters = ExtractParameters(entity, metadata);
+
+            // Debug logging
+            Console.WriteLine($"Generated UPDATE SQL: {sql}");
+            if (parameters is Dictionary<string, object?> paramDict)
+            {
+                Console.WriteLine($"Parameters: {string.Join(", ", paramDict.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+            }
+            
+            // Additional debug logging for the specific test case
+            Console.WriteLine($"Entity before update - IsActive: {entity.GetType().GetProperty("IsActive")?.GetValue(entity)}, Email: {entity.GetType().GetProperty("Email")?.GetValue(entity)}");
+                
+            // Log the actual SQL execution
+            _logger?.LogDebug("Executing UPDATE with parameters: {Parameters}", parameters);
+
+           try
+           {
+               // Use a transaction to ensure the UPDATE is committed
+               using var transaction = _connection.BeginTransaction();
+               try
+               {
+                   var rowsAffected = await _connection.ExecuteAsync(sql, parameters, transaction);
+                   _logger?.LogDebug("UPDATE executed, rows affected: {RowsAffected}", rowsAffected);
+                   
+                   if (rowsAffected == 0)
+                   {
+                       _logger?.LogWarning("No rows were affected by the UPDATE operation");
+                   }
+                   
+                   // Commit the transaction
+                   transaction.Commit();
+                   
+                   _changeTracker.SetState(entity, EntityState.Modified);
+
+                   _logger?.LogDebug("Successfully merged entity of type {EntityType}", typeof(T).Name);
+                   
+                   // Debug logging after update
+                   _logger?.LogDebug("Entity after update - IsActive: {IsActive}, Email: {Email}", 
+                       entity.GetType().GetProperty("IsActive")?.GetValue(entity),
+                       entity.GetType().GetProperty("Email")?.GetValue(entity));
+               }
+               catch
+               {
+                   transaction.Rollback();
+                   throw;
+               }
+           }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error merging entity of type {EntityType}", typeof(T).Name);
+                throw;
             }
         }
-
-        var sql = GenerateUpdateSql(metadata);
-        var parameters = ExtractParameters(entity, metadata);
-
-        try
-        {
-            await _connection.ExecuteAsync(sql, parameters);
-            _changeTracker.SetState(entity, EntityState.Modified);
-
-            _logger?.LogDebug("Successfully merged entity of type {EntityType}", typeof(T).Name);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error merging entity of type {EntityType}", typeof(T).Name);
-            throw;
-        }
-    }
 
     /// <inheritdoc />
     public async Task RemoveAsync<T>(T entity) where T : class
@@ -229,6 +405,31 @@ public sealed class EntityManager : IEntityManager
     }
 
     /// <inheritdoc />
+    public async Task RemoveAsync<T>(CompositeKey key) where T : class
+    {
+        ThrowIfDisposed();
+        if (key == null) throw new ArgumentNullException(nameof(key));
+
+        _logger?.LogDebug("Removing entity of type {EntityType} with composite key", typeof(T).Name);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var sql = GenerateDeleteByCompositeKeySql(metadata, key);
+        var parameters = CreateParametersFromCompositeKey(key, metadata);
+
+        try
+        {
+            await _connection.ExecuteAsync(sql, parameters);
+
+            _logger?.LogDebug("Successfully removed entity of type {EntityType} with composite key", typeof(T).Name);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error removing entity of type {EntityType} with composite key", typeof(T).Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task FlushAsync()
     {
         ThrowIfDisposed();
@@ -247,7 +448,7 @@ public sealed class EntityManager : IEntityManager
                 switch (state)
                 {
                     case EntityState.Added:
-                        await CallGenericMethodAsync(nameof(PersistAsync), entity);
+                        await ExecuteInsertAsync(entity);
                         break;
                     case EntityState.Modified:
                         await CallGenericMethodAsync(nameof(MergeAsync), entity);
@@ -286,7 +487,7 @@ public sealed class EntityManager : IEntityManager
         ThrowIfDisposed();
         if (entity == null) return false;
 
-        return _changeTracker.GetState(entity) != null;
+        return _changeTracker.GetState(entity) != EntityState.Detached;
     }
 
     /// <inheritdoc />
@@ -381,6 +582,48 @@ public sealed class EntityManager : IEntityManager
         return $"DELETE FROM {metadata.FullTableName} WHERE {primaryKeyColumn} = @id";
     }
 
+    private string GenerateDeleteByCompositeKeySql(EntityMetadata metadata, CompositeKey key)
+    {
+        var whereConditions = key.Values.Keys
+            .Select(propertyName => metadata.Properties[propertyName].ColumnName + " = @" + propertyName);
+
+        var whereClause = string.Join(" AND ", whereConditions);
+
+        return $"DELETE FROM {metadata.FullTableName} WHERE {whereClause}";
+    }
+
+    private bool HasGeneratedId(EntityMetadata metadata)
+    {
+        var idProperty = metadata.Properties[metadata.PrimaryKeyProperty];
+        return idProperty.GenerationType != null && 
+               idProperty.GenerationType != GenerationType.None;
+    }
+
+    private async Task ExecuteInsertAsync(object entity)
+    {
+        var entityType = entity.GetType();
+        var metadata = _metadataProvider.GetEntityMetadata(entityType);
+        var sql = GenerateInsertSql(metadata);
+        var parameters = ExtractParameters(entity, metadata);
+
+        try
+        {
+            _logger?.LogDebug("Executing SQL: {Sql}", sql);
+            _logger?.LogDebug("Parameters: {Parameters}", string.Join(", ", ((Dictionary<string, object?>)parameters).Select(kvp => $"{kvp.Key}={kvp.Value}")));
+            
+            var id = await _connection.QuerySingleAsync<object>(sql, parameters);
+            SetEntityId(entity, id, metadata);
+            _changeTracker.SetState(entity, EntityState.Unchanged);
+
+            _logger?.LogDebug("Successfully executed insert for entity of type {EntityType} with ID {Id}", entityType.Name, id);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error executing insert for entity of type {EntityType}", entityType.Name);
+            throw;
+        }
+    }
+
     private object ExtractParameters(object entity, EntityMetadata metadata)
     {
         var parameters = new Dictionary<string, object?>();
@@ -394,11 +637,17 @@ public sealed class EntityManager : IEntityManager
 
             if (property?.CanRead == true)
             {
+                // Skip identity columns - they should be auto-generated by the database
+                if (propertyMetadata.IsPrimaryKey && propertyMetadata.GenerationType == Annotations.GenerationType.Identity)
+                {
+                    continue;
+                }
+
                 var value = property.GetValue(entity);
+                // Use property name as key to match the @PropertyName format in SQL
                 parameters[propertyName] = value;
             }
         }
-
         return parameters;
     }
 
@@ -500,5 +749,21 @@ public sealed class EntityManager : IEntityManager
         var genericMethod = method.MakeGenericMethod(entityType);
         var task = (Task)genericMethod.Invoke(this, new[] { entity })!;
         await task;
+    }
+
+    /// <inheritdoc />
+    public IQuery<T> CreateQuery<T>(string cpql) where T : class
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(cpql))
+            throw new ArgumentException("CPQL query cannot be null or empty", nameof(cpql));
+
+        _logger?.LogDebug("Creating query for entity type {EntityType} with CPQL: {Cpql}", typeof(T).Name, cpql);
+
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator();
+        var parameterBinder = new ParameterBinder();
+
+        return new Query<T>(_connection, parser, sqlGenerator, parameterBinder, _metadataProvider, cpql, null);
     }
 }

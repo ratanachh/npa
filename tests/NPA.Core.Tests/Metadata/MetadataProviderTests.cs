@@ -11,12 +11,7 @@ namespace NPA.Core.Tests.Metadata;
 /// </summary>
 public class MetadataProviderTests
 {
-    private readonly MetadataProvider _metadataProvider;
-
-    public MetadataProviderTests()
-    {
-        _metadataProvider = new MetadataProvider();
-    }
+    private readonly MetadataProvider _metadataProvider = new();
 
     [Fact]
     public void IsEntity_WithEntityType_ShouldReturnTrue()
@@ -118,7 +113,7 @@ public class MetadataProviderTests
         
         var orderIdProperty = metadata.Properties["OrderId"];
         var productIdProperty = metadata.Properties["ProductId"];
-        
+
         orderIdProperty.IsPrimaryKey.Should().BeTrue();
         productIdProperty.IsPrimaryKey.Should().BeTrue();
     }

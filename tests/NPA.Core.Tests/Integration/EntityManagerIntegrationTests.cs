@@ -17,22 +17,15 @@ namespace NPA.Core.Tests.Integration;
 [Trait("Category", "Integration")]
 public class EntityManagerIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgresContainer;
+    private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
+        .WithImage("postgres:17-alpine")
+        .WithDatabase("npadb")
+        .WithUsername("npa_user")
+        .WithPassword("npa_password")
+        .WithPortBinding(5432, true)
+        .Build();
     private IEntityManager _entityManager = null!;
-    private readonly NpgsqlConnection _connection;
-
-    public EntityManagerIntegrationTests()
-    {
-        _postgresContainer = new PostgreSqlBuilder()
-            .WithImage("postgres:17-alpine")
-            .WithDatabase("npadb")
-            .WithUsername("npa_user")
-            .WithPassword("npa_password")
-            .WithPortBinding(5432, true)
-            .Build();
-
-        _connection = new NpgsqlConnection();
-    }
+    private readonly NpgsqlConnection _connection = new();
 
     public async Task InitializeAsync()
     {
@@ -83,8 +76,8 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         command.CommandText = "SELECT COUNT(*) FROM users WHERE id = @id";
         command.Parameters.Add(new NpgsqlParameter("@id", user.Id));
         
-        var count = await ((NpgsqlCommand)command).ExecuteScalarAsync();
-        ((long)count).Should().Be(1);
+        var count = await (command).ExecuteScalarAsync();
+        ((long)(count ?? 0)).Should().Be(1);
     }
 
     [Fact]
@@ -101,7 +94,7 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         insertCommand.Parameters.Add(new NpgsqlParameter("@created_at", DateTime.UtcNow));
         insertCommand.Parameters.Add(new NpgsqlParameter("@is_active", true));
         
-        var id = await ((NpgsqlCommand)insertCommand).ExecuteScalarAsync();
+        var id = await (insertCommand).ExecuteScalarAsync();
         var userId = Convert.ToInt64(id);
 
         // Act
@@ -128,7 +121,7 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         insertCommand.Parameters.Add(new NpgsqlParameter("@created_at", DateTime.UtcNow));
         insertCommand.Parameters.Add(new NpgsqlParameter("@is_active", true));
         
-        var id = await ((NpgsqlCommand)insertCommand).ExecuteScalarAsync();
+        var id = await insertCommand.ExecuteScalarAsync();
         var userId = Convert.ToInt64(id);
 
         // Act
@@ -148,7 +141,7 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         selectCommand.CommandText = "SELECT username, email, is_active FROM users WHERE id = @id";
         selectCommand.Parameters.Add(new NpgsqlParameter("@id", userId));
         
-        using var reader = ((NpgsqlCommand)selectCommand).ExecuteReader();
+        using var reader = selectCommand.ExecuteReader();
         reader.Read();
         
         reader.GetString("username").Should().Be("merged_user");
@@ -170,7 +163,7 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         insertCommand.Parameters.Add(new NpgsqlParameter("@created_at", DateTime.UtcNow));
         insertCommand.Parameters.Add(new NpgsqlParameter("@is_active", true));
         
-        var id = await ((NpgsqlCommand)insertCommand).ExecuteScalarAsync();
+        var id = await (insertCommand).ExecuteScalarAsync();
         var userId = Convert.ToInt64(id);
 
         // Act
@@ -182,7 +175,7 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         countCommand.Parameters.Add(new NpgsqlParameter("@id", userId));
         
         var count = await countCommand.ExecuteScalarAsync();
-        ((long)count).Should().Be(0);
+        ((long)(count ?? 0)).Should().Be(0);
     }
 
     [Fact]
@@ -217,7 +210,7 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         countCommand.CommandText = "SELECT COUNT(*) FROM users WHERE username LIKE 'batch_user_%'";
         
         var count = await countCommand.ExecuteScalarAsync();
-        ((long)count).Should().Be(2);
+        ((long)(count ?? 0)).Should().Be(2);
     }
 
     private async Task CreateTestTables()

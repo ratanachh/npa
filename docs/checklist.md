@@ -115,14 +115,14 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 
 ## 📋 Overall Progress
 
-- [x] **Phase 1: Core Foundation** (2/6 tasks completed)
+- [x] **Phase 1: Core Foundation** (3/6 tasks completed)
 - [ ] **Phase 2: Advanced Features** (0/6 tasks completed)
 - [ ] **Phase 3: Transaction & Performance** (0/5 tasks completed)
 - [ ] **Phase 4: Source Generator Enhancement** (0/7 tasks completed)
 - [ ] **Phase 5: Enterprise Features** (0/5 tasks completed)
 - [ ] **Phase 6: Tooling & Ecosystem** (0/4 tasks completed)
 
-**Total Progress: 2/33 tasks completed (6%)**
+**Total Progress: 3/33 tasks completed (9%)**
 
 ## 🎉 Recent Accomplishments
 
@@ -142,6 +142,16 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 - **Comprehensive testing**: 100% test coverage with mock database connections
 - **Sample application**: Working example demonstrating all features
 - **Documentation**: Complete API documentation and getting started guide
+
+### ✅ Phase 1.3: Simple Query Support (COMPLETED)
+- **Query interfaces**: IQuery, IQueryParser, ISqlGenerator, IParameterBinder with full async support
+- **Query implementation**: Complete query operations (GetResultListAsync, GetSingleResultAsync, ExecuteUpdateAsync, ExecuteScalarAsync)
+- **CPQL parsing**: Basic CPQL syntax support with regex patterns for SELECT, UPDATE, DELETE queries
+- **SQL generation**: Database-agnostic SQL generation with entity metadata integration
+- **Parameter binding**: Safe parameter handling with SQL injection prevention
+- **EntityManager integration**: CreateQuery method for seamless query creation
+- **Comprehensive testing**: Full test coverage for all query operations and error scenarios
+- **Documentation**: Complete API documentation with usage examples
 
 ### 🏗️ Project Structure Created
 - **Solution file**: NPA.sln with proper project references
@@ -184,14 +194,23 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 - [x] Document EntityManager usage
 
 ### 1.3 Simple Query Support
-- [ ] Create `IQuery` interface
-- [ ] Create `Query` class
-- [ ] Implement `CreateQuery()` method
-- [ ] Implement `SetParameter()` method
-- [ ] Implement `GetResultListAsync()` method
-- [ ] Implement `GetSingleResultAsync()` method
-- [ ] Add unit tests for Query
-- [ ] Document Query usage
+- [x] Create `IQuery` interface
+- [x] Create `Query` class
+- [x] Create `IQueryParser` interface
+- [x] Create `QueryParser` class
+- [x] Create `ISqlGenerator` interface
+- [x] Create `SqlGenerator` class
+- [x] Create `IParameterBinder` interface
+- [x] Create `ParameterBinder` class
+- [x] Implement `CreateQuery()` method in EntityManager
+- [x] Implement `SetParameter()` method
+- [x] Implement `GetResultListAsync()` method
+- [x] Implement `GetSingleResultAsync()` method
+- [x] Implement `GetSingleResultRequiredAsync()` method
+- [x] Implement `ExecuteUpdateAsync()` method
+- [x] Implement `ExecuteScalarAsync()` method
+- [x] Add unit tests for Query
+- [x] Document Query usage
 
 ### 1.4 SQL Server Provider
 - [ ] Create `IDatabaseProvider` interface

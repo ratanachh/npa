@@ -91,7 +91,7 @@ public class ChangeTrackerTests
     }
 
     [Fact]
-    public void GetState_WithUntrackedEntity_ShouldReturnNull()
+    public void GetState_WithUntrackedEntity_ShouldReturnDetached()
     {
         // Arrange
         var user = new User { Id = 1, Username = "testuser" };
@@ -100,17 +100,17 @@ public class ChangeTrackerTests
         var state = _changeTracker.GetState(user);
 
         // Assert
-        state.Should().BeNull();
+        state.Should().Be(EntityState.Detached);
     }
 
     [Fact]
-    public void GetState_WithNullEntity_ShouldReturnNull()
+    public void GetState_WithNullEntity_ShouldReturnDetached()
     {
         // Act
         var state = _changeTracker.GetState<User>(null!);
 
         // Assert
-        state.Should().BeNull();
+        state.Should().Be(EntityState.Detached);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class ChangeTrackerTests
 
         // Assert
         var state = _changeTracker.GetState(user);
-        state.Should().BeNull();
+        state.Should().Be(EntityState.Detached);
     }
 
     [Fact]
@@ -192,8 +192,8 @@ public class ChangeTrackerTests
         _changeTracker.Clear();
 
         // Assert
-        _changeTracker.GetState(user1).Should().BeNull();
-        _changeTracker.GetState(user2).Should().BeNull();
+        _changeTracker.GetState(user1).Should().Be(EntityState.Detached);
+        _changeTracker.GetState(user2).Should().Be(EntityState.Detached);
         _changeTracker.GetPendingChanges().Should().BeEmpty();
     }
 }

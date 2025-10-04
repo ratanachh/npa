@@ -1,4 +1,5 @@
 using NPA.Core.Metadata;
+using NPA.Core.Query;
 
 namespace NPA.Core.Core;
 
@@ -91,4 +92,12 @@ public interface IEntityManager : IDisposable
     /// Gets the change tracker.
     /// </summary>
     IChangeTracker ChangeTracker { get; }
+
+    /// <summary>
+    /// Creates a query for the specified entity type.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="cpql">The CPQL query string.</param>
+    /// <returns>A query instance.</returns>
+    IQuery<T> CreateQuery<T>(string cpql) where T : class;
 }

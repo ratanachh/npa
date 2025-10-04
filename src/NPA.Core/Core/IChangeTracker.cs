@@ -20,8 +20,8 @@ public interface IChangeTracker
     /// </summary>
     /// <typeparam name="T">The entity type.</typeparam>
     /// <param name="entity">The entity.</param>
-    /// <returns>The current state of the entity, or null if not tracked.</returns>
-    EntityState? GetState<T>(T entity) where T : class;
+    /// <returns>The current state of the entity, or Detached if not tracked.</returns>
+    EntityState GetState<T>(T entity) where T : class;
 
     /// <summary>
     /// Updates the state of an entity.
@@ -55,4 +55,33 @@ public interface IChangeTracker
     /// </summary>
     /// <returns>A dictionary of entities and their states.</returns>
     IReadOnlyDictionary<object, EntityState> GetPendingChanges();
+
+    /// <summary>
+    /// Detects if an entity has been modified by comparing current values with original values.
+    /// </summary>
+    /// <param name="entity">The entity to check.</param>
+    /// <returns>True if the entity has been modified; otherwise, false.</returns>
+    bool IsModified(object entity);
+
+    /// <summary>
+    /// Finds a tracked entity by its ID.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="id">The entity ID.</param>
+    /// <returns>The tracked entity if found, otherwise null.</returns>
+    T? GetTrackedEntityById<T>(object id) where T : class;
+
+    /// <summary>
+    /// Checks if an entity has changes (alias for IsModified for better readability).
+    /// </summary>
+    /// <param name="entity">The entity to check.</param>
+    /// <returns>True if the entity has changes; otherwise, false.</returns>
+    bool HasChanges(object entity);
+
+    /// <summary>
+    /// Copies property values from source entity to target entity.
+    /// </summary>
+    /// <param name="source">The source entity.</param>
+    /// <param name="target">The target entity.</param>
+    void CopyEntityValues(object source, object target);
 }
