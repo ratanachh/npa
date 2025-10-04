@@ -63,9 +63,24 @@ public class Program
                 // Create database schema
                 await CreateDatabaseSchema(connectionString, logger);
 
-                // Get EntityManager
+                // Get EntityManager and ensure connection is open
                 using var scope = host.Services.CreateScope();
                 var entityManager = scope.ServiceProvider.GetRequiredService<IEntityManager>();
+                var connection = scope.ServiceProvider.GetRequiredService<IDbConnection>();
+                
+                // Open the connection before performing operations
+                if (connection.State != ConnectionState.Open)
+                {
+                    if (connection is NpgsqlConnection npgsqlConnection)
+                    {
+                        await npgsqlConnection.OpenAsync();
+                    }
+                    else
+                    {
+                        connection.Open();
+                    }
+                    logger.LogInformation("Database connection opened successfully");
+                }
 
                 // Demonstrate basic CRUD operations
                 await DemonstrateBasicCrud(entityManager, logger);
@@ -105,7 +120,7 @@ public class Program
         {
             // Persist the user
             await entityManager.PersistAsync(user);
-            await entityManager.FlushAsync();
+            // await entityManager.FlushAsync();
 
             logger.LogInformation("User created successfully with ID: {Id}", user.Id);
 
@@ -118,7 +133,7 @@ public class Program
                 // Update the user
                 foundUser.IsActive = false;
                 await entityManager.MergeAsync(foundUser);
-                await entityManager.FlushAsync();
+                // await entityManager.FlushAsync();
 
                 logger.LogInformation("User updated successfully");
 
@@ -141,11 +156,11 @@ public class Program
     private static async Task CreateDatabaseSchema(string connectionString, ILogger logger)
     {
         logger.LogInformation("Creating database schema...");
-        
-        using var connection = new NpgsqlConnection(connectionString);
+
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         
-        var createTableSql = @"
+        const string createTableSql = @"
             CREATE TABLE IF NOT EXISTS users (
                 id BIGSERIAL PRIMARY KEY,
                 username VARCHAR(255) NOT NULL,
@@ -153,8 +168,8 @@ public class Program
                 created_at TIMESTAMP NOT NULL,
                 is_active BOOLEAN NOT NULL DEFAULT true
             );";
-        
-        using var command = new NpgsqlCommand(createTableSql, connection);
+
+        await using var command = new NpgsqlCommand(createTableSql, connection);
         await command.ExecuteNonQueryAsync();
         
         logger.LogInformation("Database schema created successfully");
