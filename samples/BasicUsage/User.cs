@@ -1,14 +1,15 @@
 using NPA.Core.Annotations;
+using System;
 
-namespace BasicUsage;
-
-/// <summary>
-/// Sample User entity for demonstration.
-/// </summary>
-[Entity]
-[Table("users")]
-public class User
+namespace BasicUsage
 {
+    [Entity]
+    [Table("users")]
+    /// <summary>
+    /// Sample User entity for demonstration.
+    /// </summary>
+    public class User
+    {
     [Id]
     [GeneratedValue(GenerationType.Identity)]
     [Column("id")]
@@ -25,4 +26,5 @@ public class User
 
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
+    }
 }

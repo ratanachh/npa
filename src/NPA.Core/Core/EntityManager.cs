@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.Extensions.Logging;
 using NPA.Core.Annotations;
 using NPA.Core.Metadata;
+using NPA.Core.Providers;
 using NPA.Core.Query;
 
 namespace NPA.Core.Core;
@@ -15,6 +16,7 @@ public sealed class EntityManager : IEntityManager
 {
     private readonly IDbConnection _connection;
     private readonly IMetadataProvider _metadataProvider;
+    private readonly IDatabaseProvider _databaseProvider;
     private readonly IChangeTracker _changeTracker;
     private readonly ILogger<EntityManager>? _logger;
     private bool _disposed;
@@ -24,11 +26,13 @@ public sealed class EntityManager : IEntityManager
     /// </summary>
     /// <param name="connection">The database connection.</param>
     /// <param name="metadataProvider">The metadata provider.</param>
+    /// <param name="databaseProvider">The database provider.</param>
     /// <param name="logger">The logger (optional).</param>
-    public EntityManager(IDbConnection connection, IMetadataProvider metadataProvider, ILogger<EntityManager>? logger = null)
+    public EntityManager(IDbConnection connection, IMetadataProvider metadataProvider, IDatabaseProvider databaseProvider, ILogger<EntityManager>? logger = null)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _metadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
+        _databaseProvider = databaseProvider ?? throw new ArgumentNullException(nameof(databaseProvider));
         _changeTracker = new ChangeTracker();
         _logger = logger;
     }
@@ -57,7 +61,7 @@ public sealed class EntityManager : IEntityManager
             if (existingEntity != null)
             {
                 // Entity exists, perform UPDATE
-                var sql = GenerateUpdateSql(metadata);
+                var sql = _databaseProvider.GenerateUpdateSql(metadata);
                 var parameters = ExtractParameters(entity, metadata);
 
                 try
@@ -97,7 +101,7 @@ public sealed class EntityManager : IEntityManager
     {
         if (HasGeneratedId(metadata))
         {
-            var sql = GenerateInsertSql(metadata);
+            var sql = _databaseProvider.GenerateInsertSql(metadata);
             var parameters = ExtractParameters(entity, metadata);
 
             try
@@ -131,7 +135,7 @@ public sealed class EntityManager : IEntityManager
         _logger?.LogDebug("Finding entity of type {EntityType} with ID {Id}", typeof(T).Name, id);
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = GenerateSelectSql(metadata);
+        var sql = _databaseProvider.GenerateSelectByIdSql(metadata);
         var parameters = new { id };
 
         try
@@ -298,7 +302,7 @@ public sealed class EntityManager : IEntityManager
                 }
             }
 
-            var sql = GenerateUpdateSql(metadata);
+            var sql = _databaseProvider.GenerateUpdateSql(metadata);
             var parameters = ExtractParameters(entity, metadata);
 
             // Debug logging
@@ -362,7 +366,7 @@ public sealed class EntityManager : IEntityManager
         _logger?.LogDebug("Removing entity of type {EntityType}", typeof(T).Name);
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = GenerateDeleteSql(metadata);
+        var sql = _databaseProvider.GenerateDeleteSql(metadata);
         var parameters = ExtractIdParameters(entity, metadata);
 
         try
@@ -388,7 +392,7 @@ public sealed class EntityManager : IEntityManager
         _logger?.LogDebug("Removing entity of type {EntityType} with ID {Id}", typeof(T).Name, id);
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = GenerateDeleteSql(metadata);
+        var sql = _databaseProvider.GenerateDeleteSql(metadata);
         var parameters = new { id };
 
         try
@@ -518,39 +522,6 @@ public sealed class EntityManager : IEntityManager
             throw new ObjectDisposedException(nameof(EntityManager));
     }
 
-    private string GenerateInsertSql(EntityMetadata metadata)
-    {
-        var columns = metadata.Properties.Values
-            .Where(p => !p.IsPrimaryKey || p.GenerationType != Annotations.GenerationType.Identity)
-            .Select(p => p.ColumnName);
-
-        var values = metadata.Properties.Values
-            .Where(p => !p.IsPrimaryKey || p.GenerationType != Annotations.GenerationType.Identity)
-            .Select(p => "@" + p.PropertyName);
-
-        var columnList = string.Join(", ", columns);
-        var valueList = string.Join(", ", values);
-
-        // Check if we have an identity column to return
-        var identityColumn = metadata.Properties.Values
-            .FirstOrDefault(p => p.IsPrimaryKey && p.GenerationType == Annotations.GenerationType.Identity);
-        
-        if (identityColumn != null)
-        {
-            return $"INSERT INTO {metadata.FullTableName} ({columnList}) VALUES ({valueList}) RETURNING {identityColumn.ColumnName};";
-        }
-        
-        return $"INSERT INTO {metadata.FullTableName} ({columnList}) VALUES ({valueList});";
-    }
-
-    private string GenerateSelectSql(EntityMetadata metadata)
-    {
-        var columns = metadata.Properties.Values.Select(p => p.ColumnName);
-        var columnList = string.Join(", ", columns);
-
-        return $"SELECT {columnList} FROM {metadata.FullTableName} WHERE {metadata.Properties[metadata.PrimaryKeyProperty].ColumnName} = @id";
-    }
-
     private string GenerateSelectByCompositeKeySql(EntityMetadata metadata, CompositeKey key)
     {
         var columns = metadata.Properties.Values.Select(p => p.ColumnName);
@@ -562,24 +533,6 @@ public sealed class EntityManager : IEntityManager
         var whereClause = string.Join(" AND ", whereConditions);
 
         return $"SELECT {columnList} FROM {metadata.FullTableName} WHERE {whereClause}";
-    }
-
-    private string GenerateUpdateSql(EntityMetadata metadata)
-    {
-        var setClauses = metadata.Properties.Values
-            .Where(p => !p.IsPrimaryKey)
-            .Select(p => $"{p.ColumnName} = @{p.PropertyName}");
-
-        var setClause = string.Join(", ", setClauses);
-        var primaryKeyColumn = metadata.Properties[metadata.PrimaryKeyProperty].ColumnName;
-
-        return $"UPDATE {metadata.FullTableName} SET {setClause} WHERE {primaryKeyColumn} = @{metadata.PrimaryKeyProperty}";
-    }
-
-    private string GenerateDeleteSql(EntityMetadata metadata)
-    {
-        var primaryKeyColumn = metadata.Properties[metadata.PrimaryKeyProperty].ColumnName;
-        return $"DELETE FROM {metadata.FullTableName} WHERE {primaryKeyColumn} = @id";
     }
 
     private string GenerateDeleteByCompositeKeySql(EntityMetadata metadata, CompositeKey key)
@@ -603,7 +556,7 @@ public sealed class EntityManager : IEntityManager
     {
         var entityType = entity.GetType();
         var metadata = _metadataProvider.GetEntityMetadata(entityType);
-        var sql = GenerateInsertSql(metadata);
+        var sql = _databaseProvider.GenerateInsertSql(metadata);
         var parameters = ExtractParameters(entity, metadata);
 
         try
@@ -734,8 +687,15 @@ public sealed class EntityManager : IEntityManager
                     }
                 }
             }
-            
-            idProperty.SetValue(entity, id);
+
+            if (id != null && idProperty.PropertyType == typeof(long) && id is decimal dec)
+            {
+                idProperty.SetValue(entity, Convert.ToInt64(dec));
+            }
+            else
+            {
+                idProperty.SetValue(entity, id);
+            }
         }
     }
 

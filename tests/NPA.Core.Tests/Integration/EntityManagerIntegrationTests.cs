@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Core.Providers;
 using NPA.Core.Tests.TestEntities;
 using System.Data;
 using Npgsql;
@@ -41,7 +42,8 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         
         var metadataProvider = new MetadataProvider();
         var logger = new Mock<ILogger<EntityManager>>();
-        _entityManager = new EntityManager(_connection, metadataProvider, logger.Object);
+        var mockDatabaseProvider = new Mock<IDatabaseProvider>();
+        _entityManager = new EntityManager(_connection, metadataProvider, mockDatabaseProvider.Object, logger.Object);
     }
 
     public async Task DisposeAsync()

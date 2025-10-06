@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Core.Providers;
 using NPA.Core.Tests.TestEntities;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -49,7 +50,8 @@ public class EntityManagerTests : IAsyncLifetime
         await CreateTestTables();
         
         var mockLogger = new Mock<ILogger<EntityManager>>();
-        _entityManager = new EntityManager(_connection, _metadataProvider, mockLogger.Object);
+        var mockDatabaseProvider = new Mock<IDatabaseProvider>();
+        _entityManager = new EntityManager(_connection, _metadataProvider, mockDatabaseProvider.Object, mockLogger.Object);
     }
 
     public async Task DisposeAsync()
@@ -111,7 +113,8 @@ public class EntityManagerTests : IAsyncLifetime
     public void EntityManager_WithNullConnection_ShouldThrowException()
     {
         // Act & Assert
-        var action = () => new EntityManager(null!, _metadataProvider);
+        var mockDatabaseProvider = new Mock<IDatabaseProvider>();
+        var action = () => new EntityManager(null!, _metadataProvider, mockDatabaseProvider.Object);
         action.Should().Throw<ArgumentNullException>()
             .WithParameterName("connection");
     }
@@ -120,7 +123,8 @@ public class EntityManagerTests : IAsyncLifetime
     public void EntityManager_WithNullMetadataProvider_ShouldThrowException()
     {
         // Act & Assert
-        var action = () => new EntityManager(_connection, null!);
+        var mockDatabaseProvider = new Mock<IDatabaseProvider>();
+        var action = () => new EntityManager(_connection, null!, mockDatabaseProvider.Object);
         action.Should().Throw<ArgumentNullException>()
             .WithParameterName("metadataProvider");
     }
