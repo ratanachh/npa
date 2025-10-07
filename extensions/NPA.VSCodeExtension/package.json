@@ -1,0 +1,57 @@
+{
+  "name": "npa-vscode-extension",
+  "displayName": "NPA - .NET Persistence API",
+  "description": "Visual Studio Code extension for NPA development",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:csharp"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "npa.generateRepository",
+        "title": "Generate Repository",
+        "category": "NPA"
+      },
+      {
+        "command": "npa.scaffoldEntities",
+        "title": "Scaffold Entities",
+        "category": "NPA"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .cs",
+          "command": "npa.generateRepository",
+          "group": "npa"
+        }
+      ]
+    },
+    "snippets": [
+      {
+        "language": "csharp",
+        "path": "./snippets/npa.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^16.x",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.6"
+  }
+}
