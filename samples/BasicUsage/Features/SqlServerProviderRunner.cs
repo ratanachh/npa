@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NPA.Providers.SqlServer.Extensions;
 using Testcontainers.MsSql;
-using BasicUsage.Features.UserManagement;
 
 namespace BasicUsage.Features;
 
@@ -31,7 +30,8 @@ public static class SqlServerProviderRunner
             serviceProvider = services.BuildServiceProvider();
 
             await CreateDatabaseSchemaSqlServer(connectionString);
-            await UserSample.RunAsync(serviceProvider, "sqlserver");
+            // Consolidated Phase 1.1 - 1.4 demo
+            await Phase1Demo.RunAsync(serviceProvider, "sqlserver");
         }
         catch (Exception ex)
         {

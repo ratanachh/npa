@@ -10,14 +10,15 @@
 **Target Framework**: .NET 6.0  
 **Assigned To**: [Developer Name]  
 
-## 🎯 Success Criteria
+## 🎯 Success Criteria (Updated Status)
 
-- [ ] IDatabaseProvider interface is complete
-- [ ] SqlServerProvider class implements all database operations
-- [ ] SQL Server-specific features are supported
-- [ ] Performance is optimized for SQL Server
-- [ ] Unit tests cover all functionality
-- [ ] Documentation is complete
+- [x] IDatabaseProvider interface is complete (core CRUD + count + name resolution)
+- [x] SqlServerProvider class implements base operations (insert/update/delete/select/selectById/count)
+- [x] Identity column support (via SCOPE_IDENTITY pattern) implemented
+- [ ] Advanced SQL Server-specific features (Sequences, TVPs, JSON, Spatial, Full-Text) – Deferred to later phases
+- [ ] Bulk operations optimized (methods exist; full performance & TVP integration deferred)
+- [ ] Comprehensive unit tests (basic coverage pending) 
+- [ ] Documentation for advanced features (will follow after implementation)
 
 ## 📝 Detailed Requirements
 
@@ -46,18 +47,22 @@
   - SQL Server-specific features
 
 ### 3. SQL Server-Specific Features
-- **Identity Columns**: Support for IDENTITY columns
-- **Sequences**: Support for SEQUENCE objects
-- **Table-Valued Parameters**: Support for TVPs
-- **JSON Support**: Support for JSON data types
-- **Spatial Data**: Support for geography/geometry types
-- **Full-Text Search**: Support for CONTAINS/FREETEXT
+Current scope intentionally limited for Phase 1.4 baseline:
+
+- Identity Columns: ✅ Implemented (INSERT returns SCOPE_IDENTITY())
+- Sequences: ⏳ Deferred (planned in Phase 2+ or migrations phase)
+- Table-Valued Parameters: ⏳ Deferred
+- JSON Support: ⏳ Deferred (can map via nvarchar(max) manually now)
+- Spatial Data: ⏳ Deferred
+- Full-Text Search: ⏳ Deferred
 
 ### 4. Performance Optimizations
-- **Bulk Operations**: Use SqlBulkCopy for bulk inserts
-- **Table-Valued Parameters**: Use TVPs for batch operations
-- **Connection Pooling**: Optimize connection usage
-- **Query Optimization**: Generate efficient SQL
+Baseline only:
+
+- Bulk Operations: Public async methods exist; implementation will be extended with SqlBulkCopy later.
+- Table-Valued Parameters: Deferred.
+- Connection Pooling: Relies on ADO.NET default pooling via connection string.
+- Query Optimization: Basic SQL generation; advanced plan hints / batching deferred.
 
 ## 🏗️ Implementation Plan
 
@@ -326,24 +331,32 @@ public class Product
 - [ ] Spatial data
 - [ ] Full-text search
 
-## 🔍 Code Review Checklist
+## 🔍 Code Review Checklist (Current / Pending)
 
-- [ ] Code follows .NET naming conventions
-- [ ] All public members have XML documentation
-- [ ] Error handling is appropriate
-- [ ] Unit tests cover all scenarios
-- [ ] Code is readable and maintainable
-- [ ] Performance is optimized
-- [ ] SQL injection prevention
-- [ ] Memory usage is efficient
+- [x] Code follows .NET naming conventions
+- [x] Public members in provider classes have XML documentation (verified via generated XML)
+- [x] Basic error handling (argument validation) present
+- [ ] Targeted unit tests for SQL generation
+- [ ] Bulk operation performance tests
+- [ ] Injection prevention review for dynamic SQL (current generation is deterministic; parameterization review pending)
+- [ ] Memory usage profiling (deferred)
 
 ## 🚀 Next Steps
 
-After completing this task:
-1. Move to Phase 1.5: Repository Source Generator (Basic)
-2. Update checklist with completion status
-3. Create pull request for review
-4. Update documentation
+Short-term:
+1. Add unit tests for GenerateInsert/Update/Delete/Select/Count.
+2. Implement basic BulkInsert using SqlBulkCopy wrapper.
+3. Add sequence support abstraction (no-op until migrations/DDL phase).
+4. Extend samples to exercise Count and pagination once query layer exposes it.
+
+Longer-term (deferred features):
+- Sequences, TVPs, JSON mapping helpers, spatial types, full-text search helpers.
+
+After baseline hardening:
+1. Proceed to Phase 1.5: Repository Source Generator (Basic).
+2. Update this document—flip remaining checkboxes as features land.
+3. Prepare focused performance benchmarks.
+4. Publish provider usage guide snippet in main README.
 
 ## 📞 Questions/Issues
 
