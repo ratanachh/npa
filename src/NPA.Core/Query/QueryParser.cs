@@ -8,7 +8,7 @@ namespace NPA.Core.Query;
 public class QueryParser : IQueryParser
 {
     private static readonly Regex SelectPattern = new(@"SELECT\s+(\w+)\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SelectCountPattern = new(@"SELECT\s+COUNT\((\w+\.\w+)\)\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SelectCountPattern = new(@"SELECT\s+COUNT\((\w+(?:\.\w+)?)\)\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex UpdatePattern = new(@"UPDATE\s+(\w+)\s+(\w+)\s+SET\s+(.+?)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex DeletePattern = new(@"DELETE\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ParameterPattern = new(@":(\w+)", RegexOptions.Compiled);

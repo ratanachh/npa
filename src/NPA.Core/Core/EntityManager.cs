@@ -509,7 +509,7 @@ public sealed class EntityManager : IEntityManager
     {
         if (!_disposed)
         {
-            _connection?.Dispose();
+            // Note: Do NOT dispose the connection - it's injected and we don't own its lifecycle
             _changeTracker.Clear();
             _disposed = true;
             _logger?.LogDebug("EntityManager disposed");

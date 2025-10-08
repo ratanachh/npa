@@ -5,6 +5,7 @@ using NPA.Core.Core;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using NPA.Core.Tests.TestEntities;
+using NPA.Providers.PostgreSql;
 using System.Data;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -42,8 +43,8 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         
         var metadataProvider = new MetadataProvider();
         var logger = new Mock<ILogger<EntityManager>>();
-        var mockDatabaseProvider = new Mock<IDatabaseProvider>();
-        _entityManager = new EntityManager(_connection, metadataProvider, mockDatabaseProvider.Object, logger.Object);
+        var databaseProvider = new PostgreSqlProvider();
+        _entityManager = new EntityManager(_connection, metadataProvider, databaseProvider, logger.Object);
     }
 
     public async Task DisposeAsync()

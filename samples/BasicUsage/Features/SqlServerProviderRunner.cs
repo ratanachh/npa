@@ -1,10 +1,19 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NPA.Providers.SqlServer.Extensions;
+using Microsoft.Data.SqlClient;
+using NPA.Core.Core;
+using NPA.Core.Metadata;
+using NPA.Core.Providers;
+using NPA.Providers.SqlServer;
+using System.Data;
 using Testcontainers.MsSql;
 
 namespace BasicUsage.Features;
 
+/// <summary>
+/// Runs the Phase 1 demo using SQL Server provider (Phase 1.4 - in progress).
+/// Note: SQL Server provider is still being completed.
+/// </summary>
 public static class SqlServerProviderRunner
 {
     public static async Task RunAsync()
@@ -13,34 +22,61 @@ public static class SqlServerProviderRunner
             .WithPassword("MyStrong@Passw0rd")
             .WithCleanUp(true)
             .Build();
+        
         bool containerStarted = false;
-        IServiceProvider serviceProvider = null!;
-        string connectionString = "";
+        IServiceProvider? serviceProvider = null;
+
         try
         {
             Console.WriteLine("Starting SQL Server container...");
             await sqlServerContainer.StartAsync();
             containerStarted = true;
-            connectionString = sqlServerContainer.GetConnectionString();
+            
+            var connectionString = sqlServerContainer.GetConnectionString();
             Console.WriteLine("SQL Server container started.");
 
+            // Setup Dependency Injection
             var services = new ServiceCollection();
-            services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
-            services.AddSqlServerProvider(connectionString);
+            services.AddLogging(builder => 
+                builder.AddConsole().SetMinimumLevel(LogLevel.Information));
+            
+            // Register NPA services with SQL Server provider
+            services.AddSingleton<IMetadataProvider, MetadataProvider>();
+            services.AddSingleton<IDatabaseProvider, SqlServerProvider>();
+            services.AddScoped<IDbConnection>(sp =>
+            {
+                var connection = new SqlConnection(connectionString);
+                connection.Open();
+                return connection;
+            });
+            services.AddScoped<EntityManager>();
+
             serviceProvider = services.BuildServiceProvider();
 
+            // Create database schema
             await CreateDatabaseSchemaSqlServer(connectionString);
-            // Consolidated Phase 1.1 - 1.4 demo
+
+            // Run Phase 1 demo
             await Phase1Demo.RunAsync(serviceProvider, "sqlserver");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
         }
         finally
         {
+            if (serviceProvider is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+
             if (containerStarted)
+            {
+                Console.WriteLine("\nStopping SQL Server container...");
                 await sqlServerContainer.StopAsync();
+                await sqlServerContainer.DisposeAsync();
+            }
         }
     }
 

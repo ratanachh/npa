@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Providers.PostgreSql\NPA.Providers.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,32 +1,35 @@
-# BasicUsage Sample (Phases 1.1 – 1.4)
+# BasicUsage Sample (Phases 1.1 – 1.3)
 
-This sample demonstrates the implemented features of NPA through Phase 1.4 using a single cohesive run:
+This sample demonstrates the **implemented and tested** features of NPA (Phases 1.1-1.3) using PostgreSQL provider:
 
-| Phase | Focus | Demonstrated In |
-|-------|-------|-----------------|
-| 1.1 | Attribute-based entity mapping (`[Entity]`, `[Table]`, `[Id]`, `[Column]`, `[GeneratedValue]`) | `User` entity class |
-| 1.2 | EntityManager CRUD lifecycle | `Phase1Demo.RunAsync` (persist, find, merge, delete, detach/contains) |
-| 1.3 | Simple query creation & parameter binding | `Phase1Demo` (active users & single user queries) |
-| 1.4 | SQL Server provider integration | `SqlServerProviderRunner` (container-backed) |
+| Phase | Status | Focus | Demonstrated In |
+|-------|--------|-------|-----------------|
+| 1.1 | ✅ Complete | Attribute-based entity mapping (`[Entity]`, `[Table]`, `[Id]`, `[Column]`, `[GeneratedValue]`) | `User` entity class |
+| 1.2 | ✅ Complete | EntityManager CRUD lifecycle | `Phase1Demo.RunAsync` (persist, find, merge, delete, detach/contains) |
+| 1.3 | ✅ Complete | CPQL query creation & parameter binding | `Phase1Demo` (active users & single user queries) |
+| 1.4 | 🚧 In Progress | SQL Server provider integration | `SqlServerProviderRunner` (optional, use `--sqlserver` arg) |
+
+**Default Provider**: PostgreSQL (completed and fully tested)
 
 ## What Happens When You Run
-1. A Testcontainers-based SQL Server instance is started.
+1. A Testcontainers-based **PostgreSQL** instance is started (default).
 2. A `users` table is created if it does not exist.
-3. Dependency Injection is configured and the SQL Server provider registered.
+3. Dependency Injection is configured and the PostgreSQL provider registered.
 4. `Phase1Demo` runs through:
-   - Persist a `User`
-   - Find it by ID
-   - Update (merge) it
-   - Detach and refetch
-   - Run two parameterized queries
-   - Remove the user and verify deletion
-5. Container shuts down.
+   - **Persist** a `User` (Phase 1.2)
+   - **Find** it by ID (Phase 1.2)
+   - **Update** (merge) it (Phase 1.2)
+   - **Detach** and refetch (Phase 1.2)
+   - Run two **parameterized CPQL queries** (Phase 1.3)
+   - **Remove** the user and verify deletion (Phase 1.2)
+5. Container shuts down automatically.
 
 ## Files Overview
-- `Program.cs` – Entry point, selects provider (currently only SQL Server path active).
-- `Features/SqlServerProviderRunner.cs` – Orchestrates container, DI, schema creation, and demo execution.
-- `Features/Phase1Demo.cs` – Consolidated lifecycle + query walkthrough.
-- `User.cs` – Sample entity with attribute mappings.
+- `Program.cs` – Entry point, selects provider (default: PostgreSQL ✅, optional: SQL Server 🚧).
+- `Features/PostgreSqlProviderRunner.cs` – Orchestrates PostgreSQL container, DI, schema creation (✅ completed).
+- `Features/SqlServerProviderRunner.cs` – Orchestrates SQL Server container (🚧 in progress).
+- `Features/Phase1Demo.cs` – Consolidated Phase 1.1-1.3 lifecycle + CPQL query walkthrough.
+- `User.cs` – Sample entity with JPA-like attribute mappings (Phase 1.1).
   
 
 ## Running the Sample

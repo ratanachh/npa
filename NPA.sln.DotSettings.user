@@ -4,5 +4,5 @@
   &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;&#xD;
 &lt;/SessionState&gt;</s:String>
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=fc97b9cc_002D403c_002D4249_002Dabec_002Da5f6a648befc/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="ColumnAttributeTests" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
-  &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.Tests&amp;gt;" /&gt;&#xD;
+  &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;&#xD;
 &lt;/SessionState&gt;</s:String></wpf:ResourceDictionary>

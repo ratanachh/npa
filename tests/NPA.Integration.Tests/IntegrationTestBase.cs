@@ -2,6 +2,7 @@ using DotNet.Testcontainers.Builders;
 using Testcontainers.MsSql;
 using Testcontainers.MySql;
 using Testcontainers.PostgreSql;
+using Xunit;
 
 namespace NPA.Integration.Tests;
 

@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NPA.Generators;
+using Xunit;
 
 namespace NPA.Generators.Tests;
 

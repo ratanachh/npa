@@ -1,5 +1,6 @@
 using FluentAssertions;
 using NPA.Extensions;
+using Xunit;
 
 namespace NPA.Extensions.Tests;
 
