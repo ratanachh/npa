@@ -1206,7 +1206,7 @@ NPA/
 │   │       ├── PerformanceCounter.cs
 │   │       ├── MetricsCollector.cs
 │   │       └── HealthChecker.cs
-│   ├── NPA.Generators/           # Source Generators 🚧 Planned (Phase 1.6, 2.6, 4.x)
+│   ├── NPA.Generators/           # Source Generators ✅ Basic (Phase 1.6)
 │   │   ├── RepositoryGenerator/
 │   │   │   ├── RepositoryGenerator.cs
 │   │   │   ├── RepositorySyntaxReceiver.cs
@@ -1278,7 +1278,7 @@ NPA/
 │   │   ├── Integration/
 │   │   └── TestEntities/
 │   ├── NPA.Extensions.Tests/               # 🚧 Skeleton Only
-│   ├── NPA.Generators.Tests/               # 🚧 Skeleton Only
+│   ├── NPA.Generators.Tests/               # ✅ Implemented (Phase 1.6)
 │   ├── NPA.Providers.SqlServer.Tests/      # ✅ Implemented (Phase 1.4)
 │   │   ├── SqlServerProviderTests.cs
 │   │   ├── SqlServerDialectTests.cs

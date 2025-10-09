@@ -9,7 +9,7 @@ This directory contains sample applications demonstrating NPA features.
 | **BasicUsage** | ✅ Complete | Yes | 1.1-1.5 | Entity mapping, CRUD, queries with SQL Server/MySQL/PostgreSQL |
 | **AdvancedQueries** | ✅ Complete | Yes | 1.3 | Advanced CPQL queries with PostgreSQL |
 | **RepositoryPattern** | ✅ Builds | Partial | 2.4 | Repository pattern (needs full implementation) |
-| **SourceGeneratorDemo** | 🚧 Stub | No | 1.6/4.1 | Placeholder (requires generators) |
+| **SourceGeneratorDemo** | ✅ Complete | Yes | 1.6 | Repository source generator demonstration |
 | **WebApplication** | ✅ Builds | Partial | 2.4 | ASP.NET Core integration (basic) |
 
 ## ✅ Fully Functional Samples
