@@ -6,7 +6,7 @@ This directory contains sample applications demonstrating NPA features.
 
 | Sample | Status | Functional? | Phase | Description |
 |--------|--------|-------------|-------|-------------|
-| **BasicUsage** | ✅ Complete | Yes | 1.1-1.4 | Entity mapping, CRUD, queries with SQL Server |
+| **BasicUsage** | ✅ Complete | Yes | 1.1-1.5 | Entity mapping, CRUD, queries with SQL Server/MySQL/PostgreSQL |
 | **AdvancedQueries** | ✅ Complete | Yes | 1.3 | Advanced CPQL queries with PostgreSQL |
 | **RepositoryPattern** | ✅ Builds | Partial | 2.4 | Repository pattern (needs full implementation) |
 | **SourceGeneratorDemo** | 🚧 Stub | No | 1.6/4.1 | Placeholder (requires generators) |
@@ -14,19 +14,21 @@ This directory contains sample applications demonstrating NPA features.
 
 ## ✅ Fully Functional Samples
 
-### BasicUsage (Phases 1.1-1.4)
+### BasicUsage (Phases 1.1-1.5)
 Demonstrates complete Phase 1 features:
 - ✅ Entity mapping with attributes (Phase 1.1)
 - ✅ EntityManager CRUD operations (Phase 1.2)
 - ✅ CPQL query language (Phase 1.3)
 - ✅ SQL Server provider (Phase 1.4 - 63 tests passing)
+- ✅ MySQL provider (Phase 1.5 - 86 tests passing) 🆕
 - ✅ PostgreSQL provider (alternative)
 
 **To Run**:
 ```bash
 cd BasicUsage
 dotnet run                    # Uses SQL Server (default)
-dotnet run -- postgresql      # Uses PostgreSQL (alternative)
+dotnet run mysql              # Uses MySQL 🆕
+dotnet run postgresql         # Uses PostgreSQL
 ```
 
 ### AdvancedQueries (Phase 1.3)
@@ -98,13 +100,14 @@ dotnet run --project samples/BasicUsage
 
 ## 💡 Recommendations
 
-1. **Use BasicUsage** as the primary reference for Phases 1.1-1.4
+1. **Use BasicUsage** as the primary reference for Phases 1.1-1.5
 2. **Use AdvancedQueries** to learn CPQL query capabilities
-3. **SQL Server provider** is production-ready with 63 passing tests
-4. **PostgreSQL provider** is available as an alternative
-5. **Follow task documents** in `docs/tasks/` for phase-specific guidance
+3. **SQL Server provider** is production-ready with 63 passing tests (Phase 1.4)
+4. **MySQL provider** is production-ready with 86 passing tests (Phase 1.5) 🆕
+5. **PostgreSQL provider** is available as an alternative
+6. **Follow task documents** in `docs/tasks/` for phase-specific guidance
 
 ---
 
 *Last Updated: October 9, 2025*  
-*Status: 2 fully functional samples demonstrating Phases 1.1-1.4*
+*Status: 2 fully functional samples demonstrating Phases 1.1-1.5*

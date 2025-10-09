@@ -1,68 +1,338 @@
-using NPA.Core.Providers;
-using MySqlConnector;
 using System.Data;
+using NPA.Core.Annotations;
+using NPA.Core.Metadata;
+using NPA.Core.Providers;
 
 namespace NPA.Providers.MySql;
 
 /// <summary>
-/// MySQL database provider implementation for NPA.
+/// MySQL/MariaDB-specific database provider implementation.
 /// </summary>
 public class MySqlProvider : IDatabaseProvider
 {
-    public string ProviderName => "MySQL";
-    
-    public string ParameterPrefix => "@";
-    
-    public char QuoteCharacter => '`';
+    private readonly ISqlDialect _dialect;
+    private readonly ITypeConverter _typeConverter;
+    private readonly IBulkOperationProvider _bulkOperationProvider;
 
     /// <summary>
-    /// Creates a new MySQL database connection.
+    /// Initializes a new instance of the <see cref="MySqlProvider"/> class.
     /// </summary>
-    /// <param name="connectionString">MySQL connection string</param>
-    /// <returns>MySQL database connection</returns>
-    public IDbConnection CreateConnection(string connectionString)
+    public MySqlProvider()
     {
-        return new MySqlConnection(connectionString);
+        _dialect = new MySqlDialect();
+        _typeConverter = new MySqlTypeConverter();
+        _bulkOperationProvider = new MySqlBulkOperationProvider(_dialect, _typeConverter);
     }
 
     /// <summary>
-    /// Generates MySQL-specific SQL for pagination.
+    /// Initializes a new instance of the <see cref="MySqlProvider"/> class with custom dependencies.
     /// </summary>
-    /// <param name="sql">Base SQL query</param>
-    /// <param name="offset">Number of records to skip</param>
-    /// <param name="limit">Maximum number of records to return</param>
-    /// <returns>SQL with MySQL LIMIT clause</returns>
-    public string GeneratePaginationSql(string sql, int offset, int limit)
+    /// <param name="dialect">The SQL dialect.</param>
+    /// <param name="typeConverter">The type converter.</param>
+    /// <param name="bulkOperationProvider">The bulk operation provider.</param>
+    public MySqlProvider(ISqlDialect dialect, ITypeConverter typeConverter, IBulkOperationProvider bulkOperationProvider)
     {
-        return $"{sql} LIMIT {offset}, {limit}";
+        _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+        _typeConverter = typeConverter ?? throw new ArgumentNullException(nameof(typeConverter));
+        _bulkOperationProvider = bulkOperationProvider ?? throw new ArgumentNullException(nameof(bulkOperationProvider));
     }
 
-    /// <summary>
-    /// Gets the MySQL-specific SQL for getting the last inserted ID.
-    /// </summary>
-    /// <returns>SQL command to get last insert ID</returns>
-    public string GetLastInsertIdSql()
+    /// <inheritdoc />
+    public string GenerateInsertSql(EntityMetadata metadata)
     {
-        return "SELECT LAST_INSERT_ID()";
-    }
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
 
-    /// <summary>
-    /// Converts a .NET type to MySQL column type.
-    /// </summary>
-    /// <param name="type">.NET type</param>
-    /// <returns>MySQL column type</returns>
-    public string GetColumnType(Type type)
-    {
-        // TODO: Implement complete type mapping
-        return type.Name switch
+        var tableName = ResolveTableName(metadata);
+        var columns = metadata.Properties.Values
+            .Where(p => !p.IsPrimaryKey || p.GenerationType != GenerationType.Identity)
+            .Select(p => ResolveColumnName(p))
+            .ToList();
+
+        if (!columns.Any())
+            throw new InvalidOperationException($"No columns found for INSERT operation on table {tableName}");
+
+        var columnList = string.Join(", ", columns);
+        var parameterList = string.Join(", ", columns.Select(c => GetParameterPlaceholder(GetPropertyNameFromColumn(metadata, c))));
+
+        // Check if we have an auto increment column to return the generated ID
+        var autoIncrementColumn = metadata.Properties.Values
+            .FirstOrDefault(p => p.IsPrimaryKey && p.GenerationType == GenerationType.Identity);
+
+        if (autoIncrementColumn != null)
         {
-            nameof(Int32) => "INT",
-            nameof(Int64) => "BIGINT",
-            nameof(String) => "VARCHAR(255)",
-            nameof(DateTime) => "DATETIME",
-            nameof(Boolean) => "BOOLEAN",
-            nameof(Decimal) => "DECIMAL(18,2)",
-            _ => "TEXT"
-        };
+            // MySQL uses LAST_INSERT_ID() to return generated IDs
+            return $"INSERT INTO {tableName} ({columnList}) VALUES ({parameterList}); {_dialect.GetLastInsertedIdSql()};";
+        }
+
+        return $"INSERT INTO {tableName} ({columnList}) VALUES ({parameterList});";
+    }
+
+    /// <inheritdoc />
+    public string GenerateUpdateSql(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = ResolveTableName(metadata);
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var primaryKeyColumn = ResolveColumnName(primaryKey);
+
+        var setClauses = metadata.Properties.Values
+            .Where(p => !p.IsPrimaryKey)
+            .Select(p => $"{ResolveColumnName(p)} = {GetParameterPlaceholder(p.PropertyName)}")
+            .ToList();
+
+        if (!setClauses.Any())
+            throw new InvalidOperationException($"No columns found for UPDATE operation on table {tableName}");
+
+        var setClause = string.Join(", ", setClauses);
+
+        return $"UPDATE {tableName} SET {setClause} WHERE {primaryKeyColumn} = {GetParameterPlaceholder(primaryKey.PropertyName)};";
+    }
+
+    /// <inheritdoc />
+    public string GenerateDeleteSql(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = ResolveTableName(metadata);
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var primaryKeyColumn = ResolveColumnName(primaryKey);
+
+        return $"DELETE FROM {tableName} WHERE {primaryKeyColumn} = {GetParameterPlaceholder("id")};";
+    }
+
+    /// <inheritdoc />
+    public string GenerateSelectSql(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = ResolveTableName(metadata);
+        var columns = metadata.Properties.Values
+            .Select(p => ResolveColumnName(p))
+            .ToList();
+
+        var columnList = string.Join(", ", columns);
+
+        return $"SELECT {columnList} FROM {tableName};";
+    }
+
+    /// <inheritdoc />
+    public string GenerateSelectByIdSql(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = ResolveTableName(metadata);
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var columns = metadata.Properties.Values
+            .Select(p => ResolveColumnName(p))
+            .ToList();
+
+        var columnList = string.Join(", ", columns);
+        var primaryKeyColumn = ResolveColumnName(primaryKey);
+
+        return $"SELECT {columnList} FROM {tableName} WHERE {primaryKeyColumn} = {GetParameterPlaceholder("id")};";
+    }
+
+    /// <inheritdoc />
+    public string GenerateCountSql(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = ResolveTableName(metadata);
+
+        return $"SELECT COUNT(*) FROM {tableName};";
+    }
+
+    /// <inheritdoc />
+    public string ResolveTableName(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = _dialect.EscapeIdentifier(metadata.TableName);
+
+        if (!string.IsNullOrWhiteSpace(metadata.SchemaName))
+        {
+            var schemaName = _dialect.EscapeIdentifier(metadata.SchemaName);
+            return $"{schemaName}.{tableName}";
+        }
+
+        return tableName;
+    }
+
+    /// <inheritdoc />
+    public string ResolveColumnName(PropertyMetadata property)
+    {
+        if (property == null)
+            throw new ArgumentNullException(nameof(property));
+
+        return _dialect.EscapeIdentifier(property.ColumnName);
+    }
+
+    /// <inheritdoc />
+    public string GetParameterPlaceholder(string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(parameterName))
+            throw new ArgumentException("Parameter name cannot be null or empty.", nameof(parameterName));
+
+        return $"@{parameterName}";
+    }
+
+    /// <inheritdoc />
+    public object? ConvertParameterValue(object? value, Type targetType)
+    {
+        return _typeConverter.ConvertToDatabase(value, targetType);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> BulkInsertAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default)
+    {
+        return await _bulkOperationProvider.BulkInsertAsync(connection, entities, metadata, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> BulkUpdateAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default)
+    {
+        return await _bulkOperationProvider.BulkUpdateAsync(connection, entities, metadata, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> BulkDeleteAsync(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata, CancellationToken cancellationToken = default)
+    {
+        return await _bulkOperationProvider.BulkDeleteAsync(connection, ids, metadata, cancellationToken);
+    }
+
+    /// <summary>
+    /// Generates a SELECT SQL statement with WHERE conditions.
+    /// </summary>
+    /// <param name="metadata">The entity metadata.</param>
+    /// <param name="whereConditions">The WHERE conditions.</param>
+    /// <returns>The generated SELECT SQL statement.</returns>
+    public string GenerateSelectWithWhereSql(EntityMetadata metadata, string whereConditions)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var baseSql = GenerateSelectSql(metadata);
+        
+        if (!string.IsNullOrWhiteSpace(whereConditions))
+        {
+            baseSql = baseSql.TrimEnd(';');
+            return $"{baseSql} WHERE {whereConditions};";
+        }
+
+        return baseSql;
+    }
+
+    /// <summary>
+    /// Generates a SELECT SQL statement with pagination.
+    /// </summary>
+    /// <param name="metadata">The entity metadata.</param>
+    /// <param name="orderByColumn">The column to order by.</param>
+    /// <param name="offset">The number of rows to skip.</param>
+    /// <param name="limit">The maximum number of rows to return.</param>
+    /// <returns>The generated SELECT SQL statement with pagination.</returns>
+    public string GenerateSelectWithPaginationSql(EntityMetadata metadata, string orderByColumn, int offset, int limit)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        if (string.IsNullOrWhiteSpace(orderByColumn))
+            throw new ArgumentException("Order by column cannot be null or empty.", nameof(orderByColumn));
+
+        var tableName = ResolveTableName(metadata);
+        var columns = metadata.Properties.Values
+            .Select(p => ResolveColumnName(p))
+            .ToList();
+
+        var columnList = string.Join(", ", columns);
+        var escapedOrderColumn = _dialect.EscapeIdentifier(orderByColumn);
+
+        var baseSql = $"SELECT {columnList} FROM {tableName} ORDER BY {escapedOrderColumn}";
+        return _dialect.GetPaginationSql(baseSql, offset, limit);
+    }
+
+    /// <summary>
+    /// Generates SQL for creating a table based on entity metadata.
+    /// </summary>
+    /// <param name="metadata">The entity metadata.</param>
+    /// <returns>The CREATE TABLE SQL statement.</returns>
+    public string GenerateCreateTableSql(EntityMetadata metadata)
+    {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var tableName = ResolveTableName(metadata);
+        var columnDefinitions = new List<string>();
+
+        foreach (var property in metadata.Properties.Values)
+        {
+            var columnDef = GenerateColumnDefinition(property);
+            columnDefinitions.Add(columnDef);
+        }
+
+        // Add primary key constraint
+        var primaryKeyProperties = metadata.Properties.Values.Where(p => p.IsPrimaryKey).ToList();
+        if (primaryKeyProperties.Any())
+        {
+            var pkColumns = primaryKeyProperties.Select(p => ResolveColumnName(p));
+            var pkConstraint = $"PRIMARY KEY ({string.Join(", ", pkColumns)})";
+            columnDefinitions.Add(pkConstraint);
+        }
+
+        var columnList = string.Join(",\n    ", columnDefinitions);
+
+        return $@"CREATE TABLE {tableName}
+(
+    {columnList}
+);";
+    }
+
+    private string GenerateColumnDefinition(PropertyMetadata property)
+    {
+        var columnName = ResolveColumnName(property);
+        var dataType = _typeConverter.GetDatabaseTypeName(property.PropertyType, property.Length, property.Precision, property.Scale);
+
+        var definition = $"{columnName} {dataType}";
+
+        // Add auto increment specification
+        if (property.IsPrimaryKey && property.GenerationType == GenerationType.Identity)
+        {
+            definition += " AUTO_INCREMENT";
+        }
+
+        // Add null/not null constraint
+        if (!property.IsNullable)
+        {
+            definition += " NOT NULL";
+        }
+
+        // Add unique constraint
+        if (property.IsUnique)
+        {
+            definition += " UNIQUE";
+        }
+
+        return definition;
+    }
+
+    private string GetPropertyNameFromColumn(EntityMetadata metadata, string columnName)
+    {
+        var property = metadata.Properties.Values
+            .FirstOrDefault(p => _dialect.EscapeIdentifier(p.ColumnName) == columnName);
+        
+        return property?.PropertyName ?? columnName.Trim('`');
     }
 }

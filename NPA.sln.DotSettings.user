@@ -4,6 +4,9 @@
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=6da591f5_002D474c_002D4fcb_002Dbb1c_002D83245a7ff07b/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" Name="EntityManagerTests" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
   &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;&#xD;
 &lt;/SessionState&gt;</s:String>
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=98e063b8_002Ddaae_002D469a_002Da829_002D8715786b72c7/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="All tests from &amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.MySql.Tests&amp;gt;" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;
+  &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Providers.MySql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.MySql.Tests&amp;gt;" /&gt;
+&lt;/SessionState&gt;</s:String>
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=fc97b9cc_002D403c_002D4249_002Dabec_002Da5f6a648befc/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="ColumnAttributeTests" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
   &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;&#xD;
 &lt;/SessionState&gt;</s:String></wpf:ResourceDictionary>

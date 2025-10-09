@@ -1237,11 +1237,13 @@ NPA/
 │   │   ├── SqlServerBulkOperationProvider.cs
 │   │   └── Extensions/
 │   │       └── ServiceCollectionExtensions.cs
-│   ├── NPA.Providers.MySql/      # MySQL provider 🚧 (Phase 1.5)
+│   ├── NPA.Providers.MySql/      # MySQL provider ✅ (Phase 1.5)
 │   │   ├── MySqlProvider.cs
 │   │   ├── MySqlDialect.cs
 │   │   ├── MySqlTypeConverter.cs
-│   │   └── MySqlBulkOperationProvider.cs
+│   │   ├── MySqlBulkOperationProvider.cs
+│   │   └── Extensions/
+│   │       └── ServiceCollectionExtensions.cs
 │   ├── NPA.Providers.PostgreSql/ # PostgreSQL provider 🚧 Skeleton Only (Phase 2.5)
 │   │   ├── PostgreSqlProvider.cs
 │   │   ├── PostgreSqlDialect.cs
@@ -1281,8 +1283,12 @@ NPA/
 │   │   ├── SqlServerProviderTests.cs
 │   │   ├── SqlServerDialectTests.cs
 │   │   └── SqlServerTypeConverterTests.cs
-│   ├── NPA.Providers.MySql.Tests/          # 🚧 Planned (Phase 1.5)
-│   ├── NPA.Providers.PostgreSql.Tests/     # 🚧 Planned (Phase 2.5)
+│   ├── NPA.Providers.MySql.Tests/          # ✅ Implemented (Phase 1.5)
+│   │   ├── MySqlProviderTests.cs
+│   │   ├── MySqlDialectTests.cs
+│   │   └── MySqlTypeConverterTests.cs
+│   ├── NPA.Providers.PostgreSql.Tests/     # ✅ Implemented
+│   │   └── PostgreSqlProviderTests.cs
 │   ├── NPA.Providers.Sqlite.Tests/         # 🚧 Planned (Phase 2.5)
 │   ├── NPA.Migrations.Tests/               # 🚧 Skeleton Only
 │   ├── NPA.Monitoring.Tests/               # 🚧 Skeleton Only

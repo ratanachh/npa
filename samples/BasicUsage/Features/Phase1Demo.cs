@@ -8,11 +8,12 @@ using System.Data;
 namespace BasicUsage.Features;
 
 /// <summary>
-/// Cohesive demonstration of Phases 1.1 - 1.4:
+/// Cohesive demonstration of Phases 1.1 - 1.5:
 /// 1.1 Mapping via attributes (see User entity)
 /// 1.2 EntityManager CRUD lifecycle (persist, find, merge, remove)
 /// 1.3 Simple query creation & parameter binding
-/// 1.4 Database provider usage (SQL Server or PostgreSQL)
+/// 1.4 SQL Server provider (TVPs, JSON, Spatial, Full-Text)
+/// 1.5 MySQL provider (JSON, Spatial, Full-Text, UPSERT)
 /// All phases fully implemented and tested.
 /// </summary>
 public static class Phase1Demo

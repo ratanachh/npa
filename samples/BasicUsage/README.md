@@ -1,6 +1,6 @@
-# BasicUsage Sample (Phases 1.1 – 1.4)
+# BasicUsage Sample (Phases 1.1 – 1.5)
 
-This sample demonstrates the **implemented and tested** features of NPA (Phases 1.1-1.4) using SQL Server or PostgreSQL provider:
+This sample demonstrates the **implemented and tested** features of NPA (Phases 1.1-1.5) using SQL Server, MySQL, or PostgreSQL provider:
 
 | Phase | Status | Focus | Demonstrated In |
 |-------|--------|-------|-----------------|
@@ -8,13 +8,15 @@ This sample demonstrates the **implemented and tested** features of NPA (Phases 
 | 1.2 | ✅ Complete | EntityManager CRUD lifecycle | `Phase1Demo.RunAsync` (persist, find, merge, delete, detach/contains) |
 | 1.3 | ✅ Complete | CPQL query creation & parameter binding | `Phase1Demo` (active users & single user queries) |
 | 1.4 | ✅ Complete | SQL Server provider with advanced features | `SqlServerProviderRunner` (TVPs, JSON, Spatial, Full-Text) |
+| 1.5 | ✅ Complete | MySQL provider with advanced features | `MySqlProviderRunner` (JSON, Spatial, Full-Text, UPSERT) |
 
-**Default Provider**: SQL Server (63 tests passing, fully tested)
+**Default Provider**: SQL Server (63 tests passing)  
+**Alternative Providers**: MySQL (86 tests passing), PostgreSQL
 
 ## What Happens When You Run
-1. A Testcontainers-based **SQL Server** instance is started (default).
+1. A Testcontainers-based database instance is started (SQL Server, MySQL, or PostgreSQL).
 2. A `users` table is created if it does not exist.
-3. Dependency Injection is configured and the SQL Server provider registered.
+3. Dependency Injection is configured and the selected provider registered.
 4. `Phase1Demo` runs through:
    - **Persist** a `User` (Phase 1.2)
    - **Find** it by ID (Phase 1.2)
@@ -25,10 +27,11 @@ This sample demonstrates the **implemented and tested** features of NPA (Phases 
 5. Container shuts down automatically.
 
 ## Files Overview
-- `Program.cs` – Entry point, selects provider (default: SQL Server ✅, optional: PostgreSQL ✅).
-- `Features/SqlServerProviderRunner.cs` – Orchestrates SQL Server container, DI, schema creation (✅ Phase 1.4 complete).
-- `Features/PostgreSqlProviderRunner.cs` – Orchestrates PostgreSQL container, DI, schema creation (✅ alternative provider).
-- `Features/Phase1Demo.cs` – Consolidated Phase 1.1-1.4 lifecycle + CPQL query walkthrough.
+- `Program.cs` – Entry point, selects provider (default: SQL Server ✅, alternatives: MySQL ✅, PostgreSQL ✅).
+- `Features/SqlServerProviderRunner.cs` – Orchestrates SQL Server container, DI, schema creation (✅ Phase 1.4).
+- `Features/MySqlProviderRunner.cs` – Orchestrates MySQL container, DI, schema creation (✅ Phase 1.5).
+- `Features/PostgreSqlProviderRunner.cs` – Orchestrates PostgreSQL container, DI, schema creation (✅ alternative).
+- `Features/Phase1Demo.cs` – Consolidated Phase 1.1-1.5 lifecycle + CPQL query walkthrough.
 - `User.cs` – Sample entity with JPA-like attribute mappings (Phase 1.1).
   
 
@@ -45,21 +48,27 @@ dotnet run --project samples/BasicUsage/BasicUsage.csproj
 
 Expected console output includes lines similar to:
 ```
-Starting SQL Server container...
+=== NPA Basic Usage with MySQL Provider ===
+Phase 1.5: Complete with advanced features (JSON, Spatial, Full-Text, UPSERT)
+
+Starting MySQL container...
+MySQL container started.
 Database schema created successfully
 --- Phase1 Demo: Lifecycle & Query ---
 Persisted user id=1
-Found user username=sqlserver_phase1_user
-Merged user newEmail=updated.phase1@sqlserver.example.com
+Found user username=mysql_phase1_user
+Merged user newEmail=updated.phase1@mysql.example.com
 EntityManager tracking user; detaching...
 Refetched after detach => ok
 Query active count=1
-Query single=sqlserver_phase1_user
+Query single=mysql_phase1_user
 User removed successfully
 --- End Phase1 Demo ---
+
+Stopping MySQL container...
 NPA Demo Completed Successfully!
 ```
-(IDs may differ depending on identity seed.)
+(IDs and provider names may differ depending on the selected provider.)
 
 ## Best Practices Illustrated
 - Explicit schema creation separate from lifecycle logic.

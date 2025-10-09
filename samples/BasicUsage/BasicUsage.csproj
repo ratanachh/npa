@@ -6,11 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <!-- SQL Server provider packages (Phase 1.4 - in progress) -->
+    <!-- SQL Server provider packages (Phase 1.4 ✅) -->
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.5" />
     <PackageReference Include="Testcontainers.MsSql" Version="3.6.0" />
     
-    <!-- PostgreSQL provider packages (Phase 1.1-1.3 - completed) -->
+    <!-- MySQL provider packages (Phase 1.5 ✅) -->
+    <PackageReference Include="MySqlConnector" Version="2.3.5" />
+    <PackageReference Include="Testcontainers.MySql" Version="3.6.0" />
+    
+    <!-- PostgreSQL provider packages (Phase 1.1-1.3 ✅) -->
     <PackageReference Include="Npgsql" Version="9.0.3" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.6.0" />
     
@@ -22,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.SqlServer\NPA.Providers.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Providers.MySql\NPA.Providers.MySql.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.PostgreSql\NPA.Providers.PostgreSql.csproj" />
   </ItemGroup>
 </Project>
