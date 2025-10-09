@@ -1315,11 +1315,6 @@ NPA/
 │       ├── Analyzers/
 │       └── NPA.Profiler.csproj
 ├── extensions/
-│   ├── NPA.VSExtension/          # Visual Studio extension 🚧 Planned (Phase 6.1)
-│   │   ├── Commands/
-│   │   ├── Templates/
-│   │   ├── IntelliSense/
-│   │   └── NPA.VSExtension.csproj
 │   └── NPA.VSCodeExtension/      # VS Code extension 🚧 Planned (Phase 6.1)
 │       ├── Commands/
 │       ├── Snippets/
@@ -1367,7 +1362,7 @@ NPA/
 │       ├── phase5.1-caching-support/
 │       ├── phase5.2-database-migrations/
 │       ├── phase5.3-performance-monitoring/
-│       ├── phase6.1-visual-studio-extension/
+│       ├── phase6.1-vscode-extension/
 │       ├── phase6.2-code-generation-tools/
 │       ├── phase6.3-performance-profiling/
 │       └── phase6.4-comprehensive-documentation/
@@ -1590,7 +1585,7 @@ public class UserService
 - [ ] **5.5 Multi-tenant support** 📋 PLANNED
 
 ### Phase 6: Tooling & Ecosystem
-- [ ] **6.1 Visual Studio extensions** 📋 PLANNED
+- [ ] **6.1 VS Code extension** 📋 PLANNED
 - [ ] **6.2 Code generation tools** 📋 PLANNED
 - [ ] **6.3 Performance profiling** 📋 PLANNED
 - [ ] **6.4 Comprehensive documentation** 📋 PLANNED
