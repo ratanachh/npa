@@ -1,20 +1,20 @@
-# BasicUsage Sample (Phases 1.1 – 1.3)
+# BasicUsage Sample (Phases 1.1 – 1.4)
 
-This sample demonstrates the **implemented and tested** features of NPA (Phases 1.1-1.3) using PostgreSQL provider:
+This sample demonstrates the **implemented and tested** features of NPA (Phases 1.1-1.4) using SQL Server or PostgreSQL provider:
 
 | Phase | Status | Focus | Demonstrated In |
 |-------|--------|-------|-----------------|
 | 1.1 | ✅ Complete | Attribute-based entity mapping (`[Entity]`, `[Table]`, `[Id]`, `[Column]`, `[GeneratedValue]`) | `User` entity class |
 | 1.2 | ✅ Complete | EntityManager CRUD lifecycle | `Phase1Demo.RunAsync` (persist, find, merge, delete, detach/contains) |
 | 1.3 | ✅ Complete | CPQL query creation & parameter binding | `Phase1Demo` (active users & single user queries) |
-| 1.4 | 🚧 In Progress | SQL Server provider integration | `SqlServerProviderRunner` (optional, use `--sqlserver` arg) |
+| 1.4 | ✅ Complete | SQL Server provider with advanced features | `SqlServerProviderRunner` (TVPs, JSON, Spatial, Full-Text) |
 
-**Default Provider**: PostgreSQL (completed and fully tested)
+**Default Provider**: SQL Server (63 tests passing, fully tested)
 
 ## What Happens When You Run
-1. A Testcontainers-based **PostgreSQL** instance is started (default).
+1. A Testcontainers-based **SQL Server** instance is started (default).
 2. A `users` table is created if it does not exist.
-3. Dependency Injection is configured and the PostgreSQL provider registered.
+3. Dependency Injection is configured and the SQL Server provider registered.
 4. `Phase1Demo` runs through:
    - **Persist** a `User` (Phase 1.2)
    - **Find** it by ID (Phase 1.2)
@@ -25,10 +25,10 @@ This sample demonstrates the **implemented and tested** features of NPA (Phases 
 5. Container shuts down automatically.
 
 ## Files Overview
-- `Program.cs` – Entry point, selects provider (default: PostgreSQL ✅, optional: SQL Server 🚧).
-- `Features/PostgreSqlProviderRunner.cs` – Orchestrates PostgreSQL container, DI, schema creation (✅ completed).
-- `Features/SqlServerProviderRunner.cs` – Orchestrates SQL Server container (🚧 in progress).
-- `Features/Phase1Demo.cs` – Consolidated Phase 1.1-1.3 lifecycle + CPQL query walkthrough.
+- `Program.cs` – Entry point, selects provider (default: SQL Server ✅, optional: PostgreSQL ✅).
+- `Features/SqlServerProviderRunner.cs` – Orchestrates SQL Server container, DI, schema creation (✅ Phase 1.4 complete).
+- `Features/PostgreSqlProviderRunner.cs` – Orchestrates PostgreSQL container, DI, schema creation (✅ alternative provider).
+- `Features/Phase1Demo.cs` – Consolidated Phase 1.1-1.4 lifecycle + CPQL query walkthrough.
 - `User.cs` – Sample entity with JPA-like attribute mappings (Phase 1.1).
   
 

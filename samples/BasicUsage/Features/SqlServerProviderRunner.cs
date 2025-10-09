@@ -11,8 +11,9 @@ using Testcontainers.MsSql;
 namespace BasicUsage.Features;
 
 /// <summary>
-/// Runs the Phase 1 demo using SQL Server provider (Phase 1.4 - in progress).
-/// Note: SQL Server provider is still being completed.
+/// Runs the Phase 1 demo using SQL Server provider (Phase 1.4 - COMPLETE).
+/// Demonstrates: Entity mapping, CRUD operations, CPQL queries with SQL Server.
+/// Advanced features available: TVPs, JSON, Spatial types, Full-Text Search.
 /// </summary>
 public static class SqlServerProviderRunner
 {

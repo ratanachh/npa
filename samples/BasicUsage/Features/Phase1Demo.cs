@@ -12,7 +12,8 @@ namespace BasicUsage.Features;
 /// 1.1 Mapping via attributes (see User entity)
 /// 1.2 EntityManager CRUD lifecycle (persist, find, merge, remove)
 /// 1.3 Simple query creation & parameter binding
-/// 1.4 SQL Server provider usage (container-backed)
+/// 1.4 Database provider usage (SQL Server or PostgreSQL)
+/// All phases fully implemented and tested.
 /// </summary>
 public static class Phase1Demo
 {
