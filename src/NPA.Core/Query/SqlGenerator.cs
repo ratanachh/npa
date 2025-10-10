@@ -584,10 +584,21 @@ public class SqlGenerator : ISqlGenerator
     private string GenerateSelectColumns(EntityMetadata entityMetadata, string alias)
     {
         var columns = entityMetadata.Properties.Values
-            .Select(p => $"{alias}.{p.ColumnName} AS {p.PropertyName}")
+            .Select(p => $"{alias}.{p.ColumnName} AS {EscapeIdentifier(p.PropertyName)}")
             .ToList();
 
         return string.Join(", ", columns);
+    }
+    
+    private string EscapeIdentifier(string identifier)
+    {
+        // Use double quotes for identifier escaping (works for PostgreSQL and SQL Server)
+        // MySQL uses backticks, but this is handled by the provider
+        return _dialect.ToLowerInvariant() switch
+        {
+            "mysql" or "mariadb" => $"`{identifier.Replace("`", "``")}`",
+            _ => $"\"{identifier.Replace("\"", "\"\"")}\"" // PostgreSQL, SQL Server, default
+        };
     }
 
     private string GenerateSetClause(string setClause, EntityMetadata entityMetadata)

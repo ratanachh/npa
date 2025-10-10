@@ -122,24 +122,27 @@ public sealed class EntityManager : IEntityManager
                 throw;
             }
         }
-        
-        sql = _databaseProvider.GenerateInsertSql(metadata);
-        parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include key column
-
-        try
+        else
         {
-            await _connection.ExecuteAsync(sql, parameters);
-            _changeTracker.Track(entity, EntityState.Added);
 
-            _logger?.LogDebug(
-                metadata.HasCompositeKey
-                    ? "Successfully inserted entity of type {EntityType} with composite key"
-                    : "Successfully inserted entity of type {EntityType} with manual key", typeof(T).Name);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error inserting entity of type {EntityType}", typeof(T).Name);
-            throw;
+            sql = _databaseProvider.GenerateInsertSql(metadata);
+            parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include key column
+
+            try
+            {
+                await _connection.ExecuteAsync(sql, parameters);
+                _changeTracker.Track(entity, EntityState.Added);
+
+                _logger?.LogDebug(
+                    metadata.HasCompositeKey
+                        ? "Successfully inserted entity of type {EntityType} with composite key"
+                        : "Successfully inserted entity of type {EntityType} with manual key", typeof(T).Name);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error inserting entity of type {EntityType}", typeof(T).Name);
+                throw;
+            }
         }
     }
 
@@ -172,7 +175,8 @@ public sealed class EntityManager : IEntityManager
             foreach (var prop in metadata.Properties.Values)
             {
                 var entityProp = typeof(T).GetProperty(prop.PropertyName);
-                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.ColumnName, out var rawValue))
+                // Use PropertyName as key since we now alias columns in SELECT (e.g., column_name AS PropertyName)
+                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.PropertyName, out var rawValue))
                 {
                     // Handle PostgreSQL boolean string mapping
                     if ((prop.PropertyType == typeof(bool) || prop.PropertyType == typeof(bool?)) && rawValue is string boolStr)
@@ -582,26 +586,28 @@ public sealed class EntityManager : IEntityManager
                 throw;
             }
         }
-
-        sql = _databaseProvider.GenerateInsertSql(metadata);
-        parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include key column
-
-        try
+        else
         {
-            _connection.Execute(sql, parameters);
-            _changeTracker.Track(entity, EntityState.Added);
+            sql = _databaseProvider.GenerateInsertSql(metadata);
+            parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include key column
 
-            _logger?.LogDebug(
-                metadata.HasCompositeKey
-                    ? "Successfully inserted entity of type {EntityType} with manual key (sync)"
-                    : "Successfully inserted entity of type {EntityType} with composite key (sync)", typeof(T).Name);
+            try
+            {
+                _connection.Execute(sql, parameters);
+                _changeTracker.Track(entity, EntityState.Added);
+
+                _logger?.LogDebug(
+                    metadata.HasCompositeKey
+                        ? "Successfully inserted entity of type {EntityType} with manual key (sync)"
+                        : "Successfully inserted entity of type {EntityType} with composite key (sync)",
+                    typeof(T).Name);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error inserting entity of type {EntityType} (sync)", typeof(T).Name);
+                throw;
+            }
         }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error inserting entity of type {EntityType} (sync)", typeof(T).Name);
-            throw;
-        }
-        
     }
 
     /// <inheritdoc />
@@ -633,7 +639,8 @@ public sealed class EntityManager : IEntityManager
             foreach (var prop in metadata.Properties.Values)
             {
                 var entityProp = typeof(T).GetProperty(prop.PropertyName);
-                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.ColumnName, out var rawValue))
+                // Use PropertyName as key since we now alias columns in SELECT (e.g., column_name AS PropertyName)
+                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.PropertyName, out var rawValue))
                 {
                     // Handle PostgreSQL boolean string mapping
                     if ((prop.PropertyType == typeof(bool) || prop.PropertyType == typeof(bool?)) && rawValue is string boolStr)
@@ -1023,7 +1030,8 @@ public sealed class EntityManager : IEntityManager
 
     private string GenerateSelectByCompositeKeySql(EntityMetadata metadata, CompositeKey key)
     {
-        var columns = metadata.Properties.Values.Select(p => $"{p.ColumnName} AS {p.PropertyName}");
+        // Quote property names to preserve case (important for PostgreSQL)
+        var columns = metadata.Properties.Values.Select(p => $"{p.ColumnName} AS \"{p.PropertyName}\"");
         var columnList = string.Join(", ", columns);
 
         var whereConditions = key.Values.Keys
