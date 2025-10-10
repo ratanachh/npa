@@ -1,17 +1,23 @@
 using System.Text.RegularExpressions;
+using NPA.Core.Query.CPQL;
+using NPA.Core.Query.CPQL.AST;
 
 namespace NPA.Core.Query;
 
 /// <summary>
-/// Parses CPQL-like queries into structured representations.
+/// Parses CPQL queries into structured representations with support for advanced features.
 /// </summary>
 public class QueryParser : IQueryParser
 {
-    private static readonly Regex SelectPattern = new(@"SELECT\s+(\w+)\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SelectCountPattern = new(@"SELECT\s+COUNT\((\w+(?:\.\w+)?)\)\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex UpdatePattern = new(@"UPDATE\s+(\w+)\s+(\w+)\s+SET\s+(.+?)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DeletePattern = new(@"DELETE\s+FROM\s+(\w+)\s+(\w+)(?:\s+WHERE\s+(.+?))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ParameterPattern = new(@":(\w+)", RegexOptions.Compiled);
+    private readonly CPQLParser _cpqlParser;
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="QueryParser"/> class.
+    /// </summary>
+    public QueryParser()
+    {
+        _cpqlParser = new CPQLParser();
+    }
 
     /// <inheritdoc />
     public ParsedQuery Parse(string cpql)
@@ -19,149 +25,213 @@ public class QueryParser : IQueryParser
         if (string.IsNullOrWhiteSpace(cpql))
             throw new ArgumentException("CPQL query cannot be null or empty", nameof(cpql));
 
-        var trimmedCpql = cpql.Trim();
-
-        // Try to match SELECT COUNT query
-        var selectCountMatch = SelectCountPattern.Match(trimmedCpql);
-        if (selectCountMatch.Success)
+        try
         {
-            var query = ParseSelectCountQuery(selectCountMatch);
-            query.OriginalCpql = cpql;
-            return query;
+            // Use the enhanced CPQL parser
+            var ast = _cpqlParser.Parse(cpql);
+            
+            // Convert AST to ParsedQuery for backward compatibility
+            var parsedQuery = ConvertAstToParsedQuery(ast, cpql);
+            parsedQuery.OriginalCpql = cpql;
+            
+            return parsedQuery;
         }
-
-        // Try to match SELECT query
-        var selectMatch = SelectPattern.Match(trimmedCpql);
-        if (selectMatch.Success)
+        catch (Exception ex)
         {
-            var query = ParseSelectQuery(selectMatch);
-            query.OriginalCpql = cpql;
-            return query;
+            throw new ArgumentException($"Invalid CPQL syntax: {ex.Message}", nameof(cpql), ex);
         }
-
-        // Try to match UPDATE query
-        var updateMatch = UpdatePattern.Match(trimmedCpql);
-        if (updateMatch.Success)
-        {
-            var query = ParseUpdateQuery(updateMatch);
-            query.OriginalCpql = cpql;
-            return query;
-        }
-
-        // Try to match DELETE query
-        var deleteMatch = DeletePattern.Match(trimmedCpql);
-        if (deleteMatch.Success)
-        {
-            var query = ParseDeleteQuery(deleteMatch);
-            query.OriginalCpql = cpql;
-            return query;
-        }
-
-        throw new ArgumentException($"Invalid CPQL syntax: {cpql}", nameof(cpql));
     }
 
-    private ParsedQuery ParseSelectCountQuery(Match match)
+    private ParsedQuery ConvertAstToParsedQuery(QueryNode ast, string originalCpql)
     {
-        var query = new ParsedQuery
+        return ast switch
+        {
+            SelectQuery selectQuery => ConvertSelectQuery(selectQuery, originalCpql),
+            UpdateQuery updateQuery => ConvertUpdateQuery(updateQuery, originalCpql),
+            DeleteQuery deleteQuery => ConvertDeleteQuery(deleteQuery, originalCpql),
+            _ => throw new NotSupportedException($"Query type {ast.GetType().Name} is not supported")
+        };
+    }
+
+    private ParsedQuery ConvertSelectQuery(SelectQuery selectQuery, string originalCpql)
+    {
+        var parsed = new ParsedQuery
         {
             Type = QueryType.Select,
-            EntityName = match.Groups[2].Value,
-            Alias = match.Groups[3].Value
+            OriginalCpql = originalCpql
         };
 
-        if (match.Groups[4].Success)
+        // Extract entity name and alias from FROM clause
+        if (selectQuery.FromClause != null && selectQuery.FromClause.Items.Count > 0)
         {
-            query.WhereClause = match.Groups[4].Value.Trim();
+            var firstFrom = selectQuery.FromClause.Items[0];
+            parsed.EntityName = firstFrom.EntityName;
+            parsed.Alias = firstFrom.Alias ?? firstFrom.EntityName;
         }
 
-        ExtractParameters(query);
-        return query;
+        // Store WHERE clause (simplified for now)
+        if (selectQuery.WhereClause != null)
+        {
+            parsed.WhereClause = selectQuery.WhereClause.Condition.ToString();
+        }
+
+        // Store ORDER BY clause
+        if (selectQuery.OrderByClause != null && selectQuery.OrderByClause.Items.Count > 0)
+        {
+            var orderByParts = selectQuery.OrderByClause.Items.Select(item =>
+                $"{item.Expression} {(item.Direction == OrderDirection.Descending ? "DESC" : "ASC")}");
+            parsed.OrderByClause = string.Join(", ", orderByParts);
+        }
+
+        // Store JOINs
+        if (selectQuery.FromClause?.Joins != null)
+        {
+            parsed.Joins = selectQuery.FromClause.Joins.Select(j => new JoinClause
+            {
+                Type = j.JoinType.ToString().ToUpper(),
+                EntityName = j.EntityName,
+                Alias = j.Alias ?? j.EntityName,
+                Condition = j.OnCondition?.ToString() ?? string.Empty
+            }).ToList();
+        }
+
+        // Store the full AST for advanced SQL generation
+        parsed.Ast = selectQuery;
+
+        // Extract parameter names
+        ExtractParametersFromAst(parsed, selectQuery);
+
+        return parsed;
     }
 
-    private ParsedQuery ParseSelectQuery(Match match)
+    private ParsedQuery ConvertUpdateQuery(UpdateQuery updateQuery, string originalCpql)
     {
-        var query = new ParsedQuery
-        {
-            Type = QueryType.Select,
-            EntityName = match.Groups[2].Value,
-            Alias = match.Groups[3].Value
-        };
-
-        if (match.Groups[4].Success)
-        {
-            query.WhereClause = match.Groups[4].Value.Trim();
-        }
-
-        if (match.Groups[5].Success)
-        {
-            query.OrderByClause = match.Groups[5].Value.Trim();
-        }
-
-        ExtractParameters(query);
-        return query;
-    }
-
-    private ParsedQuery ParseUpdateQuery(Match match)
-    {
-        var query = new ParsedQuery
+        var parsed = new ParsedQuery
         {
             Type = QueryType.Update,
-            EntityName = match.Groups[1].Value,
-            Alias = match.Groups[2].Value,
-            SetClause = match.Groups[3].Value.Trim()
+            EntityName = updateQuery.EntityName,
+            Alias = updateQuery.Alias,
+            OriginalCpql = originalCpql
         };
 
-        if (match.Groups[4].Success)
+        // Store SET clause
+        if (updateQuery.Assignments.Count > 0)
         {
-            query.WhereClause = match.Groups[4].Value.Trim();
+            var assignments = updateQuery.Assignments.Select(a => $"{a.PropertyName} = {a.Value}");
+            parsed.SetClause = string.Join(", ", assignments);
         }
 
-        ExtractParameters(query);
-        return query;
+        // Store WHERE clause
+        if (updateQuery.WhereClause != null)
+        {
+            parsed.WhereClause = updateQuery.WhereClause.Condition.ToString();
+        }
+
+        // Store the full AST for advanced SQL generation
+        parsed.Ast = updateQuery;
+
+        // Extract parameter names
+        ExtractParametersFromAst(parsed, updateQuery);
+
+        return parsed;
     }
 
-    private ParsedQuery ParseDeleteQuery(Match match)
+    private ParsedQuery ConvertDeleteQuery(DeleteQuery deleteQuery, string originalCpql)
     {
-        var query = new ParsedQuery
+        var parsed = new ParsedQuery
         {
             Type = QueryType.Delete,
-            EntityName = match.Groups[1].Value,
-            Alias = match.Groups[2].Value
+            EntityName = deleteQuery.EntityName,
+            Alias = deleteQuery.Alias,
+            OriginalCpql = originalCpql
         };
 
-        if (match.Groups[3].Success)
+        // Store WHERE clause
+        if (deleteQuery.WhereClause != null)
         {
-            query.WhereClause = match.Groups[3].Value.Trim();
+            parsed.WhereClause = deleteQuery.WhereClause.Condition.ToString();
         }
 
-        ExtractParameters(query);
-        return query;
+        // Store the full AST for advanced SQL generation
+        parsed.Ast = deleteQuery;
+
+        // Extract parameter names
+        ExtractParametersFromAst(parsed, deleteQuery);
+
+        return parsed;
     }
 
-    private void ExtractParameters(ParsedQuery query)
+    private void ExtractParametersFromAst(ParsedQuery parsed, QueryNode ast)
     {
-        var parameterNames = new List<string>();
+        var parameters = new HashSet<string>();
+        ExtractParametersRecursive(ast, parameters);
+        parsed.ParameterNames = parameters.ToList();
+    }
 
-        // Extract parameters from WHERE clause
-        if (!string.IsNullOrEmpty(query.WhereClause))
+    private void ExtractParametersRecursive(object node, HashSet<string> parameters)
+    {
+        if (node == null) return;
+
+        switch (node)
         {
-            var whereMatches = ParameterPattern.Matches(query.WhereClause);
-            foreach (Match match in whereMatches)
-            {
-                parameterNames.Add(match.Groups[1].Value);
-            }
+            case ParameterExpression param:
+                parameters.Add(param.ParameterName);
+                break;
+            
+            case BinaryExpression binary:
+                ExtractParametersRecursive(binary.Left, parameters);
+                ExtractParametersRecursive(binary.Right, parameters);
+                break;
+            
+            case UnaryExpression unary:
+                ExtractParametersRecursive(unary.Operand, parameters);
+                break;
+            
+            case FunctionExpression func:
+                foreach (var arg in func.Arguments)
+                    ExtractParametersRecursive(arg, parameters);
+                break;
+            
+            case AggregateExpression agg:
+                ExtractParametersRecursive(agg.Argument, parameters);
+                break;
+            
+            case SelectQuery select:
+                if (select.WhereClause != null)
+                    ExtractParametersRecursive(select.WhereClause, parameters);
+                if (select.HavingClause != null)
+                    ExtractParametersRecursive(select.HavingClause, parameters);
+                if (select.SelectClause != null)
+                {
+                    foreach (var item in select.SelectClause.Items)
+                        ExtractParametersRecursive(item.Expression, parameters);
+                }
+                if (select.OrderByClause != null)
+                {
+                    foreach (var item in select.OrderByClause.Items)
+                        ExtractParametersRecursive(item.Expression, parameters);
+                }
+                break;
+            
+            case UpdateQuery update:
+                if (update.WhereClause != null)
+                    ExtractParametersRecursive(update.WhereClause, parameters);
+                foreach (var assignment in update.Assignments)
+                    ExtractParametersRecursive(assignment.Value, parameters);
+                break;
+            
+            case DeleteQuery delete:
+                if (delete.WhereClause != null)
+                    ExtractParametersRecursive(delete.WhereClause, parameters);
+                break;
+            
+            case WhereClause where:
+                ExtractParametersRecursive(where.Condition, parameters);
+                break;
+            
+            case HavingClause having:
+                ExtractParametersRecursive(having.Condition, parameters);
+                break;
         }
-
-        // Extract parameters from SET clause
-        if (!string.IsNullOrEmpty(query.SetClause))
-        {
-            var setMatches = ParameterPattern.Matches(query.SetClause);
-            foreach (Match match in setMatches)
-            {
-                parameterNames.Add(match.Groups[1].Value);
-            }
-        }
-
-        query.ParameterNames = parameterNames.Distinct().ToList();
     }
 }

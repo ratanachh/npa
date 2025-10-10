@@ -1188,10 +1188,18 @@ public sealed class EntityManager : IEntityManager
 
         _logger?.LogDebug("Creating query for entity type {EntityType} with CPQL: {Cpql}", typeof(T).Name, cpql);
 
-        // Use the legacy parser for backward compatibility with simple queries
+        // Set up enhanced parser with CPQL support
         var parser = new QueryParser();
-        var sqlGenerator = new SqlGenerator();
+        
+        // Determine database dialect for SQL generation
+        var dialect = _databaseProvider.GetType().Name.Replace("Provider", "");
+        var sqlGenerator = new SqlGenerator(_metadataProvider, dialect);
+        
         var parameterBinder = new ParameterBinder();
+
+        // Register entity for advanced queries
+        var entityResolver = new EntityResolver(_metadataProvider);
+        entityResolver.RegisterEntity(typeof(T).Name, typeof(T));
 
         return new Query<T>(_connection, parser, sqlGenerator, parameterBinder, _metadataProvider, cpql, null);
     }

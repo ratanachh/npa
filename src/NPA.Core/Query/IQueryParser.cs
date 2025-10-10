@@ -49,6 +49,12 @@ public class ParsedQuery
     /// Gets or sets the original CPQL query string.
     /// </summary>
     public string OriginalCpql { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Gets or sets the full AST (Abstract Syntax Tree) for advanced SQL generation.
+    /// This contains the complete parsed query structure for advanced features.
+    /// </summary>
+    public object? Ast { get; set; }
 }
 
 /// <summary>

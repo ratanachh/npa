@@ -235,7 +235,147 @@ var userCount = entityManager
     .ExecuteScalar();
 ```
 
+#### Advanced CPQL Features (Phase 2.3) ✅
+
+**JOIN Operations:**
+```csharp
+// INNER JOIN
+var ordersWithUsers = await entityManager
+    .CreateQuery<Order>("SELECT o FROM Order o INNER JOIN User u ON o.UserId = u.Id WHERE u.Username = :username")
+    .SetParameter("username", "john")
+    .GetResultListAsync();
+
+// LEFT JOIN
+var usersWithOrders = await entityManager
+    .CreateQuery<User>("SELECT u FROM User u LEFT JOIN Order o ON u.Id = o.UserId")
+    .GetResultListAsync();
+
+// Multiple JOINs
+var complexQuery = await entityManager
+    .CreateQuery<Order>("SELECT o FROM Order o INNER JOIN User u ON o.UserId = u.Id LEFT JOIN Payment p ON o.Id = p.OrderId WHERE u.IsActive = :active")
+    .SetParameter("active", true)
+    .GetResultListAsync();
+```
+
+**GROUP BY and HAVING:**
+```csharp
+// Group by with aggregate
+var usersByDepartment = await entityManager
+    .CreateQuery<dynamic>("SELECT u.Department, COUNT(u.Id) FROM User u GROUP BY u.Department")
+    .GetResultListAsync();
+
+// Group by with HAVING clause
+var activeDepartments = await entityManager
+    .CreateQuery<dynamic>("SELECT u.Department, COUNT(u.Id) FROM User u WHERE u.IsActive = :active GROUP BY u.Department HAVING COUNT(u.Id) > :minCount")
+    .SetParameter("active", true)
+    .SetParameter("minCount", 5)
+    .GetResultListAsync();
+```
+
+**Aggregate Functions:**
+```csharp
+// COUNT with DISTINCT
+var uniqueEmails = await entityManager
+    .CreateQuery<long>("SELECT COUNT(DISTINCT u.Email) FROM User u")
+    .GetSingleResultAsync();
+
+// SUM, AVG, MIN, MAX
+var totalRevenue = await entityManager
+    .CreateQuery<decimal>("SELECT SUM(o.Total) FROM Order o WHERE o.Status = :status")
+    .SetParameter("status", "Completed")
+    .GetSingleResultAsync();
+
+var avgOrderValue = await entityManager
+    .CreateQuery<decimal>("SELECT AVG(o.Total) FROM Order o")
+    .GetSingleResultAsync();
+```
+
+**String Functions:**
+```csharp
+// UPPER, LOWER
+var upperCaseNames = await entityManager
+    .CreateQuery<string>("SELECT UPPER(u.Username) FROM User u WHERE u.Id = :id")
+    .SetParameter("id", 1L)
+    .GetResultListAsync();
+
+// LENGTH, SUBSTRING
+var emailPrefixes = await entityManager
+    .CreateQuery<string>("SELECT SUBSTRING(u.Email, :start, :length) FROM User u")
+    .SetParameter("start", 1)
+    .SetParameter("length", 5)
+    .GetResultListAsync();
+```
+
+**Date Functions:**
+```csharp
+// YEAR, MONTH, DAY
+var usersBy Year = await entityManager
+    .CreateQuery<dynamic>("SELECT YEAR(u.CreatedAt), COUNT(u.Id) FROM User u GROUP BY YEAR(u.CreatedAt)")
+    .GetResultListAsync();
+
+// Date filtering
+var recentUsers = await entityManager
+    .CreateQuery<User>("SELECT u FROM User u WHERE YEAR(u.CreatedAt) = :year AND MONTH(u.CreatedAt) = :month")
+    .SetParameter("year", 2024)
+    .SetParameter("month", 10)
+    .GetResultListAsync();
+```
+
+**Complex Expressions:**
+```csharp
+// Multiple conditions with AND/OR
+var complexFilter = await entityManager
+    .CreateQuery<User>("SELECT u FROM User u WHERE (u.Age > :minAge AND u.Age < :maxAge) OR u.IsAdmin = :isAdmin")
+    .SetParameter("minAge", 18)
+    .SetParameter("maxAge", 65)
+    .SetParameter("isAdmin", true)
+    .GetResultListAsync();
+
+// Arithmetic operations
+var calculatedValues = await entityManager
+    .CreateQuery<decimal>("SELECT o.Quantity * o.UnitPrice FROM OrderItem o WHERE o.OrderId = :orderId")
+    .SetParameter("orderId", 100L)
+    .GetResultListAsync();
+```
+
+**DISTINCT and ORDER BY:**
+```csharp
+// DISTINCT
+var uniqueDepartments = await entityManager
+    .CreateQuery<string>("SELECT DISTINCT u.Department FROM User u ORDER BY u.Department ASC")
+    .GetResultListAsync();
+
+// Multiple ORDER BY columns
+var sortedUsers = await entityManager
+    .CreateQuery<User>("SELECT u FROM User u ORDER BY u.Department ASC, u.CreatedAt DESC, u.Username ASC")
+    .GetResultListAsync();
+```
+
 ## ✅ Implemented Features
+
+### 3. Enhanced CPQL Query Language (Phase 2.3) ✅
+
+**Implemented in Phase 2.3:**
+- Complete CPQL parser with lexer and AST (Abstract Syntax Tree)
+- JOIN support (INNER, LEFT, RIGHT, FULL with ON conditions)
+- GROUP BY and HAVING clauses
+- Aggregate functions (COUNT, SUM, AVG, MIN, MAX) with DISTINCT
+- String functions (UPPER, LOWER, LENGTH, SUBSTRING, TRIM, CONCAT)
+- Date functions (YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, NOW)
+- Complex expressions with proper operator precedence
+- DISTINCT keyword support
+- Multiple ORDER BY columns with ASC/DESC
+- Named parameters (`:paramName`)
+- Database dialect support (SQL Server, MySQL, PostgreSQL)
+- Comment support (line `--` and block `/* */`)
+- Comprehensive error handling with position tracking
+
+**Architecture:**
+- Lexer → Parser → AST → SQL Generator
+- 102 token types supporting all SQL constructs
+- Recursive descent parser (818 lines)
+- Extensible function registry
+- Entity resolver for metadata mapping
 
 ### 4. Composite Key Support (Phase 2.2) ✅
 
@@ -1909,7 +2049,17 @@ All query operations support both async and sync execution:
   - EntityManager Find/Remove with CompositeKey (async & sync)
   - 25 unit tests passing
   - Integration tests created for future enhancements
-- [ ] **2.3 CPQL query language enhancements** 📋 PLANNED
+- [x] **2.3 Enhanced CPQL query language** ✅ **COMPLETED**
+  - Complete CPQL parser with Lexer, Parser, and AST (26 files, ~4,500 lines)
+  - JOIN support (INNER, LEFT, RIGHT, FULL) with ON conditions
+  - GROUP BY and HAVING clauses
+  - Aggregate functions (COUNT, SUM, AVG, MIN, MAX) with DISTINCT
+  - String & Date functions with database dialect support
+  - Complex expressions with proper operator precedence
+  - DISTINCT keyword and multiple ORDER BY columns
+  - Named parameters with automatic extraction
+  - 17 Lexer tests + 13 Parser tests passing
+  - Integrated with existing QueryParser and SqlGenerator
 - [ ] **2.4 Repository pattern implementation** 📋 PLANNED
 - [x] **2.5 PostgreSQL database provider** ✅ **COMPLETED**
   - PostgreSqlProvider with full CRUD support
