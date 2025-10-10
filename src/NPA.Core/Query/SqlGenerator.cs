@@ -176,7 +176,8 @@ public class SqlGenerator : ISqlGenerator
         var assignments = query.Assignments.Select(assignment =>
         {
             var columnName = GetColumnName(entityMetadata, assignment.PropertyName);
-            var value = GenerateExpression(assignment.Value, entityMetadata, query.Alias);
+            // For UPDATE SET clause, don't use alias - just column name
+            var value = GenerateExpressionWithoutAlias(assignment.Value, entityMetadata);
             return $"{columnName} = {value}";
         });
         sql.Append(string.Join(", ", assignments));
@@ -184,10 +185,82 @@ public class SqlGenerator : ISqlGenerator
         if (query.WhereClause != null)
         {
             sql.Append(" WHERE ");
-            sql.Append(GenerateExpression(query.WhereClause.Condition, entityMetadata, query.Alias));
+            // For UPDATE WHERE clause, don't use table alias (PostgreSQL compatibility)
+            sql.Append(GenerateExpressionWithoutAlias(query.WhereClause.Condition, entityMetadata));
         }
         
         return sql.ToString();
+    }
+    
+    private string GenerateExpressionWithoutAlias(Expression expression, EntityMetadata entityMetadata)
+    {
+        return expression switch
+        {
+            PropertyExpression prop => GetColumnName(entityMetadata, prop.PropertyName),
+            LiteralExpression literal => GenerateLiteralExpression(literal),
+            ParameterExpression param => GenerateParameterExpression(param),
+            BinaryExpression binary => GenerateBinaryExpressionWithoutAlias(binary, entityMetadata),
+            UnaryExpression unary => GenerateUnaryExpressionWithoutAlias(unary, entityMetadata),
+            FunctionExpression func => GenerateFunctionExpressionWithoutAlias(func, entityMetadata),
+            AggregateExpression agg => throw new NotSupportedException("Aggregate functions in UPDATE are not supported"),
+            _ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported in UPDATE")
+        };
+    }
+    
+    private string GenerateBinaryExpressionWithoutAlias(BinaryExpression binary, EntityMetadata entityMetadata)
+    {
+        var left = GenerateExpressionWithoutAlias(binary.Left, entityMetadata);
+        var right = GenerateExpressionWithoutAlias(binary.Right, entityMetadata);
+        
+        var op = binary.Operator switch
+        {
+            BinaryOperator.Add => "+",
+            BinaryOperator.Subtract => "-",
+            BinaryOperator.Multiply => "*",
+            BinaryOperator.Divide => "/",
+            BinaryOperator.Modulo => "%",
+            BinaryOperator.Equal => "=",
+            BinaryOperator.NotEqual => "<>",
+            BinaryOperator.LessThan => "<",
+            BinaryOperator.LessThanOrEqual => "<=",
+            BinaryOperator.GreaterThan => ">",
+            BinaryOperator.GreaterThanOrEqual => ">=",
+            BinaryOperator.Like => "LIKE",
+            BinaryOperator.And => "AND",
+            BinaryOperator.Or => "OR",
+            _ => throw new NotSupportedException($"Binary operator {binary.Operator} is not supported in UPDATE")
+        };
+        
+        return $"({left} {op} {right})";
+    }
+    
+    private string GenerateUnaryExpressionWithoutAlias(UnaryExpression unary, EntityMetadata entityMetadata)
+    {
+        var operand = GenerateExpressionWithoutAlias(unary.Operand, entityMetadata);
+        
+        var op = unary.Operator switch
+        {
+            UnaryOperator.Plus => "+",
+            UnaryOperator.Minus => "-",
+            UnaryOperator.Not => "NOT",
+            _ => throw new NotSupportedException($"Unary operator {unary.Operator} is not supported in UPDATE")
+        };
+        
+        return $"{op} {operand}";
+    }
+    
+    private string GenerateFunctionExpressionWithoutAlias(FunctionExpression func, EntityMetadata entityMetadata)
+    {
+        var functionRegistry = new FunctionRegistry();
+        var sqlFunctionName = functionRegistry.GetSqlFunction(func.FunctionName, _dialect);
+        
+        if (sqlFunctionName.EndsWith("()"))
+        {
+            return sqlFunctionName;
+        }
+        
+        var arguments = func.Arguments.Select(arg => GenerateExpressionWithoutAlias(arg, entityMetadata));
+        return $"{sqlFunctionName}({string.Join(", ", arguments)})";
     }
 
     private string GenerateDeleteFromAst(DeleteQuery query, ParsedQuery parsedQuery, EntityMetadata entityMetadata)
@@ -363,9 +436,20 @@ public class SqlGenerator : ISqlGenerator
     private string GenerateAggregateExpression(AggregateExpression agg, EntityMetadata entityMetadata, string alias)
     {
         var functionName = agg.FunctionName.ToUpperInvariant();
-        var argument = GenerateExpression(agg.Argument, entityMetadata, alias);
         var distinct = agg.IsDistinct ? "DISTINCT " : "";
         
+        // Special case: If argument is just the alias (e.g., "COUNT(c)"), 
+        // it means count all rows, so use the primary key column
+        if (agg.Argument is PropertyExpression prop && 
+            prop.EntityAlias == null && 
+            prop.PropertyName == alias)
+        {
+            // COUNT(c) -> COUNT(c.id)
+            var primaryKeyColumn = entityMetadata.Properties[entityMetadata.PrimaryKeyProperty].ColumnName;
+            return $"{functionName}({distinct}{alias}.{primaryKeyColumn})";
+        }
+        
+        var argument = GenerateExpression(agg.Argument, entityMetadata, alias);
         return $"{functionName}({distinct}{argument})";
     }
 

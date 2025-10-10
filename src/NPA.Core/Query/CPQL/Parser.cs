@@ -96,7 +96,22 @@ public sealed class Parser
         var assignments = new List<SetAssignment>();
         do
         {
-            var propertyName = ConsumeIdentifier();
+            // Parse property name (could be "property" or "alias.property")
+            var firstPart = ConsumeIdentifier();
+            string propertyName;
+            
+            if (_currentToken.Type == TokenType.Dot)
+            {
+                // It's alias.property format
+                Consume(TokenType.Dot);
+                propertyName = ConsumeIdentifier();
+            }
+            else
+            {
+                // It's just property name
+                propertyName = firstPart;
+            }
+            
             Consume(TokenType.Equal);
             var value = ParseExpression();
             
@@ -795,15 +810,47 @@ public sealed class Parser
     
     private string ConsumeIdentifier()
     {
+        // Allow keywords to be used as identifiers in certain contexts (e.g., entity names like "Order", "User")
         if (_currentToken.Type != TokenType.Identifier)
         {
+            // Check if it's a keyword that can be used as an identifier
+            if (IsKeywordUsableAsIdentifier(_currentToken.Type))
+            {
+                var identifier = _currentToken.Lexeme;
+                _currentToken = _lexer.NextToken();
+                return identifier;
+            }
+            
             throw new InvalidOperationException(
                 $"Expected identifier, got {_currentToken.Type} ('{_currentToken.Lexeme}') at position {_currentToken.Position}");
         }
         
-        var identifier = _currentToken.Lexeme;
+        var result = _currentToken.Lexeme;
         _currentToken = _lexer.NextToken();
-        return identifier;
+        return result;
+    }
+    
+    private bool IsKeywordUsableAsIdentifier(TokenType type)
+    {
+        // Allow certain keywords to be used as entity/property names
+        // Common scenarios: "Order" entity, "User" entity, "Count" property, etc.
+        return type is 
+            TokenType.OrderBy or // "Order" or "By" can be entity/property names
+            TokenType.GroupBy or // "Group" can be entity/property name
+            TokenType.Count or // Could be entity/property name
+            TokenType.Sum or 
+            TokenType.Min or 
+            TokenType.Max or 
+            TokenType.Avg or
+            TokenType.Year or
+            TokenType.Month or
+            TokenType.Day or
+            TokenType.Hour or
+            TokenType.Minute or
+            TokenType.Second or
+            TokenType.Upper or
+            TokenType.Lower or
+            TokenType.Length;
     }
     
     private bool IsJoinToken(TokenType type)

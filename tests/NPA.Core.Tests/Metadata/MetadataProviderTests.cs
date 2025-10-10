@@ -84,7 +84,7 @@ public class MetadataProviderTests
         // Act & Assert
         var action = () => _metadataProvider.GetEntityMetadata(entityType);
         action.Should().Throw<InvalidOperationException>()
-            .WithMessage("*must have a property marked with [Id] attribute*");
+            .WithMessage("*must have at least one property marked with [Id] attribute*");
     }
 
     [Fact]
@@ -108,8 +108,8 @@ public class MetadataProviderTests
         metadata.Should().NotBeNull();
         metadata.EntityType.Should().Be(typeof(OrderItem));
         metadata.TableName.Should().Be("order_items");
-        metadata.PrimaryKeyProperty.Should().Be("ProductId"); // Last Id property (current implementation behavior)
-        metadata.Properties.Should().HaveCount(4); // OrderId, ProductId, Quantity, Price
+        metadata.PrimaryKeyProperty.Should().Be("OrderId"); // First Id property (for backward compatibility)
+        metadata.Properties.Should().HaveCount(4); // OrderId, ProductId, Quantity, UnitPrice
         
         var orderIdProperty = metadata.Properties["OrderId"];
         var productIdProperty = metadata.Properties["ProductId"];

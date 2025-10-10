@@ -17,8 +17,8 @@ public sealed class Lexer
         { "SELECT", TokenType.Select },
         { "FROM", TokenType.From },
         { "WHERE", TokenType.Where },
-        { "ORDER", TokenType.OrderBy },
-        { "BY", TokenType.OrderBy },
+        { "ORDER", TokenType.OrderBy }, // ORDER keyword (parser will handle "Order" entity in context)
+        { "BY", TokenType.OrderBy }, // BY is also OrderBy for GROUP BY / ORDER BY
         { "GROUP", TokenType.GroupBy },
         { "HAVING", TokenType.Having },
         { "JOIN", TokenType.Join },
