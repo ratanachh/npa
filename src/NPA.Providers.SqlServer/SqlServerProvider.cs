@@ -203,15 +203,33 @@ public class SqlServerProvider : IDatabaseProvider
     }
 
     /// <inheritdoc />
+    public int BulkInsert<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        return _bulkOperationProvider.BulkInsert(connection, entities, metadata);
+    }
+
+    /// <inheritdoc />
     public async Task<int> BulkUpdateAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default)
     {
         return await _bulkOperationProvider.BulkUpdateAsync(connection, entities, metadata, cancellationToken);
     }
 
     /// <inheritdoc />
+    public int BulkUpdate<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        return _bulkOperationProvider.BulkUpdate(connection, entities, metadata);
+    }
+
+    /// <inheritdoc />
     public async Task<int> BulkDeleteAsync(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata, CancellationToken cancellationToken = default)
     {
         return await _bulkOperationProvider.BulkDeleteAsync(connection, ids, metadata, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public int BulkDelete(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata)
+    {
+        return _bulkOperationProvider.BulkDelete(connection, ids, metadata);
     }
 
     /// <summary>

@@ -62,7 +62,7 @@ public sealed class EntityManager : IEntityManager
             {
                 // Entity exists, perform UPDATE
                 var sql = _databaseProvider.GenerateUpdateSql(metadata);
-                var parameters = ExtractParameters(entity, metadata);
+                var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include primary key for UPDATE
 
                 try
                 {
@@ -303,7 +303,7 @@ public sealed class EntityManager : IEntityManager
             }
 
             var sql = _databaseProvider.GenerateUpdateSql(metadata);
-            var parameters = ExtractParameters(entity, metadata);
+            var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include primary key for UPDATE
 
             // Debug logging
             Console.WriteLine($"Generated UPDATE SQL: {sql}");
@@ -485,6 +485,471 @@ public sealed class EntityManager : IEntityManager
         return Task.CompletedTask;
     }
 
+    #region Synchronous Methods
+
+    /// <inheritdoc />
+    public void Persist<T>(T entity) where T : class
+    {
+        ThrowIfDisposed();
+        if (entity == null) throw new ArgumentNullException(nameof(entity));
+
+        _logger?.LogDebug("Persisting entity of type {EntityType} (sync)", typeof(T).Name);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var entityId = GetEntityId(entity, metadata);
+        
+        // If entity already has an ID, check if it exists in the database
+        if (entityId != null)
+        {
+            var existingEntity = Find<T>(entityId);
+            if (existingEntity != null)
+            {
+                // Entity exists, perform UPDATE
+                var sql = _databaseProvider.GenerateUpdateSql(metadata);
+                var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include primary key for UPDATE
+
+                try
+                {
+                    var rowsAffected = _connection.Execute(sql, parameters);
+                    if (rowsAffected > 0)
+                    {
+                        _changeTracker.Track(entity, EntityState.Modified);
+                        _logger?.LogDebug("Successfully updated existing entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, entityId);
+                    }
+                    else
+                    {
+                        _changeTracker.Track(entity, EntityState.Unchanged);
+                        _logger?.LogDebug("No changes made to entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, entityId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error updating entity of type {EntityType} (sync)", typeof(T).Name);
+                    throw;
+                }
+            }
+            else
+            {
+                // Entity has ID but doesn't exist, perform INSERT
+                InsertEntity(entity, metadata);
+            }
+        }
+        else
+        {
+            // Entity has no ID, perform INSERT
+            InsertEntity(entity, metadata);
+        }
+    }
+
+    private void InsertEntity<T>(T entity, EntityMetadata metadata) where T : class
+    {
+        if (HasGeneratedId(metadata))
+        {
+            var sql = _databaseProvider.GenerateInsertSql(metadata);
+            var parameters = ExtractParameters(entity, metadata);
+
+            try
+            {
+                var id = _connection.QuerySingle<object>(sql, parameters);
+                SetEntityId(entity, id, metadata);
+                _changeTracker.Track(entity, EntityState.Added);
+
+                _logger?.LogDebug("Successfully inserted entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, id);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error inserting entity of type {EntityType} (sync)", typeof(T).Name);
+                throw;
+            }
+        }
+        else
+        {
+            // Queue the operation for batch execution
+            _changeTracker.Track(entity, EntityState.Added);
+            _logger?.LogDebug("Queued entity of type {EntityType} for batch persistence (sync)", typeof(T).Name);
+        }
+    }
+
+    /// <inheritdoc />
+    public T? Find<T>(object id) where T : class
+    {
+        ThrowIfDisposed();
+        if (id == null) throw new ArgumentNullException(nameof(id));
+
+        _logger?.LogDebug("Finding entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, id);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var sql = _databaseProvider.GenerateSelectByIdSql(metadata);
+        var parameters = new { id };
+
+        try
+        {
+            // Query as dynamic first to get raw values
+            var rawEntity = _connection.QueryFirstOrDefault(sql, parameters);
+            if (rawEntity == null)
+            {
+                _logger?.LogDebug("Entity of type {EntityType} with ID {Id} not found (sync)", typeof(T).Name, id);
+                return null;
+            }
+
+            // Manually map to entity to handle PostgreSQL boolean values
+            var entity = Activator.CreateInstance<T>();
+            var rawDict = (IDictionary<string, object>)rawEntity;
+            
+            foreach (var prop in metadata.Properties.Values)
+            {
+                var entityProp = typeof(T).GetProperty(prop.PropertyName);
+                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.ColumnName, out var rawValue))
+                {
+                    // Handle PostgreSQL boolean string mapping
+                    if ((prop.PropertyType == typeof(bool) || prop.PropertyType == typeof(bool?)) && rawValue is string boolStr)
+                    {
+                        var boolValue = bool.Parse(boolStr);
+                        entityProp.SetValue(entity, boolValue);
+                    }
+                    else
+                    {
+                        entityProp.SetValue(entity, rawValue);
+                    }
+                }
+            }
+
+            // Check if entity is already tracked and return the tracked version
+            var trackedEntity = _changeTracker.GetTrackedEntityById<T>(id);
+            if (trackedEntity != null)
+            {
+                // Update the tracked entity with fresh data from database
+                _changeTracker.CopyEntityValues(entity, trackedEntity);
+                _changeTracker.SetState(trackedEntity, EntityState.Unchanged);
+                entity = trackedEntity;
+            }
+            else
+            {
+                // Track new entity
+                _changeTracker.Track(entity, EntityState.Unchanged);
+            }
+
+            _logger?.LogDebug("Found entity of type {EntityType} with ID {Id} (sync): {Found}", typeof(T).Name, id, entity != null);
+            return entity;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error finding entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, id);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public T? Find<T>(CompositeKey key) where T : class
+    {
+        ThrowIfDisposed();
+        if (key == null) throw new ArgumentNullException(nameof(key));
+
+        _logger?.LogDebug("Finding entity of type {EntityType} with composite key (sync)", typeof(T).Name);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var sql = GenerateSelectByCompositeKeySql(metadata, key);
+        var parameters = CreateParametersFromCompositeKey(key, metadata);
+
+        try
+        {
+            var entity = _connection.QueryFirstOrDefault<T>(sql, parameters);
+            if (entity != null)
+            {
+                _changeTracker.Track(entity, EntityState.Unchanged);
+            }
+
+            _logger?.LogDebug("Found entity of type {EntityType} with composite key (sync): {Found}", typeof(T).Name, entity != null);
+            return entity;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error finding entity of type {EntityType} with composite key (sync)", typeof(T).Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Merge<T>(T entity) where T : class
+    {
+        ThrowIfDisposed();
+        if (entity == null) throw new ArgumentNullException(nameof(entity));
+
+        _logger?.LogDebug("Merging entity of type {EntityType} (sync)", typeof(T).Name);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        
+        // Check if entity is already tracked
+        var currentState = _changeTracker.GetState(entity);
+        _logger?.LogDebug("Entity state: {State}, HasChanges: {HasChanges}", currentState, _changeTracker.HasChanges(entity));
+        if (currentState == EntityState.Detached)
+        {
+            // Entity not tracked, try to find it first
+            var id = GetEntityId(entity, metadata);
+            if (id != null)
+            {
+                var existingEntity = Find<T>(id);
+                if (existingEntity != null)
+                {
+                    // Copy the modified values to the tracked entity
+                    _changeTracker.CopyEntityValues(entity, existingEntity);
+                    _changeTracker.SetState(existingEntity, EntityState.Modified);
+                    entity = existingEntity; // Use the tracked entity for the update
+                }
+                else
+                {
+                    Persist(entity);
+                    return;
+                }
+            }
+            else
+            {
+                Persist(entity);
+                return;
+            }
+        }
+        else
+        {
+            // Entity is already tracked, check if it has been modified
+            if (currentState == EntityState.Unchanged)
+            {
+                // Check if the entity has been modified since it was tracked
+                if (_changeTracker.HasChanges(entity))
+                {
+                    _changeTracker.SetState(entity, EntityState.Modified);
+                    _logger?.LogDebug("Entity of type {EntityType} has been modified, updating state to Modified (sync)", typeof(T).Name);
+                }
+                else
+                {
+                    _logger?.LogDebug("Entity of type {EntityType} has no changes, skipping update (sync)", typeof(T).Name);
+                    return;
+                }
+            }
+            else if (currentState == EntityState.Added)
+            {
+                // If entity is in Added state, it means it was just persisted
+                // Check if it has been modified since persistence
+                if (_changeTracker.HasChanges(entity))
+                {
+                    _changeTracker.SetState(entity, EntityState.Modified);
+                    _logger?.LogDebug("Entity of type {EntityType} has been modified after persistence, updating state to Modified (sync)", typeof(T).Name);
+                }
+                else
+                {
+                    _logger?.LogDebug("Entity of type {EntityType} has no changes after persistence, skipping update (sync)", typeof(T).Name);
+                    return;
+                }
+            }
+            else
+            {
+                _logger?.LogDebug("Entity of type {EntityType} is already in state {State}, proceeding with update (sync)", typeof(T).Name, currentState);
+            }
+        }
+
+        var sql = _databaseProvider.GenerateUpdateSql(metadata);
+        var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include primary key for UPDATE
+
+        try
+        {
+            // Use a transaction to ensure the UPDATE is committed
+            using var transaction = _connection.BeginTransaction();
+            try
+            {
+                var rowsAffected = _connection.Execute(sql, parameters, transaction);
+                _logger?.LogDebug("UPDATE executed, rows affected: {RowsAffected} (sync)", rowsAffected);
+                
+                if (rowsAffected == 0)
+                {
+                    _logger?.LogWarning("No rows were affected by the UPDATE operation (sync)");
+                }
+                
+                // Commit the transaction
+                transaction.Commit();
+                
+                _changeTracker.SetState(entity, EntityState.Modified);
+
+                _logger?.LogDebug("Successfully merged entity of type {EntityType} (sync)", typeof(T).Name);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error merging entity of type {EntityType} (sync)", typeof(T).Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Remove<T>(T entity) where T : class
+    {
+        ThrowIfDisposed();
+        if (entity == null) throw new ArgumentNullException(nameof(entity));
+
+        _logger?.LogDebug("Removing entity of type {EntityType} (sync)", typeof(T).Name);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var sql = _databaseProvider.GenerateDeleteSql(metadata);
+        var parameters = ExtractIdParameters(entity, metadata);
+
+        try
+        {
+            _connection.Execute(sql, parameters);
+            _changeTracker.SetState(entity, EntityState.Deleted);
+
+            _logger?.LogDebug("Successfully removed entity of type {EntityType} (sync)", typeof(T).Name);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error removing entity of type {EntityType} (sync)", typeof(T).Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Remove<T>(object id) where T : class
+    {
+        ThrowIfDisposed();
+        if (id == null) throw new ArgumentNullException(nameof(id));
+
+        _logger?.LogDebug("Removing entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, id);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var sql = _databaseProvider.GenerateDeleteSql(metadata);
+        var parameters = new { id };
+
+        try
+        {
+            _connection.Execute(sql, parameters);
+
+            _logger?.LogDebug("Successfully removed entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, id);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error removing entity of type {EntityType} with ID {Id} (sync)", typeof(T).Name, id);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Remove<T>(CompositeKey key) where T : class
+    {
+        ThrowIfDisposed();
+        if (key == null) throw new ArgumentNullException(nameof(key));
+
+        _logger?.LogDebug("Removing entity of type {EntityType} with composite key (sync)", typeof(T).Name);
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+        var sql = GenerateDeleteByCompositeKeySql(metadata, key);
+        var parameters = CreateParametersFromCompositeKey(key, metadata);
+
+        try
+        {
+            _connection.Execute(sql, parameters);
+
+            _logger?.LogDebug("Successfully removed entity of type {EntityType} with composite key (sync)", typeof(T).Name);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error removing entity of type {EntityType} with composite key (sync)", typeof(T).Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Flush()
+    {
+        ThrowIfDisposed();
+
+        _logger?.LogDebug("Flushing pending changes (sync)");
+
+        var pendingChanges = _changeTracker.GetPendingChanges();
+        
+        foreach (var kvp in pendingChanges)
+        {
+            var entity = kvp.Key;
+            var state = kvp.Value;
+
+            try
+            {
+                switch (state)
+                {
+                    case EntityState.Added:
+                        ExecuteInsert(entity);
+                        break;
+                    case EntityState.Modified:
+                        CallGenericMethod(nameof(Merge), entity);
+                        break;
+                    case EntityState.Deleted:
+                        CallGenericMethod(nameof(Remove), entity);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error flushing entity of type {EntityType} with state {State} (sync)", entity.GetType().Name, state);
+                throw;
+            }
+        }
+
+        _logger?.LogDebug("Successfully flushed {Count} pending changes (sync)", pendingChanges.Count);
+    }
+
+    private void ExecuteInsert(object entity)
+    {
+        var entityType = entity.GetType();
+        var metadata = _metadataProvider.GetEntityMetadata(entityType);
+        var sql = _databaseProvider.GenerateInsertSql(metadata);
+        var parameters = ExtractParameters(entity, metadata);
+
+        try
+        {
+            _logger?.LogDebug("Executing SQL: {Sql} (sync)", sql);
+            _logger?.LogDebug("Parameters: {Parameters} (sync)", string.Join(", ", ((Dictionary<string, object?>)parameters).Select(kvp => $"{kvp.Key}={kvp.Value}")));
+            
+            var id = _connection.QuerySingle<object>(sql, parameters);
+            SetEntityId(entity, id, metadata);
+            _changeTracker.SetState(entity, EntityState.Unchanged);
+
+            _logger?.LogDebug("Successfully executed insert for entity of type {EntityType} with ID {Id} (sync)", entityType.Name, id);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error executing insert for entity of type {EntityType} (sync)", entityType.Name);
+            throw;
+        }
+    }
+
+    private void CallGenericMethod(string methodName, object entity)
+    {
+        var entityType = entity.GetType();
+        
+        // Get the method with specific signature to avoid ambiguity
+        var method = GetType().GetMethod(methodName, new[] { entityType });
+        if (method == null)
+            throw new InvalidOperationException($"Method {methodName} not found with entity parameter");
+
+        var genericMethod = method.MakeGenericMethod(entityType);
+        genericMethod.Invoke(this, new[] { entity });
+    }
+
+    /// <inheritdoc />
+    public void Clear()
+    {
+        ThrowIfDisposed();
+
+        _logger?.LogDebug("Clearing persistence context (sync)");
+
+        _changeTracker.Clear();
+
+        _logger?.LogDebug("Successfully cleared persistence context (sync)");
+    }
+
+    #endregion
+
     /// <inheritdoc />
     public bool Contains<T>(T entity) where T : class
     {
@@ -577,7 +1042,7 @@ public sealed class EntityManager : IEntityManager
         }
     }
 
-    private object ExtractParameters(object entity, EntityMetadata metadata)
+    private object ExtractParameters(object entity, EntityMetadata metadata, bool skipIdentityKeys = true)
     {
         var parameters = new Dictionary<string, object?>();
         var entityType = entity.GetType();
@@ -590,8 +1055,8 @@ public sealed class EntityManager : IEntityManager
 
             if (property?.CanRead == true)
             {
-                // Skip identity columns - they should be auto-generated by the database
-                if (propertyMetadata.IsPrimaryKey && propertyMetadata.GenerationType == Annotations.GenerationType.Identity)
+                // Skip identity columns only for INSERT operations
+                if (skipIdentityKeys && propertyMetadata.IsPrimaryKey && propertyMetadata.GenerationType == Annotations.GenerationType.Identity)
                 {
                     continue;
                 }
@@ -702,9 +1167,11 @@ public sealed class EntityManager : IEntityManager
     private async Task CallGenericMethodAsync(string methodName, object entity)
     {
         var entityType = entity.GetType();
-        var method = GetType().GetMethod(methodName);
+        
+        // Get the method with specific signature to avoid ambiguity
+        var method = GetType().GetMethod(methodName, new[] { entityType });
         if (method == null)
-            throw new InvalidOperationException($"Method {methodName} not found");
+            throw new InvalidOperationException($"Method {methodName} not found with entity parameter");
 
         var genericMethod = method.MakeGenericMethod(entityType);
         var task = (Task)genericMethod.Invoke(this, new[] { entity })!;

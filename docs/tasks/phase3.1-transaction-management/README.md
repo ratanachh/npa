@@ -2,35 +2,89 @@
 
 ## 📋 Task Overview
 
-**Objective**: Implement comprehensive transaction management that supports both declarative and programmatic transaction handling with full Dapper integration.
+**Objective**: Implement comprehensive transaction management that supports both declarative and programmatic transaction handling with full Dapper integration. This phase will also enhance the Flush mechanism to support **deferred execution** and **operation batching**.
 
 **Priority**: High  
-**Estimated Time**: 3-4 days  
+**Estimated Time**: 4-5 days  
 **Dependencies**: Phase 1.1-1.5, Phase 2.1-2.6 (All previous phases)  
 **Assigned To**: [Developer Name]  
 
 ## 🎯 Success Criteria
 
-- [ ] ITransaction interface is complete
+- [ ] ITransaction interface is complete (async & sync)
 - [ ] Transaction class implements all transaction operations
+- [ ] Enhanced Flush mechanism with deferred execution
+- [ ] Operation batching and optimization
 - [ ] Declarative transaction support works
 - [ ] Programmatic transaction support works
 - [ ] Unit tests cover all functionality
 - [ ] Documentation is complete
 
+## 🔄 Flush Strategy Enhancement
+
+### Background: Evolution from Phase 1.2
+
+**Phase 1.2 Implementation:**
+- Operations execute SQL **immediately** (no deferral)
+- `Flush()` has limited utility (only for non-generated IDs)
+- Simple but no batching capabilities
+
+**Phase 3.1 Enhancement:**
+- Operations are **queued** in change tracker
+- SQL execution **deferred** until Flush or Commit
+- Enables **batching** for performance
+- True **unit-of-work** pattern
+
 ## 📝 Detailed Requirements
 
-### 1. ITransaction Interface
+### 1. Enhanced Flush Mechanism
+
+**Current State (Phase 1.2):**
+```csharp
+// Immediate execution
+await entityManager.PersistAsync(user);  // Executes INSERT immediately
+await entityManager.FlushAsync();        // Only processes queued operations
+```
+
+**Enhanced State (Phase 3.1):**
+```csharp
+// Deferred execution with batching
+using var tx = await entityManager.BeginTransactionAsync();
+
+await entityManager.PersistAsync(user1);  // Queued
+await entityManager.PersistAsync(user2);  // Queued
+await entityManager.MergeAsync(user3);    // Queued
+
+await entityManager.FlushAsync();         // Batches and executes all operations
+await tx.CommitAsync();                   // Commits transaction
+```
+
+**Key Changes:**
+- [ ] Refactor `Persist()` to queue operations instead of immediate execution
+- [ ] Refactor `Merge()` to queue operations instead of immediate execution
+- [ ] Refactor `Remove()` to queue operations instead of immediate execution
+- [ ] Enhance `Flush()` to batch and execute all queued operations
+- [ ] Add transaction-aware execution
+- [ ] Optimize for reduced database round-trips
+
+**Benefits:**
+- ✅ **Performance**: Batch multiple operations
+- ✅ **Transaction Safety**: All-or-nothing execution
+- ✅ **Consistency**: Deferred constraint checking
+- ✅ **Unit of Work**: True JPA pattern
+- ✅ **Scalability**: Reduced database round-trips
+
+### 2. ITransaction Interface
 - **Purpose**: Defines the contract for transaction operations
-- **Methods**:
-  - `Task CommitAsync()` - Commit the transaction
-  - `Task RollbackAsync()` - Rollback the transaction
-  - `Task DisposeAsync()` - Dispose the transaction
+- **Methods** (Async & Sync):
+  - `Task CommitAsync()` / `void Commit()` - Commit the transaction
+  - `Task RollbackAsync()` / `void Rollback()` - Rollback the transaction
+  - `Task DisposeAsync()` / `void Dispose()` - Dispose the transaction
   - `bool IsActive` - Check if transaction is active
   - `IsolationLevel IsolationLevel` - Get isolation level
   - `IDbTransaction DbTransaction` - Get underlying transaction
 
-### 2. Transaction Class
+### 3. Transaction Class
 - **Purpose**: Implementation of transaction operations
 - **Dependencies**: IDbConnection, IDbTransaction
 - **Features**:
@@ -39,74 +93,142 @@
   - Error handling
   - Performance optimization
   - Resource cleanup
+  - Integration with enhanced Flush mechanism
 
-### 3. Declarative Transaction Support
+**Key Integration:**
+- When a transaction is active, all operations are queued
+- `Flush()` executes operations within the transaction context
+- `Commit()` automatically flushes before committing
+- `Rollback()` clears the change tracker
+
+### 4. Declarative Transaction Support
 - **TransactionalAttribute**: Mark methods for automatic transaction
 - **Transaction Scope**: Automatic transaction management
 - **Error Handling**: Automatic rollback on exceptions
 - **Performance**: Optimize transaction usage
+- **Flush Integration**: Automatic flush before commit
 
-### 4. Programmatic Transaction Support
-- **BeginTransactionAsync()**: Start new transaction
-- **ExecuteInTransactionAsync()**: Execute code in transaction
+### 5. Programmatic Transaction Support
+- **BeginTransactionAsync() / BeginTransaction()**: Start new transaction
+- **ExecuteInTransactionAsync() / ExecuteInTransaction()**: Execute code in transaction
 - **Nested Transactions**: Support for nested transactions
 - **Transaction Propagation**: Handle transaction propagation
+- **Flush Control**: Manual flush control within transactions
 
-### 5. Integration with EntityManager
-- **Automatic Transaction**: Use existing transaction if available
-- **Transaction Context**: Pass transaction context
+### 6. Integration with EntityManager
+
+**Enhanced EntityManager Methods:**
+- [ ] Add `BeginTransactionAsync()` / `BeginTransaction()` to IEntityManager
+- [ ] Add `GetCurrentTransaction()` to IEntityManager
+- [ ] Add `HasActiveTransaction()` property
+- [ ] Update `Persist()`, `Merge()`, `Remove()` to check for active transaction
+- [ ] Update `Flush()` to use transaction context if available
+
+**Transaction-Aware Behavior:**
+```csharp
+// Without transaction: Immediate execution (backward compatible)
+entityManager.Persist(user);  // Executes immediately
+
+// With transaction: Deferred execution (new in 3.1)
+using var tx = await entityManager.BeginTransactionAsync();
+entityManager.Persist(user1);  // Queued
+entityManager.Persist(user2);  // Queued
+entityManager.Flush();         // Batches and executes
+tx.Commit();                   // Commits
+```
+
+**Key Features:**
+- **Automatic Transaction Detection**: Operations detect active transaction
+- **Transaction Context**: Pass transaction to all operations
 - **Batch Operations**: Optimize batch operations with transactions
-- **Error Handling**: Handle transaction errors
+- **Error Handling**: Handle transaction errors gracefully
+- **Flush on Commit**: Automatically flush before commit
 
 ## 🏗️ Implementation Plan
 
-### Step 1: Create Interfaces
-1. Create `ITransaction` interface
-2. Create `ITransactionManager` interface
-3. Create `ITransactionScope` interface
-4. Create `ITransactionContext` interface
+### Step 1: Enhance Change Tracking for Deferred Execution
+**Goal:** Refactor change tracker to support queuing operations
 
-### Step 2: Implement Core Classes
-1. Create `Transaction` class
-2. Create `TransactionManager` class
-3. Create `TransactionScope` class
-4. Create `TransactionContext` class
+1. [ ] Update `IChangeTracker` interface:
+   - Add `QueueOperation(entity, state, sqlGenerator)` method
+   - Add `GetQueuedOperations()` method
+   - Add `ClearQueue()` method
+2. [ ] Update `ChangeTracker` class:
+   - Implement operation queue
+   - Track SQL generation delegates
+   - Support transaction-aware behavior
+3. [ ] Add operation priority (INSERT before UPDATE, DELETE last)
 
-### Step 3: Implement Transaction Operations
-1. Implement `BeginTransactionAsync()` method
-2. Implement `CommitAsync()` method
-3. Implement `RollbackAsync()` method
-4. Implement `DisposeAsync()` method
+### Step 2: Refactor EntityManager for Deferred Execution
+**Goal:** Make operations queue by default when transaction is active
 
-### Step 4: Add Declarative Support
-1. Create `TransactionalAttribute` class
-2. Implement transaction interception
-3. Add automatic transaction management
-4. Add error handling
+1. [ ] Add `HasActiveTransaction()` property to EntityManager
+2. [ ] Add `GetCurrentTransaction()` method
+3. [ ] Refactor `Persist()` to check for active transaction:
+   - If transaction active: Queue operation
+   - If no transaction: Execute immediately (backward compatible)
+4. [ ] Refactor `Merge()` similarly
+5. [ ] Refactor `Remove()` similarly
+6. [ ] Enhance `Flush()` to batch execute queued operations
 
-### Step 5: Add Programmatic Support
-1. Implement `ExecuteInTransactionAsync()` method
-2. Add nested transaction support
-3. Add transaction propagation
-4. Add performance optimizations
+### Step 3: Create Transaction Interfaces
+1. [ ] Create `ITransaction` interface (async & sync)
+2. [ ] Create `ITransactionManager` interface
+3. [ ] Add methods to `IEntityManager`:
+   - `BeginTransactionAsync()` / `BeginTransaction()`
+   - `GetCurrentTransaction()`
 
-### Step 6: Integrate with EntityManager
-1. Update EntityManager for transaction support
-2. Add transaction context passing
-3. Optimize batch operations
-4. Add error handling
+### Step 4: Implement Transaction Core Classes
+1. [ ] Create `Transaction` class (async & sync)
+2. [ ] Implement transaction lifecycle management
+3. [ ] Add isolation level support
+4. [ ] Add error handling
+5. [ ] Implement auto-flush before commit
 
-### Step 7: Create Unit Tests
-1. Test transaction operations
-2. Test declarative transactions
-3. Test programmatic transactions
-4. Test error scenarios
+### Step 5: Implement Transaction Operations
+1. [ ] Implement `BeginTransactionAsync()` / `BeginTransaction()`
+2. [ ] Implement `CommitAsync()` / `Commit()`
+   - Auto-flush before commit
+   - Error handling
+3. [ ] Implement `RollbackAsync()` / `Rollback()`
+   - Clear change tracker queue
+4. [ ] Implement `DisposeAsync()` / `Dispose()`
 
-### Step 8: Add Documentation
-1. XML documentation comments
-2. Usage examples
-3. Transaction guide
-4. Best practices
+### Step 6: Add Declarative Support
+1. [ ] Create `TransactionalAttribute` class
+2. [ ] Implement transaction interception
+3. [ ] Add automatic transaction management
+4. [ ] Add automatic flush and commit
+
+### Step 7: Add Programmatic Support
+1. [ ] Implement `ExecuteInTransactionAsync()` / `ExecuteInTransaction()`
+2. [ ] Add nested transaction support (savepoints)
+3. [ ] Add transaction propagation
+4. [ ] Add performance optimizations
+
+### Step 8: Integrate Enhanced Flush
+1. [ ] Batch INSERT operations
+2. [ ] Batch UPDATE operations  
+3. [ ] Order operations (INSERT → UPDATE → DELETE)
+4. [ ] Optimize SQL generation
+5. [ ] Add error handling for batch failures
+
+### Step 9: Create Unit Tests
+1. [ ] Test transaction operations
+2. [ ] Test declarative transactions
+3. [ ] Test programmatic transactions
+4. [ ] Test enhanced flush batching
+5. [ ] Test deferred execution
+6. [ ] Test error scenarios
+7. [ ] Test backward compatibility
+
+### Step 10: Add Documentation
+1. [ ] XML documentation comments
+2. [ ] Usage examples for transactions
+3. [ ] Enhanced flush strategy documentation
+4. [ ] Migration guide from Phase 1.2
+5. [ ] Performance comparison
+6. [ ] Best practices
 
 ## 📁 File Structure
 
@@ -132,33 +254,76 @@ tests/NPA.Core.Tests/Transactions/
 
 ## 💻 Code Examples
 
+### Enhanced Flush Strategy
+
+**Before Phase 3.1 (Immediate Execution):**
+```csharp
+// Each operation executes immediately
+await entityManager.PersistAsync(user1);    // INSERT executed
+await entityManager.PersistAsync(user2);    // INSERT executed
+await entityManager.MergeAsync(user3);      // UPDATE executed
+// 3 database round-trips
+```
+
+**After Phase 3.1 (Deferred Execution with Batching):**
+```csharp
+// With transaction: Operations are queued
+using var tx = await entityManager.BeginTransactionAsync();
+
+await entityManager.PersistAsync(user1);    // Queued
+await entityManager.PersistAsync(user2);    // Queued
+await entityManager.MergeAsync(user3);      // Queued
+
+await entityManager.FlushAsync();           // Batches: 2 INSERTs + 1 UPDATE
+await tx.CommitAsync();                     // 1 transaction commit
+// 1 batch operation + 1 commit = Better performance
+```
+
+**Without transaction: Backward compatible immediate execution:**
+```csharp
+// No transaction: Executes immediately (Phase 1.2 behavior)
+await entityManager.PersistAsync(user);  // Still executes immediately
+```
+
 ### ITransaction Interface
 ```csharp
-public interface ITransaction : IAsyncDisposable
+public interface ITransaction : IAsyncDisposable, IDisposable
 {
+    // Async methods
     Task CommitAsync();
     Task RollbackAsync();
+    ValueTask DisposeAsync();
+    
+    // Sync methods
+    void Commit();
+    void Rollback();
+    void Dispose();
+    
+    // Properties
     bool IsActive { get; }
     IsolationLevel IsolationLevel { get; }
     IDbTransaction DbTransaction { get; }
 }
 ```
 
-### Transaction Class
+### Transaction Class (with Enhanced Flush Integration)
 ```csharp
 public class Transaction : ITransaction
 {
     private readonly IDbConnection _connection;
     private readonly IDbTransaction _dbTransaction;
+    private readonly IEntityManager _entityManager;
     private bool _disposed = false;
     
-    public Transaction(IDbConnection connection, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
+    public Transaction(IDbConnection connection, IEntityManager entityManager, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _entityManager = entityManager ?? throw new ArgumentNullException(nameof(entityManager));
         _dbTransaction = connection.BeginTransaction(isolationLevel);
         IsolationLevel = isolationLevel;
     }
     
+    // Async commit with auto-flush
     public async Task CommitAsync()
     {
         if (_disposed)
@@ -169,6 +334,31 @@ public class Transaction : ITransaction
         
         try
         {
+            // IMPORTANT: Auto-flush before commit to execute queued operations
+            await _entityManager.FlushAsync();
+            
+            _dbTransaction.Commit();
+        }
+        catch (Exception ex)
+        {
+            throw new TransactionException("Failed to commit transaction", ex);
+        }
+    }
+    
+    // Sync commit with auto-flush
+    public void Commit()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(Transaction));
+        
+        if (!IsActive)
+            throw new InvalidOperationException("Transaction is not active");
+        
+        try
+        {
+            // IMPORTANT: Auto-flush before commit
+            _entityManager.Flush();
+            
             _dbTransaction.Commit();
         }
         catch (Exception ex)
@@ -184,6 +374,24 @@ public class Transaction : ITransaction
         
         try
         {
+            // Clear queued operations on rollback
+            await _entityManager.ClearAsync();
+            _dbTransaction.Rollback();
+        }
+        catch (Exception ex)
+        {
+            throw new TransactionException("Failed to rollback transaction", ex);
+        }
+    }
+    
+    public void Rollback()
+    {
+        if (_disposed)
+            return;
+        
+        try
+        {
+            _entityManager.Clear();
             _dbTransaction.Rollback();
         }
         catch (Exception ex)
@@ -201,6 +409,25 @@ public class Transaction : ITransaction
                 if (IsActive)
                 {
                     await RollbackAsync();
+                }
+                _dbTransaction.Dispose();
+            }
+            finally
+            {
+                _disposed = true;
+            }
+        }
+    }
+    
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            try
+            {
+                if (IsActive)
+                {
+                    Rollback();
                 }
                 _dbTransaction.Dispose();
             }
@@ -432,9 +659,181 @@ After completing this task:
 - [ ] Performance considerations for transactions
 - [ ] Integration with Dapper transactions
 - [ ] Error message localization
+- [ ] Backward compatibility verification
+- [ ] Performance benchmarking (immediate vs deferred)
+
+## 💡 Detailed Flush Strategy Explanation
+
+### Why the Change?
+
+**Problem with Current Approach (Phase 1.2):**
+```csharp
+// Each call = 1 database round-trip
+entityManager.Persist(user1);     // Round-trip 1: INSERT
+entityManager.Persist(user2);     // Round-trip 2: INSERT
+entityManager.Merge(user3);       // Round-trip 3: UPDATE
+entityManager.Remove(user4);      // Round-trip 4: DELETE
+// Total: 4 round-trips for 4 operations
+```
+
+**Solution with Enhanced Flush (Phase 3.1):**
+```csharp
+using var tx = await entityManager.BeginTransactionAsync();
+
+// All operations queued (0 round-trips yet)
+entityManager.Persist(user1);
+entityManager.Persist(user2);
+entityManager.Merge(user3);
+entityManager.Remove(user4);
+
+// Flush: Batch execute (1 round-trip for all)
+entityManager.Flush();  // Batches: 2 INSERTs, 1 UPDATE, 1 DELETE
+
+// Commit
+tx.Commit();  // Round-trip 2: Transaction commit
+// Total: 2 round-trips for 4 operations = 50% reduction
+```
+
+### Implementation Strategy
+
+**1. Transaction Detection:**
+```csharp
+public void Persist<T>(T entity) where T : class
+{
+    if (HasActiveTransaction())
+    {
+        // Queue operation for batch execution
+        _changeTracker.QueueOperation(entity, EntityState.Added, () => GenerateInsertSql(entity));
+    }
+    else
+    {
+        // Execute immediately (backward compatible)
+        ExecuteInsert(entity);
+    }
+}
+```
+
+**2. Operation Queueing:**
+```csharp
+public class ChangeTracker
+{
+    private readonly Queue<QueuedOperation> _operationQueue = new();
+    
+    public void QueueOperation(object entity, EntityState state, Func<string> sqlGenerator)
+    {
+        _operationQueue.Enqueue(new QueuedOperation
+        {
+            Entity = entity,
+            State = state,
+            SqlGenerator = sqlGenerator,
+            Priority = GetPriority(state)
+        });
+    }
+    
+    private int GetPriority(EntityState state)
+    {
+        return state switch
+        {
+            EntityState.Added => 1,      // INSERT first
+            EntityState.Modified => 2,   // UPDATE second
+            EntityState.Deleted => 3,    // DELETE last
+            _ => 0
+        };
+    }
+}
+```
+
+**3. Batch Execution:**
+```csharp
+public void Flush()
+{
+    var operations = _changeTracker
+        .GetQueuedOperations()
+        .OrderBy(op => op.Priority)  // Order: INSERT → UPDATE → DELETE
+        .GroupBy(op => op.State);    // Group by operation type
+    
+    foreach (var group in operations)
+    {
+        if (group.Key == EntityState.Added)
+        {
+            // Batch all INSERTs
+            var inserts = group.Select(op => op.SqlGenerator()).ToList();
+            ExecuteBatchInserts(inserts);
+        }
+        else if (group.Key == EntityState.Modified)
+        {
+            // Batch all UPDATEs
+            var updates = group.Select(op => op.SqlGenerator()).ToList();
+            ExecuteBatchUpdates(updates);
+        }
+        else if (group.Key == EntityState.Deleted)
+        {
+            // Batch all DELETEs
+            var deletes = group.Select(op => op.SqlGenerator()).ToList();
+            ExecuteBatchDeletes(deletes);
+        }
+    }
+    
+    _changeTracker.ClearQueue();
+}
+```
+
+### Backward Compatibility
+
+**Phase 1.2 code continues to work:**
+```csharp
+// Without transaction: Immediate execution (unchanged)
+entityManager.Persist(user);      // Executes immediately
+entityManager.Merge(user);        // Executes immediately
+
+// With explicit flush (still works)
+entityManager.Persist(user);
+entityManager.Flush();            // Works but not needed without transaction
+```
+
+**Phase 3.1 enables new patterns:**
+```csharp
+// With transaction: Deferred execution (new capability)
+using var tx = await entityManager.BeginTransactionAsync();
+entityManager.Persist(user1);     // Queued
+entityManager.Persist(user2);     // Queued  
+entityManager.Flush();            // Batch execute
+tx.Commit();                      // Commit
+```
+
+### Performance Impact
+
+**Scenario: 100 entity operations**
+
+**Phase 1.2 (Immediate):**
+- 100 database round-trips
+- No batching
+- Simple but inefficient
+
+**Phase 3.1 (Deferred with Transaction):**
+- ~5-10 round-trips (depending on operation grouping)
+- Full batching support
+- 90-95% reduction in round-trips
+- Significantly better performance
+
+### Migration Checklist
+
+**For existing code:**
+- [ ] Review all `Persist()` calls
+- [ ] Review all `Merge()` calls
+- [ ] Review all `Remove()` calls
+- [ ] Add transactions where batching would help
+- [ ] Keep existing code for simple operations
+- [ ] Test backward compatibility
+
+**For new code:**
+- [ ] Use transactions for multi-entity operations
+- [ ] Leverage batching for performance
+- [ ] Use deferred execution patterns
+- [ ] Follow new best practices
 
 ---
 
 *Created: [Current Date]*  
-*Last Updated: [Current Date]*  
-*Status: In Progress*
+*Last Updated: 2025-01-10*  
+*Status: Planned - Enhanced with Flush Strategy Documentation*

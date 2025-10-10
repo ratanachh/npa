@@ -9,7 +9,7 @@ namespace NPA.Core.Providers;
 public interface IBulkOperationProvider
 {
     /// <summary>
-    /// Performs bulk insert operation for the specified entities.
+    /// Performs bulk insert operation for the specified entities asynchronously.
     /// </summary>
     /// <typeparam name="T">The entity type.</typeparam>
     /// <param name="connection">The database connection.</param>
@@ -20,7 +20,17 @@ public interface IBulkOperationProvider
     Task<int> BulkInsertAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs bulk update operation for the specified entities.
+    /// Performs bulk insert operation for the specified entities synchronously.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="connection">The database connection.</param>
+    /// <param name="entities">The entities to insert.</param>
+    /// <param name="metadata">The entity metadata.</param>
+    /// <returns>The number of affected rows.</returns>
+    int BulkInsert<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata);
+
+    /// <summary>
+    /// Performs bulk update operation for the specified entities asynchronously.
     /// </summary>
     /// <typeparam name="T">The entity type.</typeparam>
     /// <param name="connection">The database connection.</param>
@@ -31,7 +41,17 @@ public interface IBulkOperationProvider
     Task<int> BulkUpdateAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs bulk delete operation for the specified entity IDs.
+    /// Performs bulk update operation for the specified entities synchronously.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="connection">The database connection.</param>
+    /// <param name="entities">The entities to update.</param>
+    /// <param name="metadata">The entity metadata.</param>
+    /// <returns>The number of affected rows.</returns>
+    int BulkUpdate<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata);
+
+    /// <summary>
+    /// Performs bulk delete operation for the specified entity IDs asynchronously.
     /// </summary>
     /// <param name="connection">The database connection.</param>
     /// <param name="ids">The entity IDs to delete.</param>
@@ -39,6 +59,15 @@ public interface IBulkOperationProvider
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The number of affected rows.</returns>
     Task<int> BulkDeleteAsync(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Performs bulk delete operation for the specified entity IDs synchronously.
+    /// </summary>
+    /// <param name="connection">The database connection.</param>
+    /// <param name="ids">The entity IDs to delete.</param>
+    /// <param name="metadata">The entity metadata.</param>
+    /// <returns>The number of affected rows.</returns>
+    int BulkDelete(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata);
 
     /// <summary>
     /// Gets the maximum batch size supported by this provider.

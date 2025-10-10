@@ -61,6 +61,10 @@ public class User
 > **Note**: Relationship mapping (OneToMany, ManyToOne, ManyToMany) is now implemented in Phase 2.1! ✅
 
 ### 2. EntityManager API ✅
+
+NPA supports both **asynchronous** and **synchronous** methods for all operations:
+
+#### Asynchronous Methods (Recommended)
 ```csharp
 public class UserService
 {
@@ -81,7 +85,7 @@ public class UserService
         };
         
         await entityManager.PersistAsync(user);
-        await entityManager.FlushAsync();
+        // Note: Flush is optional - operation executes immediately
         
         return user;
     }
@@ -94,7 +98,7 @@ public class UserService
     public async Task UpdateUserAsync(User user)
     {
         await entityManager.MergeAsync(user);
-        await entityManager.FlushAsync();
+        // Note: Flush is optional - operation executes immediately
     }
     
     public async Task DeleteUserAsync(long id)
@@ -103,15 +107,70 @@ public class UserService
         if (user != null)
         {
             await entityManager.RemoveAsync(user);
-            await entityManager.FlushAsync();
+            // Note: Flush is optional - operation executes immediately
         }
     }
 }
 ```
 
+#### Synchronous Methods
+```csharp
+public class UserService
+{
+    private readonly IEntityManager entityManager;
+    
+    public UserService(IEntityManager entityManager)
+    {
+        this.entityManager = entityManager;
+    }
+    
+    public User CreateUser(string username, string email)
+    {
+        var user = new User 
+        { 
+            Username = username, 
+            Email = email,
+            CreatedAt = DateTime.UtcNow
+        };
+        
+        entityManager.Persist(user);
+        // Note: Flush is optional - operation executes immediately
+        
+        return user;
+    }
+    
+    public User? FindUser(long id)
+    {
+        return entityManager.Find<User>(id);
+    }
+    
+    public void UpdateUser(User user)
+    {
+        entityManager.Merge(user);
+        // Note: Flush is optional - operation executes immediately
+    }
+    
+    public void DeleteUser(long id)
+    {
+        var user = entityManager.Find<User>(id);
+        if (user != null)
+        {
+            entityManager.Remove(user);
+            // Note: Flush is optional - operation executes immediately
+        }
+    }
+}
+```
+
+> **Note**: Async methods are recommended for most scenarios to avoid blocking threads. Use synchronous methods only when necessary (e.g., console applications, legacy code).
+
 > **Note**: Repository pattern implementation is planned for Phase 2.
 
 ### 3. Query Language (CPQL) ✅
+
+NPA supports both **asynchronous** and **synchronous** query execution:
+
+#### Asynchronous Queries (Recommended)
 ```csharp
 // Dynamic Queries using EntityManager
 var query = entityManager
@@ -133,6 +192,47 @@ var updatedCount = await entityManager
     .SetParameter("active", false)
     .SetParameter("date", DateTime.UtcNow.AddYears(-1))
     .ExecuteUpdateAsync();
+
+// Scalar queries
+var userCount = await entityManager
+    .CreateQuery<User>("SELECT COUNT(u) FROM User u WHERE u.IsActive = :active")
+    .SetParameter("active", true)
+    .ExecuteScalarAsync();
+```
+
+#### Synchronous Queries
+```csharp
+// List queries
+var users = entityManager
+    .CreateQuery<User>("SELECT u FROM User u WHERE u.Username = :username AND u.IsActive = :active")
+    .SetParameter("username", "john")
+    .SetParameter("active", true)
+    .GetResultList();
+
+// Single result queries
+var user = entityManager
+    .CreateQuery<User>("SELECT u FROM User u WHERE u.Id = :id")
+    .SetParameter("id", 1L)
+    .GetSingleResult();
+
+// Required single result (throws if not found)
+var requiredUser = entityManager
+    .CreateQuery<User>("SELECT u FROM User u WHERE u.Email = :email")
+    .SetParameter("email", "john@example.com")
+    .GetSingleResultRequired();
+
+// Update queries
+var updatedCount = entityManager
+    .CreateQuery<User>("UPDATE User u SET u.IsActive = :active WHERE u.CreatedAt < :date")
+    .SetParameter("active", false)
+    .SetParameter("date", DateTime.UtcNow.AddYears(-1))
+    .ExecuteUpdate();
+
+// Scalar queries
+var userCount = entityManager
+    .CreateQuery<User>("SELECT COUNT(u) FROM User u WHERE u.IsActive = :active")
+    .SetParameter("active", true)
+    .ExecuteScalar();
 ```
 
 ## ✅ Implemented Features
@@ -1557,6 +1657,10 @@ public class User
 ```
 
 ### 4. Use EntityManager
+
+Choose between asynchronous or synchronous methods based on your needs:
+
+#### Asynchronous (Recommended for web apps, services)
 ```csharp
 public class UserService
 {
@@ -1571,11 +1675,134 @@ public class UserService
     {
         var user = new User { Username = username, Email = email };
         await entityManager.PersistAsync(user);
-        await entityManager.FlushAsync();
+        // Note: Flush is optional - operation executes immediately
         return user;
+    }
+    
+    public async Task<User?> GetUserAsync(long id)
+    {
+        return await entityManager.FindAsync<User>(id);
+    }
+    
+    public async Task UpdateUserAsync(User user)
+    {
+        await entityManager.MergeAsync(user);
+    }
+    
+    public async Task DeleteUserAsync(User user)
+    {
+        await entityManager.RemoveAsync(user);
     }
 }
 ```
+
+#### Synchronous (For console apps, scripts, legacy code)
+```csharp
+public class UserService
+{
+    private readonly IEntityManager entityManager;
+    
+    public UserService(IEntityManager entityManager)
+    {
+        this.entityManager = entityManager;
+    }
+    
+    public User CreateUser(string username, string email)
+    {
+        var user = new User { Username = username, Email = email };
+        entityManager.Persist(user);
+        // Note: Flush is optional - operation executes immediately
+        return user;
+    }
+    
+    public User? GetUser(long id)
+    {
+        return entityManager.Find<User>(id);
+    }
+    
+    public void UpdateUser(User user)
+    {
+        entityManager.Merge(user);
+    }
+    
+    public void DeleteUser(User user)
+    {
+        entityManager.Remove(user);
+    }
+}
+```
+
+## 📚 API Reference
+
+### 💡 Note About Flush() Method
+
+**Current Behavior (Phase 1.2):**  
+In the current implementation, most operations execute SQL **immediately**. The `Flush()` method has limited utility and is primarily used for:
+- Entities without generated IDs
+- Maintaining JPA pattern familiarity
+- Explicit control over pending changes
+
+**Future Enhancement (Phase 3.1 - Transaction Management):**  
+When transaction support is added, `Flush()` will become critical for:
+- **Batching operations** for better performance
+- **Deferred execution** within transactions
+- **Reducing database round-trips** (90-95% reduction possible)
+- **True unit-of-work pattern** like JPA
+
+**Learn More:**
+- [Phase 1.2 Task Documentation](docs/tasks/phase1.2-entity-manager-with-crud-operations/README.md#-flush-strategy-and-change-tracking) - Current flush behavior
+- [Phase 3.1 Task Documentation](docs/tasks/phase3.1-transaction-management/README.md#-flush-strategy-enhancement) - Future enhancements
+
+### EntityManager Methods
+
+NPA provides both **asynchronous** and **synchronous** versions of all EntityManager methods:
+
+| Operation | Async Method | Sync Method | Description |
+|-----------|-------------|-------------|-------------|
+| **Create** | `PersistAsync<T>(entity)` | `Persist<T>(entity)` | Insert or update an entity |
+| **Read** | `FindAsync<T>(id)` | `Find<T>(id)` | Find entity by primary key |
+| | `FindAsync<T>(compositeKey)` | `Find<T>(compositeKey)` | Find entity by composite key |
+| **Update** | `MergeAsync<T>(entity)` | `Merge<T>(entity)` | Merge entity changes to database |
+| **Delete** | `RemoveAsync<T>(entity)` | `Remove<T>(entity)` | Delete an entity |
+| | `RemoveAsync<T>(id)` | `Remove<T>(id)` | Delete entity by primary key |
+| | `RemoveAsync<T>(compositeKey)` | `Remove<T>(compositeKey)` | Delete entity by composite key |
+| **Persistence** | `FlushAsync()` | `Flush()` | Flush pending changes to database |
+| | `ClearAsync()` | `Clear()` | Clear the persistence context |
+| **Tracking** | `Contains<T>(entity)` | `Contains<T>(entity)` | Check if entity is tracked |
+| | `Detach<T>(entity)` | `Detach<T>(entity)` | Detach entity from context |
+| **Query** | `CreateQuery<T>(cpql)` | `CreateQuery<T>(cpql)` | Create a CPQL query |
+
+### Query Methods
+
+All query operations support both async and sync execution:
+
+| Operation | Async Method | Sync Method | Description |
+|-----------|-------------|-------------|-------------|
+| **List** | `GetResultListAsync()` | `GetResultList()` | Get all matching results |
+| **Single** | `GetSingleResultAsync()` | `GetSingleResult()` | Get single result or null |
+| | `GetSingleResultRequiredAsync()` | `GetSingleResultRequired()` | Get single result (throws if not found) |
+| **Execute** | `ExecuteUpdateAsync()` | `ExecuteUpdate()` | Execute UPDATE/DELETE, return affected rows |
+| | `ExecuteScalarAsync()` | `ExecuteScalar()` | Execute scalar query, return single value |
+| **Parameters** | `SetParameter(name, value)` | `SetParameter(name, value)` | Bind named parameter |
+| | `SetParameter(index, value)` | `SetParameter(index, value)` | Bind indexed parameter |
+
+### When to Use Async vs Sync
+
+**Use Asynchronous Methods (Recommended):**
+- ✅ ASP.NET Core web applications
+- ✅ Web APIs and microservices
+- ✅ High-concurrency scenarios
+- ✅ Azure Functions and cloud services
+- ✅ When you need to avoid thread blocking
+
+**Use Synchronous Methods:**
+- ✅ Console applications and CLI tools
+- ✅ Desktop applications (WPF, WinForms)
+- ✅ Scripts and utilities
+- ✅ Legacy code integration
+- ✅ Simple CRUD operations in low-concurrency scenarios
+
+> **Performance Note**: Async methods don't automatically improve performance. They improve **scalability** by freeing threads during I/O operations. Use them in high-concurrency scenarios like web servers.
 
 ## 🎯 Key Design Principles
 
@@ -1584,23 +1811,27 @@ public class UserService
 - Minimal overhead over raw SQL
 - Efficient metadata caching
 - Optimized query generation
+- Both sync and async support for all scenarios
 
 ### 2. **Developer Experience**
 - Familiar JPA-like API
 - Strong typing and IntelliSense support
 - Comprehensive error messages
 - Extensive logging and debugging support
+- Flexible sync/async API
 
 ### 3. **Flexibility**
 - Support multiple database providers
 - Extensible query language
 - Custom repository implementations
 - Plugin architecture for extensions
+- Choose sync or async based on your needs
 
 ### 4. **Standards Compliance**
 - Follow .NET conventions
 - Implement JPA patterns where applicable
 - Consistent with existing .NET ecosystem
+- Modern async/await patterns
 
 ## 🔄 Development Roadmap
 

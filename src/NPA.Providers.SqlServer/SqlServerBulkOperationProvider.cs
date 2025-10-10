@@ -208,6 +208,178 @@ INNER JOIN {tempTableName} t2 ON t1.{_dialect.EscapeIdentifier(primaryKey.Column
     }
 
     /// <inheritdoc />
+    public int BulkInsert<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var entityList = entities.ToList();
+        if (!entityList.Any())
+            return 0;
+
+        if (connection is not SqlConnection sqlConnection)
+            throw new ArgumentException("Connection must be a SqlConnection for SQL Server bulk operations.", nameof(connection));
+
+        var tableName = GetUnescapedTableName(metadata);
+        var dataTable = CreateDataTableFromEntities(entityList, metadata);
+
+        try
+        {
+            using var bulkCopy = new SqlBulkCopy(sqlConnection)
+            {
+                DestinationTableName = tableName,
+                BatchSize = MaxBatchSize,
+                BulkCopyTimeout = 300 // 5 minutes
+            };
+
+            // Map columns
+            foreach (var property in metadata.Properties.Values)
+            {
+                // Skip identity columns in bulk insert
+                if (property.IsPrimaryKey && property.GenerationType == GenerationType.Identity)
+                    continue;
+
+                bulkCopy.ColumnMappings.Add(property.PropertyName, property.ColumnName);
+            }
+
+            bulkCopy.WriteToServer(dataTable);
+            return entityList.Count;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Bulk insert operation failed for table {tableName}: {ex.Message}", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public int BulkUpdate<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var entityList = entities.ToList();
+        if (!entityList.Any())
+            return 0;
+
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        // For bulk updates, we'll use table-valued parameters with MERGE statement
+        var tempTableName = $"#temp_{metadata.TableName}_{Guid.NewGuid():N}";
+
+        try
+        {
+            // Create a temporary table
+            var createTempTableSql = GenerateCreateTempTableSql(metadata, tempTableName);
+            connection.Execute(createTempTableSql);
+
+            // Bulk insert into temp table
+            BulkInsertToTempTable(connection, entityList, metadata, tempTableName);
+
+            // Perform MERGE operation
+            var mergeSql = GenerateMergeSqlForUpdate(metadata, tempTableName, primaryKey);
+            var rowsAffected = connection.Execute(mergeSql);
+
+            return rowsAffected;
+        }
+        finally
+        {
+            // Clean up temp table
+            try
+            {
+                connection.Execute($"DROP TABLE IF EXISTS {tempTableName}");
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public int BulkDelete(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (ids == null)
+            throw new ArgumentNullException(nameof(ids));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var idList = ids.ToList();
+        if (!idList.Any())
+            return 0;
+
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        // For small sets, use IN clause
+        if (idList.Count <= 1000)
+        {
+            var tableName = _dialect.EscapeIdentifier(metadata.FullTableName);
+            var primaryKeyColumn = _dialect.EscapeIdentifier(primaryKey.ColumnName);
+            
+            var parameters = new DynamicParameters();
+            var parameterNames = new List<string>();
+            
+            for (int i = 0; i < idList.Count; i++)
+            {
+                var paramName = $"id{i}";
+                parameters.Add(paramName, idList[i]);
+                parameterNames.Add($"@{paramName}");
+            }
+
+            var sql = $"DELETE FROM {tableName} WHERE {primaryKeyColumn} IN ({string.Join(", ", parameterNames)})";
+            return connection.Execute(sql, parameters);
+        }
+
+        // For larger sets, use temp table approach
+        var tempTableName = $"#temp_delete_{metadata.TableName}_{Guid.NewGuid():N}";
+        
+        try
+        {
+            // Create temp table for IDs
+            var createTempSql = $@"CREATE TABLE {tempTableName} 
+(
+    {_dialect.EscapeIdentifier(primaryKey.ColumnName)} {_typeConverter.GetDatabaseTypeName(primaryKey.PropertyType)}
+)";
+            connection.Execute(createTempSql);
+
+            // Insert IDs into temp table
+            var insertSql = $"INSERT INTO {tempTableName} VALUES (@id)";
+            var parameters = idList.Select(id => new { id });
+            connection.Execute(insertSql, parameters);
+
+            // Perform bulk delete
+            var deleteSql = $@"DELETE t1 
+FROM {_dialect.EscapeIdentifier(metadata.FullTableName)} t1
+INNER JOIN {tempTableName} t2 ON t1.{_dialect.EscapeIdentifier(primaryKey.ColumnName)} = t2.{_dialect.EscapeIdentifier(primaryKey.ColumnName)}";
+
+            return connection.Execute(deleteSql);
+        }
+        finally
+        {
+            // Clean up temp table
+            try
+            {
+                connection.Execute($"DROP TABLE IF EXISTS {tempTableName}");
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
+        }
+    }
+
+    /// <inheritdoc />
     public object CreateTableValuedParameter<T>(IEnumerable<T> entities, EntityMetadata metadata, string typeName)
     {
         var dataTable = CreateDataTableFromEntities(entities, metadata);
@@ -290,6 +462,29 @@ INNER JOIN {tempTableName} t2 ON t1.{_dialect.EscapeIdentifier(primaryKey.Column
         }
 
         await bulkCopy.WriteToServerAsync(dataTable, cancellationToken);
+    }
+
+    private void BulkInsertToTempTable<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, string tempTableName)
+    {
+        if (connection is not SqlConnection sqlConnection)
+            throw new ArgumentException("Connection must be a SqlConnection for SQL Server bulk operations.", nameof(connection));
+
+        var dataTable = CreateDataTableFromEntitiesIncludingPK(entities, metadata);
+
+        using var bulkCopy = new SqlBulkCopy(sqlConnection)
+        {
+            DestinationTableName = tempTableName,
+            BatchSize = MaxBatchSize,
+            BulkCopyTimeout = 300
+        };
+
+        // Map all columns including primary key for updates
+        foreach (var property in metadata.Properties.Values)
+        {
+            bulkCopy.ColumnMappings.Add(property.PropertyName, property.ColumnName);
+        }
+
+        bulkCopy.WriteToServer(dataTable);
     }
 
     private DataTable CreateDataTableFromEntitiesIncludingPK<T>(IEnumerable<T> entities, EntityMetadata metadata)

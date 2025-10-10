@@ -100,6 +100,28 @@ public sealed class Query<T> : IQuery<T>
     }
 
     /// <inheritdoc />
+    public IEnumerable<T> GetResultList()
+    {
+        ThrowIfDisposed();
+        _logger?.LogDebug("Executing query to get result list (sync)");
+
+        var sql = GetSql();
+        var boundParameters = GetBoundParameters();
+
+        try
+        {
+            var results = _connection.Query<T>(sql, boundParameters);
+            _logger?.LogDebug("Query executed successfully, returned {ResultCount} results", results.Count());
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error executing query: {Sql}", sql);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<T?> GetSingleResultAsync()
     {
         ThrowIfDisposed();
@@ -122,12 +144,51 @@ public sealed class Query<T> : IQuery<T>
     }
 
     /// <inheritdoc />
+    public T? GetSingleResult()
+    {
+        ThrowIfDisposed();
+        _logger?.LogDebug("Executing query to get single result (sync)");
+
+        var sql = GetSql();
+        var boundParameters = GetBoundParameters();
+
+        try
+        {
+            var result = _connection.QueryFirstOrDefault<T>(sql, boundParameters);
+            _logger?.LogDebug("Query executed successfully, returned {HasResult} result", result != null ? "one" : "no");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error executing query: {Sql}", sql);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<T> GetSingleResultRequiredAsync()
     {
         ThrowIfDisposed();
         _logger?.LogDebug("Executing query to get single required result");
 
         var result = await GetSingleResultAsync();
+        if (result == null)
+        {
+            var message = "Query returned no results, but a single result was required";
+            _logger?.LogWarning(message);
+            throw new InvalidOperationException(message);
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public T GetSingleResultRequired()
+    {
+        ThrowIfDisposed();
+        _logger?.LogDebug("Executing query to get single required result (sync)");
+
+        var result = GetSingleResult();
         if (result == null)
         {
             var message = "Query returned no results, but a single result was required";
@@ -161,6 +222,28 @@ public sealed class Query<T> : IQuery<T>
     }
 
     /// <inheritdoc />
+    public int ExecuteUpdate()
+    {
+        ThrowIfDisposed();
+        _logger?.LogDebug("Executing update query (sync)");
+
+        var sql = GetSql();
+        var boundParameters = GetBoundParameters();
+
+        try
+        {
+            var affectedRows = _connection.Execute(sql, boundParameters);
+            _logger?.LogDebug("Update query executed successfully, affected {AffectedRows} rows", affectedRows);
+            return affectedRows;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error executing update query: {Sql}", sql);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<object?> ExecuteScalarAsync()
     {
         ThrowIfDisposed();
@@ -172,6 +255,28 @@ public sealed class Query<T> : IQuery<T>
         try
         {
             var result = await _connection.ExecuteScalarAsync(sql, boundParameters);
+            _logger?.LogDebug("Scalar query executed successfully, returned {HasResult} result", result != null ? "a" : "no");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error executing scalar query: {Sql}", sql);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public object? ExecuteScalar()
+    {
+        ThrowIfDisposed();
+        _logger?.LogDebug("Executing scalar query (sync)");
+
+        var sql = GetSql();
+        var boundParameters = GetBoundParameters();
+
+        try
+        {
+            var result = _connection.ExecuteScalar(sql, boundParameters);
             _logger?.LogDebug("Scalar query executed successfully, returned {HasResult} result", result != null ? "a" : "no");
             return result;
         }

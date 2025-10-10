@@ -1,114 +1,218 @@
-# NPA Sample Projects
+# NPA Samples
 
-This directory contains sample applications demonstrating NPA features.
+This directory contains sample applications demonstrating various features of the NPA (JPA-like ORM for .NET) library.
 
-## 📊 Current Status
+## 📁 Sample Projects
 
-| Sample | Status | Functional? | Phase | Description |
-|--------|--------|-------------|-------|-------------|
-| **BasicUsage** | ✅ Complete | Yes | 1.1-1.5 | Entity mapping, CRUD, queries with SQL Server/MySQL/PostgreSQL |
-| **AdvancedQueries** | ✅ Complete | Yes | 1.3 | Advanced CPQL queries with PostgreSQL |
-| **SourceGeneratorDemo** | ✅ Complete | Yes | 1.6 | Repository source generator demonstration |
-| **RepositoryPattern** | ✅ Builds | Partial | 2.4 | Repository pattern (needs full implementation) |
-| **WebApplication** | ✅ Builds | Partial | 2.4 | ASP.NET Core integration (basic) |
+### 1. **BasicUsage** ✅ Complete
+Demonstrates basic entity mapping, CRUD operations, and queries with all three database providers.
 
-## ✅ Fully Functional Samples
+**Features:**
+- Entity mapping with attributes
+- CRUD operations (Create, Read, Update, Delete)
+- CPQL queries (NPA's query language)
+- Multiple database providers (SQL Server, MySQL, PostgreSQL)
+- Relationship mapping examples
+- **NEW:** Synchronous vs Asynchronous methods comparison
 
-### BasicUsage (Phases 1.1-1.5)
-Demonstrates complete Phase 1 features:
-- ✅ Entity mapping with attributes (Phase 1.1)
-- ✅ EntityManager CRUD operations (Phase 1.2)
-- ✅ CPQL query language (Phase 1.3)
-- ✅ SQL Server provider (Phase 1.4 - 63 tests passing)
-- ✅ MySQL provider (Phase 1.5 - 86 tests passing) 🆕
-- ✅ PostgreSQL provider (alternative)
-
-**To Run**:
+**Run it:**
 ```bash
 cd BasicUsage
-dotnet run                    # Uses SQL Server (default)
-dotnet run mysql              # Uses MySQL 🆕
-dotnet run postgresql         # Uses PostgreSQL
+
+# Default (SQL Server)
+dotnet run
+
+# With specific provider
+dotnet run sqlserver
+dotnet run mysql
+dotnet run postgresql
+
+# Show sync vs async comparison
+dotnet run --sync-async
 ```
 
-### AdvancedQueries (Phase 1.3)
-Demonstrates advanced CPQL query capabilities:
-- ✅ Complex WHERE conditions with AND/OR
-- ✅ Range queries (BETWEEN equivalent)
-- ✅ Pattern matching (LIKE queries)
-- ✅ DateTime queries
-- ✅ NULL handling
-- ✅ COUNT aggregations
-- ✅ Bulk UPDATE operations
-- ✅ Multiple parameter binding
+### 2. **ConsoleAppSync** ✅ New (with Testcontainers)
+Console application demonstrating **synchronous methods** for CLI tools, scripts, and batch processing.
 
-**To Run**:
+**Features:**
+- Synchronous CRUD operations
+- Synchronous query execution
+- Batch operations
+- **Testcontainers integration** (SQL Server in Docker)
+- No external database required!
+- Follows same pattern as SqlServerProviderRunner
+
+**Run it:**
+```bash
+# Requires Docker Desktop running
+cd ConsoleAppSync
+dotnet run
+```
+
+**What it does:**
+1. 🐳 Starts SQL Server container automatically
+2. 📊 Runs sync method demos
+3. 🧹 Cleans up container on exit
+
+**When to use:**
+- Console applications
+- CLI tools and scripts
+- Batch processing jobs
+- Desktop applications (WPF, WinForms)
+- Database utilities
+
+**Technologies:**
+- Testcontainers.MsSql 3.6.0
+- Dependency Injection
+- SQL Server in Docker
+
+### 3. **AdvancedQueries** ✅ Complete
+Demonstrates advanced query features and CPQL (C# Persistence Query Language).
+
+**Features:**
+- Complex CPQL queries
+- Join operations
+- Aggregation functions
+- Parameterized queries
+- Query result mapping
+
+**Run it:**
 ```bash
 cd AdvancedQueries
-dotnet run                    # Uses PostgreSQL with Testcontainers
+dotnet run
 ```
 
-## 🚧 Partial/Placeholder Samples
+### 4. **SourceGeneratorDemo** ✅ Complete
+Demonstrates the repository source generator for automatic repository implementation.
 
-### RepositoryPattern
-- ✅ Builds successfully
-- 🚧 Partial implementation - needs Phase 2.4 features
+**Features:**
+- Repository pattern with source generators
+- Compile-time code generation
+- Type-safe repository methods
+- Automatic CRUD implementation
 
-### WebApplication
-- ✅ Builds successfully
-- 🚧 Basic ASP.NET Core integration
-- Needs full implementation for production use
+**Run it:**
+```bash
+cd SourceGeneratorDemo
+dotnet run
+```
 
-### SourceGeneratorDemo (Phase 1.6)
-- ✅ Complete - demonstrates repository source generator
-- Shows convention-based code generation
+### 5. **RepositoryPattern** 🚧 Partial
+Demonstrates manual repository pattern implementation.
 
-## 🎯 Creating New Samples
+**Status:** Basic structure, needs completion in Phase 2.4
 
-For detailed instructions on creating samples that match current implementation:
+### 6. **WebApplication** 🚧 Partial
+ASP.NET Core web application demonstrating **asynchronous methods** for web APIs.
 
-1. See task documents: `docs/tasks/samples/`
-2. Follow these ready-to-implement guides:
-   - [Phase 1.1 - Basic Entity Mapping](../docs/tasks/samples/phase1.1-basic-entity-mapping-sample.md)
-   - [Phase 1.2 - CRUD Operations](../docs/tasks/samples/phase1.2-crud-operations-sample.md)
-   - [Phase 1.3 - CPQL Queries](../docs/tasks/samples/phase1.3-cpql-query-sample.md)
+**Features:**
+- RESTful API with NPA
+- Asynchronous operations
+- Dependency injection
+- Controller-based architecture
+
+**Status:** Basic structure, needs completion in Phase 2.4
+
+**When to use:**
+- ASP.NET Core web applications
+- Web APIs and microservices
+- High-concurrency scenarios
+- Real-time applications
 
 ## 📚 Documentation
 
-- **Sample Status**: `docs/tasks/samples/EXISTING-SAMPLES-STATUS.md`
-- **Sample Index**: `docs/tasks/samples/SAMPLES-INDEX.md`
-- **Main README**: `docs/tasks/samples/README.md`
+Each sample includes its own README.md with:
+- Purpose and goals
+- Features demonstrated
+- Setup instructions
+- Code examples
+- Related concepts
 
-## 🔧 Quick Actions
+## ⚖️ Sync vs Async - Quick Guide
 
-### Update BasicUsage to PostgreSQL
-```bash
-# Edit samples/BasicUsage/Program.cs
-# Change line 9 from "sqlserver" to "postgresql"
-string provider = args.Length > 0 ? args[0].ToLowerInvariant() : "postgresql";
-
-# Run the sample
-dotnet run --project samples/BasicUsage
+### Use **Asynchronous Methods** (await/Task) ✅
+```csharp
+var user = await entityManager.FindAsync<User>(id);
+await entityManager.PersistAsync(user);
 ```
 
-### Create New Phase 1 Samples
-```bash
-# Follow the task documents to create focused samples
-# Each demonstrates a specific phase feature
-# Uses PostgreSQL (the completed provider)
+**Best for:**
+- ASP.NET Core web applications
+- Web APIs and microservices
+- High-concurrency services
+- Azure Functions
+- Any I/O-bound operations in web context
+
+**Why:** Frees up threads during database I/O, allowing better scalability
+
+### Use **Synchronous Methods** (blocking) ✅
+```csharp
+var user = entityManager.Find<User>(id);
+entityManager.Persist(user);
 ```
 
-## 💡 Recommendations
+**Best for:**
+- Console applications
+- CLI tools and scripts
+- Batch processing jobs
+- Desktop applications (WPF, WinForms)
+- Simple CRUD utilities
+- Database migration scripts
 
-1. **Use BasicUsage** as the primary reference for Phases 1.1-1.5
-2. **Use AdvancedQueries** to learn CPQL query capabilities
-3. **Use SourceGeneratorDemo** to see Phase 1.6 code generation
-4. **SQL Server provider** is production-ready with 63 passing tests (Phase 1.4)
-5. **MySQL provider** is production-ready with 86 passing tests (Phase 1.5)
-6. **PostgreSQL provider** is available as an alternative
-7. **Follow task documents** in `docs/tasks/` for phase-specific guidance
+**Why:** Simpler code flow, no async complexity needed
 
----
+## 🚀 Getting Started
 
-*Last Updated: October 10, 2025*  
-*Status: 3 fully functional samples demonstrating Phases 1.1-1.6*
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-org/npa.git
+   cd npa/samples
+   ```
+
+2. **Build all samples**
+   ```bash
+   dotnet build
+   ```
+
+3. **Run a specific sample**
+   ```bash
+   cd BasicUsage
+   dotnet run
+   ```
+
+## 🎯 Learning Path
+
+**Recommended order:**
+
+1. **BasicUsage** - Start here to learn the basics
+2. **ConsoleAppSync** - Learn synchronous methods
+3. **AdvancedQueries** - Deep dive into queries
+4. **SourceGeneratorDemo** - Explore code generation
+5. **WebApplication** - Build web APIs with NPA
+
+## 📖 Additional Resources
+
+- [Main README](../README.md) - Project overview
+- [Getting Started Guide](../docs/GettingStarted.md) - Detailed setup
+- [API Documentation](../README.md#-api-reference) - Complete API reference
+
+## 💡 Tips
+
+- All samples support multiple database providers
+- Check connection strings in Program.cs files
+- Each sample is self-contained and can run independently
+- Use `--help` flag on samples that support it
+- Check the console output for detailed explanations
+
+## 🤝 Contributing
+
+Found a bug or want to improve a sample? Contributions are welcome!
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## 📄 License
+
+MIT License - see [LICENSE](../LICENSE) for details

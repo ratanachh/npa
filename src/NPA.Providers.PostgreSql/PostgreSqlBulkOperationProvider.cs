@@ -200,6 +200,100 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
         }
     }
 
+    /// <inheritdoc />
+    public int BulkInsert<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var entityList = entities.ToList();
+        if (!entityList.Any())
+            return 0;
+
+        return BatchInsert(connection, entityList, metadata);
+    }
+
+    /// <inheritdoc />
+    public int BulkUpdate<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var entityList = entities.ToList();
+        if (!entityList.Any())
+            return 0;
+
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var tempTableName = $"temp_{metadata.TableName}_{Guid.NewGuid():N}";
+
+        try
+        {
+            var createTempTableSql = GenerateCreateTempTableSql(metadata, tempTableName);
+            connection.Execute(createTempTableSql);
+
+            BulkInsertToTempTable(connection, entityList, metadata, tempTableName);
+
+            var mergeSql = GenerateMergeSqlForUpdate(metadata, tempTableName, primaryKey);
+            var rowsAffected = connection.Execute(mergeSql);
+
+            return rowsAffected;
+        }
+        finally
+        {
+            try
+            {
+                connection.Execute($"DROP TABLE IF EXISTS {tempTableName}");
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public int BulkDelete(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (ids == null)
+            throw new ArgumentNullException(nameof(ids));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var idList = ids.ToList();
+        if (!idList.Any())
+            return 0;
+
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var tableName = _dialect.EscapeIdentifier(GetUnescapedTableName(metadata));
+        var pkColumn = _dialect.EscapeIdentifier(primaryKey.ColumnName);
+
+        var sql = $"DELETE FROM {tableName} WHERE {pkColumn} = ANY(@ids)";
+
+        try
+        {
+            var rowsAffected = connection.Execute(sql, new { ids = idList.ToArray() });
+            return rowsAffected;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Bulk delete operation failed for table {tableName}: {ex.Message}", ex);
+        }
+    }
+
     private async Task<int> BatchInsertAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken)
     {
         var entityList = entities.ToList();
@@ -340,6 +434,102 @@ WHERE target.{pkColumn} = temp.{pkColumn}";
     {
         var property = typeof(T).GetProperty(propertyName);
         return property?.GetValue(entity);
+    }
+
+    private int BatchInsert<T>(IDbConnection connection, IList<T> entities, EntityMetadata metadata)
+    {
+        var batches = entities.Chunk(MaxBatchSize);
+        var totalInserted = 0;
+
+        foreach (var batch in batches)
+        {
+            var columns = metadata.Properties.Values
+                .Where(p => !p.IsPrimaryKey || p.GenerationType != GenerationType.Identity)
+                .ToList();
+
+            var sql = GenerateBatchInsertSql(metadata, batch.Count());
+            var parameters = new DynamicParameters();
+            
+            var entityType = typeof(T);
+            int entityIndex = 0;
+            foreach (var entity in batch)
+            {
+                foreach (var property in columns)
+                {
+                    var propertyInfo = entityType.GetProperty(property.PropertyName);
+                    var value = propertyInfo?.GetValue(entity);
+                    var convertedValue = _typeConverter.ConvertToDatabase(value, property.PropertyType);
+                    
+                    parameters.Add($"p{entityIndex}_{property.PropertyName}", convertedValue);
+                }
+                entityIndex++;
+            }
+
+            var rowsInserted = connection.Execute(sql, parameters);
+            totalInserted += rowsInserted;
+        }
+
+        return totalInserted;
+    }
+
+    private void BulkInsertToTempTable<T>(IDbConnection connection, IList<T> entities, EntityMetadata metadata, string tempTableName)
+    {
+        var batches = entities.Chunk(MaxBatchSize);
+
+        foreach (var batch in batches)
+        {
+            var columns = metadata.Properties.Values.ToList();
+            var columnNames = string.Join(", ", columns.Select(p => _dialect.EscapeIdentifier(p.ColumnName)));
+
+            var valueRows = new List<string>();
+            var parameters = new DynamicParameters();
+            var entityType = typeof(T);
+            int entityIndex = 0;
+
+            foreach (var entity in batch)
+            {
+                var valueParams = new List<string>();
+                foreach (var property in columns)
+                {
+                    var paramName = $"p{entityIndex}_{property.PropertyName}";
+                    var propertyInfo = entityType.GetProperty(property.PropertyName);
+                    var value = propertyInfo?.GetValue(entity);
+                    var convertedValue = _typeConverter.ConvertToDatabase(value, property.PropertyType);
+                    
+                    parameters.Add(paramName, convertedValue);
+                    valueParams.Add($"@{paramName}");
+                }
+                valueRows.Add($"({string.Join(", ", valueParams)})");
+                entityIndex++;
+            }
+
+            var sql = $"INSERT INTO {tempTableName} ({columnNames}) VALUES {string.Join(", ", valueRows)}";
+            connection.Execute(sql, parameters);
+        }
+    }
+
+    private string GenerateMergeSqlForUpdate(EntityMetadata metadata, string tempTableName, PropertyMetadata primaryKey)
+    {
+        var tableName = GetTableName(metadata);
+        var pkColumn = _dialect.EscapeIdentifier(primaryKey.ColumnName);
+
+        var updateColumns = metadata.Properties.Values
+            .Where(p => !p.IsPrimaryKey)
+            .Select(p => $"{_dialect.EscapeIdentifier(p.ColumnName)} = temp.{_dialect.EscapeIdentifier(p.ColumnName)}")
+            .ToList();
+
+        return $@"UPDATE {tableName} AS target
+SET {string.Join(",\n    ", updateColumns)}
+FROM {tempTableName} AS temp
+WHERE target.{pkColumn} = temp.{pkColumn}";
+    }
+
+    private string GetUnescapedTableName(EntityMetadata metadata)
+    {
+        if (!string.IsNullOrWhiteSpace(metadata.SchemaName))
+            return $"{metadata.SchemaName}.{metadata.TableName}";
+        
+        return metadata.TableName;
     }
 }
 

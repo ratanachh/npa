@@ -193,6 +193,147 @@ public class MySqlBulkOperationProvider : IBulkOperationProvider
     }
 
     /// <inheritdoc />
+    public int BulkInsert<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var entityList = entities.ToList();
+        if (!entityList.Any())
+            return 0;
+
+        // MySQL bulk insert strategy: Use multi-row INSERT
+        var tableName = GetUnescapedTableName(metadata);
+        var columns = metadata.Properties.Values
+            .Where(p => !p.IsPrimaryKey || p.GenerationType != GenerationType.Identity)
+            .ToList();
+
+        var columnNames = string.Join(", ", columns.Select(p => _dialect.EscapeIdentifier(p.ColumnName)));
+        
+        var totalInserted = 0;
+        var batches = entityList.Chunk(MaxBatchSize);
+
+        foreach (var batch in batches)
+        {
+            var valueLists = new List<string>();
+            var parameters = new DynamicParameters();
+            var paramIndex = 0;
+
+            var entityType = typeof(T);
+            foreach (var entity in batch)
+            {
+                var valueParams = new List<string>();
+                foreach (var property in columns)
+                {
+                    var paramName = $"p{paramIndex}";
+                    var propertyInfo = entityType.GetProperty(property.PropertyName);
+                    var value = propertyInfo?.GetValue(entity);
+                    var convertedValue = _typeConverter.ConvertToDatabase(value, property.PropertyType);
+                    parameters.Add(paramName, convertedValue);
+                    valueParams.Add($"@{paramName}");
+                    paramIndex++;
+                }
+                valueLists.Add($"({string.Join(", ", valueParams)})");
+            }
+
+            var sql = $"INSERT INTO {_dialect.EscapeIdentifier(tableName)} ({columnNames}) VALUES {string.Join(", ", valueLists)}";
+            var affected = connection.Execute(sql, parameters);
+            totalInserted += affected;
+        }
+
+        return totalInserted;
+    }
+
+    /// <inheritdoc />
+    public int BulkUpdate<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var entityList = entities.ToList();
+        if (!entityList.Any())
+            return 0;
+
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var totalUpdated = 0;
+        var entityType = typeof(T);
+
+        foreach (var entity in entityList)
+        {
+            var parameters = new DynamicParameters();
+            var setClauses = new List<string>();
+
+            foreach (var property in metadata.Properties.Values.Where(p => !p.IsPrimaryKey))
+            {
+                var propertyInfo = entityType.GetProperty(property.PropertyName);
+                var value = propertyInfo?.GetValue(entity);
+                var convertedValue = _typeConverter.ConvertToDatabase(value, property.PropertyType);
+                
+                parameters.Add(property.PropertyName, convertedValue);
+                setClauses.Add($"{_dialect.EscapeIdentifier(property.ColumnName)} = @{property.PropertyName}");
+            }
+
+            var pkPropertyInfo = entityType.GetProperty(primaryKey.PropertyName);
+            var pkValue = pkPropertyInfo?.GetValue(entity);
+            parameters.Add(primaryKey.PropertyName, pkValue);
+
+            var sql = $@"UPDATE {_dialect.EscapeIdentifier(GetUnescapedTableName(metadata))} 
+SET {string.Join(", ", setClauses)} 
+WHERE {_dialect.EscapeIdentifier(primaryKey.ColumnName)} = @{primaryKey.PropertyName}";
+
+            var affected = connection.Execute(sql, parameters);
+            totalUpdated += affected;
+        }
+
+        return totalUpdated;
+    }
+
+    /// <inheritdoc />
+    public int BulkDelete(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata)
+    {
+        if (connection == null)
+            throw new ArgumentNullException(nameof(connection));
+        if (ids == null)
+            throw new ArgumentNullException(nameof(ids));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
+
+        var idList = ids.ToList();
+        if (!idList.Any())
+            return 0;
+
+        var primaryKey = metadata.Properties.Values.FirstOrDefault(p => p.IsPrimaryKey)
+            ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
+
+        var tableName = _dialect.EscapeIdentifier(GetUnescapedTableName(metadata));
+        var primaryKeyColumn = _dialect.EscapeIdentifier(primaryKey.ColumnName);
+
+        // Use IN clause for bulk deletes
+        var parameters = new DynamicParameters();
+        var parameterNames = new List<string>();
+        
+        for (int i = 0; i < idList.Count; i++)
+        {
+            var paramName = $"id{i}";
+            parameters.Add(paramName, idList[i]);
+            parameterNames.Add($"@{paramName}");
+        }
+
+        var sql = $"DELETE FROM {tableName} WHERE {primaryKeyColumn} IN ({string.Join(", ", parameterNames)})";
+        return connection.Execute(sql, parameters);
+    }
+
+    /// <inheritdoc />
     public object CreateTableValuedParameter<T>(IEnumerable<T> entities, EntityMetadata metadata, string typeName)
     {
         // MySQL doesn't support table-valued parameters

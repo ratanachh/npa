@@ -23,33 +23,64 @@ public interface IQuery<T> : IDisposable
     IQuery<T> SetParameter(int index, object? value);
 
     /// <summary>
-    /// Executes the query and returns a list of results.
+    /// Executes the query and returns a list of results asynchronously.
     /// </summary>
     /// <returns>A task representing the asynchronous operation. The task result contains the list of entities.</returns>
     Task<IEnumerable<T>> GetResultListAsync();
 
     /// <summary>
-    /// Executes the query and returns a single result, or null if no results are found.
+    /// Executes the query and returns a list of results synchronously.
+    /// </summary>
+    /// <returns>The list of entities.</returns>
+    IEnumerable<T> GetResultList();
+
+    /// <summary>
+    /// Executes the query and returns a single result asynchronously, or null if no results are found.
     /// </summary>
     /// <returns>A task representing the asynchronous operation. The task result contains the single entity, or null if not found.</returns>
     Task<T?> GetSingleResultAsync();
 
     /// <summary>
-    /// Executes the query and returns a single result, throwing an exception if no results are found.
+    /// Executes the query and returns a single result synchronously, or null if no results are found.
+    /// </summary>
+    /// <returns>The single entity, or null if not found.</returns>
+    T? GetSingleResult();
+
+    /// <summary>
+    /// Executes the query and returns a single result asynchronously, throwing an exception if no results are found.
     /// </summary>
     /// <returns>A task representing the asynchronous operation. The task result contains the single entity.</returns>
     /// <exception cref="InvalidOperationException">Thrown when no results are found.</exception>
     Task<T> GetSingleResultRequiredAsync();
 
     /// <summary>
-    /// Executes an update or delete query and returns the number of affected rows.
+    /// Executes the query and returns a single result synchronously, throwing an exception if no results are found.
+    /// </summary>
+    /// <returns>The single entity.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when no results are found.</exception>
+    T GetSingleResultRequired();
+
+    /// <summary>
+    /// Executes an update or delete query asynchronously and returns the number of affected rows.
     /// </summary>
     /// <returns>A task representing the asynchronous operation. The task result contains the number of affected rows.</returns>
     Task<int> ExecuteUpdateAsync();
 
     /// <summary>
-    /// Executes a scalar query and returns the scalar value.
+    /// Executes an update or delete query synchronously and returns the number of affected rows.
+    /// </summary>
+    /// <returns>The number of affected rows.</returns>
+    int ExecuteUpdate();
+
+    /// <summary>
+    /// Executes a scalar query asynchronously and returns the scalar value.
     /// </summary>
     /// <returns>A task representing the asynchronous operation. The task result contains the scalar value.</returns>
     Task<object?> ExecuteScalarAsync();
+
+    /// <summary>
+    /// Executes a scalar query synchronously and returns the scalar value.
+    /// </summary>
+    /// <returns>The scalar value.</returns>
+    object? ExecuteScalar();
 }
