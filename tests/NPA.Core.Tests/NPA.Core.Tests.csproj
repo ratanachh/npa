@@ -26,6 +26,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.PostgreSql\NPA.Providers.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Providers.SqlServer\NPA.Providers.SqlServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.MsSql" Version="3.6.0" />
   </ItemGroup>
 
 </Project>

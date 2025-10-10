@@ -58,6 +58,21 @@ public sealed class CompositeKey : IEquatable<CompositeKey>
     /// </summary>
     public IReadOnlyDictionary<string, object> Values => _values;
 
+    /// <summary>
+    /// Determines whether the composite key contains the specified property name.
+    /// </summary>
+    /// <param name="propertyName">The property name.</param>
+    /// <returns>True if the composite key contains the property; otherwise, false.</returns>
+    public bool ContainsKey(string propertyName)
+    {
+        return _values.ContainsKey(propertyName);
+    }
+
+    /// <summary>
+    /// Gets the number of key components.
+    /// </summary>
+    public int Count => _values.Count;
+
     /// <inheritdoc />
     public bool Equals(CompositeKey? other)
     {
@@ -93,5 +108,15 @@ public sealed class CompositeKey : IEquatable<CompositeKey>
             hash.Add(kvp.Value);
         }
         return hash.ToHashCode();
+    }
+
+    /// <inheritdoc />
+    public override string ToString()
+    {
+        var sb = new StringBuilder();
+        sb.Append("CompositeKey(");
+        sb.Append(string.Join(", ", _values.Select(kvp => $"{kvp.Key}={kvp.Value}")));
+        sb.Append(")");
+        return sb.ToString();
     }
 }

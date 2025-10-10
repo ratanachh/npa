@@ -36,6 +36,31 @@ public sealed class EntityMetadata
     public Dictionary<string, RelationshipMetadata> Relationships { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the composite key metadata (if entity has a composite key).
+    /// </summary>
+    public CompositeKeyMetadata? CompositeKeyMetadata { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether this entity has a composite key.
+    /// </summary>
+    public bool HasCompositeKey => CompositeKeyMetadata != null && CompositeKeyMetadata.IsCompositeKey;
+
+    /// <summary>
+    /// Gets the list of primary key property names.
+    /// </summary>
+    public IList<string> PrimaryKeyProperties
+    {
+        get
+        {
+            if (HasCompositeKey && CompositeKeyMetadata != null)
+            {
+                return CompositeKeyMetadata.KeyNames;
+            }
+            return new List<string> { PrimaryKeyProperty };
+        }
+    }
+
+    /// <summary>
     /// Gets the full table name including schema if specified.
     /// </summary>
     public string FullTableName => string.IsNullOrEmpty(SchemaName) ? TableName : $"{SchemaName}.{TableName}";

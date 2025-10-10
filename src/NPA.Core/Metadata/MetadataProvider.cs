@@ -65,21 +65,38 @@ public sealed class MetadataProvider : IMetadataProvider
 
         // Get property metadata
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var primaryKeyProperties = new List<PropertyMetadata>();
+        
         foreach (var property in properties)
         {
             var propertyMetadata = BuildPropertyMetadata(property);
             metadata.Properties[property.Name] = propertyMetadata;
 
-            // Set primary key if this property has the Id attribute
+            // Collect all primary key properties
             if (propertyMetadata.IsPrimaryKey)
             {
-                metadata.PrimaryKeyProperty = property.Name;
+                primaryKeyProperties.Add(propertyMetadata);
             }
         }
 
-        if (string.IsNullOrEmpty(metadata.PrimaryKeyProperty))
+        // Validate and configure primary key
+        if (primaryKeyProperties.Count == 0)
         {
-            throw new InvalidOperationException($"Entity {entityType.Name} must have a property marked with [Id] attribute.");
+            throw new InvalidOperationException($"Entity {entityType.Name} must have at least one property marked with [Id] attribute.");
+        }
+        else if (primaryKeyProperties.Count == 1)
+        {
+            // Single primary key
+            metadata.PrimaryKeyProperty = primaryKeyProperties[0].PropertyName;
+        }
+        else
+        {
+            // Composite key (multiple [Id] attributes)
+            metadata.PrimaryKeyProperty = primaryKeyProperties[0].PropertyName; // Set first as primary for compatibility
+            metadata.CompositeKeyMetadata = new CompositeKeyMetadata
+            {
+                KeyProperties = primaryKeyProperties
+            };
         }
 
         // Build relationships after properties are set

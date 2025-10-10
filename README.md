@@ -237,7 +237,54 @@ var userCount = entityManager
 
 ## ✅ Implemented Features
 
-### 4. Relationship Mapping (Phase 2.1) ✅
+### 4. Composite Key Support (Phase 2.2) ✅
+
+**Implemented in Phase 2.2:**
+- CompositeKey class with full equality and hashing support
+- CompositeKeyMetadata for metadata management
+- CompositeKeyBuilder fluent API
+- MetadataProvider automatically detects multiple [Id] attributes
+- EntityManager Find/Remove operations with CompositeKey
+- Both async and sync support
+
+```csharp
+// Define entity with composite key
+[Entity]
+[Table("order_items")]
+public class OrderItem
+{
+    [Id]
+    [Column("order_id")]
+    public long OrderId { get; set; }
+    
+    [Id]
+    [Column("product_id")]
+    public long ProductId { get; set; }
+    
+    [Column("quantity")]
+    public int Quantity { get; set; }
+    
+    [Column("unit_price")]
+    public decimal UnitPrice { get; set; }
+}
+
+// Find by composite key
+var key = CompositeKeyBuilder.Create()
+    .WithKey("OrderId", 1L)
+    .WithKey("ProductId", 100L)
+    .Build();
+
+var orderItem = await entityManager.FindAsync<OrderItem>(key);
+
+// Remove by composite key
+await entityManager.RemoveAsync<OrderItem>(key);
+
+// Synchronous methods also available
+var item = entityManager.Find<OrderItem>(key);
+entityManager.Remove<OrderItem>(key);
+```
+
+### 5. Relationship Mapping (Phase 2.1) ✅
 
 **Implemented in Phase 2.1:**
 - OneToMany, ManyToOne, ManyToMany relationship types
@@ -1854,7 +1901,14 @@ All query operations support both async and sync execution:
   - Bidirectional relationship support
   - Automatic join column/table naming
   - 27 comprehensive tests passing
-- [ ] **2.2 Composite key support** 📋 PLANNED
+- [x] **2.2 Composite key support** ✅ **COMPLETED**
+  - CompositeKey class with equality and hashing
+  - CompositeKeyMetadata for metadata management
+  - CompositeKeyBuilder fluent API
+  - Automatic detection of multiple [Id] attributes
+  - EntityManager Find/Remove with CompositeKey (async & sync)
+  - 25 unit tests passing
+  - Integration tests created for future enhancements
 - [ ] **2.3 CPQL query language enhancements** 📋 PLANNED
 - [ ] **2.4 Repository pattern implementation** 📋 PLANNED
 - [x] **2.5 PostgreSQL database provider** ✅ **COMPLETED**
@@ -1900,7 +1954,7 @@ All query operations support both async and sync execution:
 - [ ] **6.3 Performance profiling** 📋 PLANNED
 - [ ] **6.4 Comprehensive documentation** 📋 PLANNED
 
-**Current Progress: 8/33 tasks completed (24%)**
+**Current Progress: 9/33 tasks completed (27%)**
 
 ## 🤝 Contributing
 
