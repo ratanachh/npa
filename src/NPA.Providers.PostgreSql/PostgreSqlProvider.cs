@@ -1,19 +1,42 @@
 using System.Data;
-using Dapper;
 using NPA.Core.Annotations;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
-using Npgsql;
 
 namespace NPA.Providers.PostgreSql;
 
 /// <summary>
-/// PostgreSQL database provider implementation for NPA.
+/// PostgreSQL-specific database provider implementation.
 /// </summary>
 public class PostgreSqlProvider : IDatabaseProvider
 {
-    private const string QuoteChar = "\"";
-    
+    private readonly ISqlDialect _dialect;
+    private readonly ITypeConverter _typeConverter;
+    private readonly IBulkOperationProvider _bulkOperationProvider;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PostgreSqlProvider"/> class.
+    /// </summary>
+    public PostgreSqlProvider()
+    {
+        _dialect = new PostgreSqlDialect();
+        _typeConverter = new PostgreSqlTypeConverter();
+        _bulkOperationProvider = new PostgreSqlBulkOperationProvider(_dialect, _typeConverter);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PostgreSqlProvider"/> class with custom dependencies.
+    /// </summary>
+    /// <param name="dialect">The SQL dialect.</param>
+    /// <param name="typeConverter">The type converter.</param>
+    /// <param name="bulkOperationProvider">The bulk operation provider.</param>
+    public PostgreSqlProvider(ISqlDialect dialect, ITypeConverter typeConverter, IBulkOperationProvider bulkOperationProvider)
+    {
+        _dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+        _typeConverter = typeConverter ?? throw new ArgumentNullException(nameof(typeConverter));
+        _bulkOperationProvider = bulkOperationProvider ?? throw new ArgumentNullException(nameof(bulkOperationProvider));
+    }
+
     /// <inheritdoc />
     public string GenerateInsertSql(EntityMetadata metadata)
     {
@@ -139,11 +162,11 @@ public class PostgreSqlProvider : IDatabaseProvider
         if (metadata == null)
             throw new ArgumentNullException(nameof(metadata));
 
-        var tableName = EscapeIdentifier(metadata.TableName);
+        var tableName = _dialect.EscapeIdentifier(metadata.TableName);
 
         if (!string.IsNullOrWhiteSpace(metadata.SchemaName))
         {
-            var schemaName = EscapeIdentifier(metadata.SchemaName);
+            var schemaName = _dialect.EscapeIdentifier(metadata.SchemaName);
             return $"{schemaName}.{tableName}";
         }
 
@@ -156,7 +179,7 @@ public class PostgreSqlProvider : IDatabaseProvider
         if (property == null)
             throw new ArgumentNullException(nameof(property));
 
-        return EscapeIdentifier(property.ColumnName);
+        return _dialect.EscapeIdentifier(property.ColumnName);
     }
 
     /// <inheritdoc />
@@ -171,142 +194,31 @@ public class PostgreSqlProvider : IDatabaseProvider
     /// <inheritdoc />
     public object? ConvertParameterValue(object? value, Type targetType)
     {
-        if (value == null)
-            return null;
-
-        // PostgreSQL-specific type conversions
-        if (targetType == typeof(bool) || targetType == typeof(bool?))
-        {
-            if (value is bool boolValue)
-                return boolValue;
-            if (value is string stringValue)
-                return bool.Parse(stringValue);
-        }
-
-        return value;
+        return _typeConverter.ConvertToDatabase(value, targetType);
     }
 
     /// <inheritdoc />
     public async Task<int> BulkInsertAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default)
     {
-        if (connection == null)
-            throw new ArgumentNullException(nameof(connection));
-        if (entities == null)
-            throw new ArgumentNullException(nameof(entities));
-        if (metadata == null)
-            throw new ArgumentNullException(nameof(metadata));
-
-        var entityList = entities.ToList();
-        if (!entityList.Any())
-            return 0;
-
-        // For PostgreSQL, we'll use COPY or batch INSERT
-        // For now, implement as batch INSERT
-        var sql = GenerateInsertSql(metadata);
-        var affectedRows = 0;
-
-        foreach (var entity in entityList)
-        {
-            if (entity == null) continue;
-            var parameters = ExtractParameters(entity, metadata);
-            affectedRows += await connection.ExecuteAsync(sql, parameters);
-        }
-
-        return affectedRows;
+        return await _bulkOperationProvider.BulkInsertAsync(connection, entities, metadata, cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task<int> BulkUpdateAsync<T>(IDbConnection connection, IEnumerable<T> entities, EntityMetadata metadata, CancellationToken cancellationToken = default)
     {
-        if (connection == null)
-            throw new ArgumentNullException(nameof(connection));
-        if (entities == null)
-            throw new ArgumentNullException(nameof(entities));
-        if (metadata == null)
-            throw new ArgumentNullException(nameof(metadata));
-
-        var entityList = entities.ToList();
-        if (!entityList.Any())
-            return 0;
-
-        var sql = GenerateUpdateSql(metadata);
-        var affectedRows = 0;
-
-        foreach (var entity in entityList)
-        {
-            if (entity == null) continue;
-            var parameters = ExtractParameters(entity, metadata);
-            affectedRows += await connection.ExecuteAsync(sql, parameters);
-        }
-
-        return affectedRows;
+        return await _bulkOperationProvider.BulkUpdateAsync(connection, entities, metadata, cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task<int> BulkDeleteAsync(IDbConnection connection, IEnumerable<object> ids, EntityMetadata metadata, CancellationToken cancellationToken = default)
     {
-        if (connection == null)
-            throw new ArgumentNullException(nameof(connection));
-        if (ids == null)
-            throw new ArgumentNullException(nameof(ids));
-        if (metadata == null)
-            throw new ArgumentNullException(nameof(metadata));
-
-        var idList = ids.ToList();
-        if (!idList.Any())
-            return 0;
-
-        var sql = GenerateDeleteSql(metadata);
-        var affectedRows = 0;
-
-        foreach (var id in idList)
-        {
-            var parameters = new { id };
-            affectedRows += await connection.ExecuteAsync(sql, parameters);
-        }
-
-        return affectedRows;
-    }
-
-    private string EscapeIdentifier(string identifier)
-    {
-        if (string.IsNullOrWhiteSpace(identifier))
-            throw new ArgumentException("Identifier cannot be null or empty.", nameof(identifier));
-
-        // PostgreSQL uses double quotes for identifiers and lowercases unquoted identifiers
-        return $"{QuoteChar}{identifier}{QuoteChar}";
-    }
-
-    private Dictionary<string, object?> ExtractParameters(object entity, EntityMetadata metadata)
-    {
-        var parameters = new Dictionary<string, object?>();
-        var entityType = entity.GetType();
-
-        foreach (var kvp in metadata.Properties)
-        {
-            var propertyName = kvp.Key;
-            var propertyMetadata = kvp.Value;
-            var property = entityType.GetProperty(propertyName);
-
-            if (property?.CanRead == true)
-            {
-                // Skip identity columns - they should be auto-generated by the database
-                if (propertyMetadata.IsPrimaryKey && propertyMetadata.GenerationType == GenerationType.Identity)
-                {
-                    continue;
-                }
-
-                var value = property.GetValue(entity);
-                parameters[propertyName] = value;
-            }
-        }
-        return parameters;
+        return await _bulkOperationProvider.BulkDeleteAsync(connection, ids, metadata, cancellationToken);
     }
 
     private string GetPropertyNameFromColumn(EntityMetadata metadata, string columnName)
     {
         var property = metadata.Properties.Values
-            .FirstOrDefault(p => EscapeIdentifier(p.ColumnName) == columnName);
+            .FirstOrDefault(p => _dialect.EscapeIdentifier(p.ColumnName) == columnName);
         
         return property?.PropertyName ?? columnName.Trim('"');
     }

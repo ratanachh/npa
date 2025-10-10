@@ -207,13 +207,14 @@ public class PostgreSqlProviderTests
     }
 
     [Fact]
-    public void ConvertParameterValue_WithNull_ShouldReturnNull()
+    public void ConvertParameterValue_WithNull_ShouldReturnDBNull()
     {
         // Act
         var result = _provider.ConvertParameterValue(null, typeof(string));
 
         // Assert
-        result.Should().BeNull();
+        // PostgreSQL provider returns DBNull.Value for null values (Dapper compatibility)
+        result.Should().Be(DBNull.Value);
     }
 
     [Fact]

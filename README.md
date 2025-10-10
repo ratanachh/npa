@@ -1274,11 +1274,13 @@ NPA/
 │   │   ├── MySqlBulkOperationProvider.cs
 │   │   └── Extensions/
 │   │       └── ServiceCollectionExtensions.cs
-│   ├── NPA.Providers.PostgreSql/ # PostgreSQL provider ⚠️ Partially Complete (Phase 2.5)
+│   ├── NPA.Providers.PostgreSql/ # PostgreSQL provider ✅ Complete (Phase 2.5)
 │   │   ├── PostgreSqlProvider.cs
 │   │   ├── PostgreSqlDialect.cs
 │   │   ├── PostgreSqlTypeConverter.cs
-│   │   └── PostgreSqlBulkOperationProvider.cs
+│   │   ├── PostgreSqlBulkOperationProvider.cs
+│   │   └── Extensions/
+│   │       └── ServiceCollectionExtensions.cs
 │   ├── NPA.Providers.Sqlite/     # SQLite provider 🚧 (Phase 2.5)
 │   │   ├── SqliteProvider.cs
 │   │   ├── SqliteDialect.cs
@@ -1624,7 +1626,18 @@ public class UserService
 - [ ] **2.2 Composite key support** 📋 PLANNED
 - [ ] **2.3 CPQL query language enhancements** 📋 PLANNED
 - [ ] **2.4 Repository pattern implementation** 📋 PLANNED
-- [ ] **2.5 Additional database providers** (PostgreSQL, MySQL, SQLite) 📋 PLANNED
+- [x] **2.5 PostgreSQL database provider** ✅ **COMPLETED**
+  - PostgreSqlProvider with full CRUD support
+  - PostgreSqlDialect for PostgreSQL-specific SQL
+  - PostgreSqlTypeConverter for type mapping
+  - PostgreSqlBulkOperationProvider with COPY command
+  - RETURNING clause support (vs SCOPE_IDENTITY)
+  - JSONB, UUID, array, and interval types
+  - Full-text search with GIN indexes
+  - UPSERT support (INSERT...ON CONFLICT)
+  - 132 tests passing ✅
+  - Complete DI integration
+  - (SQLite provider remaining for Phase 2.5)
 - [ ] **2.6 Metadata Source Generator** 📋 PLANNED
 
 ### Phase 3: Transaction & Performance
@@ -1656,7 +1669,7 @@ public class UserService
 - [ ] **6.3 Performance profiling** 📋 PLANNED
 - [ ] **6.4 Comprehensive documentation** 📋 PLANNED
 
-**Current Progress: 7/33 tasks completed (21%)**
+**Current Progress: 8/33 tasks completed (24%)**
 
 ## 🤝 Contributing
 
