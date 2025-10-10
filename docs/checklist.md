@@ -115,14 +115,14 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 
 ## 📋 Overall Progress
 
-- [x] **Phase 1: Core Foundation** (3/6 tasks completed)
-- [ ] **Phase 2: Advanced Features** (0/6 tasks completed)
+- [x] **Phase 1: Core Foundation** (6/6 tasks completed) ✅
+- [x] **Phase 2: Advanced Features** (1/6 tasks completed)
 - [ ] **Phase 3: Transaction & Performance** (0/5 tasks completed)
 - [ ] **Phase 4: Source Generator Enhancement** (0/7 tasks completed)
 - [ ] **Phase 5: Enterprise Features** (0/5 tasks completed)
 - [ ] **Phase 6: Tooling & Ecosystem** (0/4 tasks completed)
 
-**Total Progress: 3/33 tasks completed (9%)**
+**Total Progress: 7/33 tasks completed (21%)**
 
 ## 🎉 Recent Accomplishments
 
@@ -213,47 +213,51 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 - [x] Document Query usage
 
 ### 1.4 SQL Server Provider
-- [ ] Create `IDatabaseProvider` interface
-- [ ] Create `SqlServerProvider` class
-- [ ] Implement connection management
-- [ ] Implement SQL generation
-- [ ] Add SQL Server specific features
-- [ ] Add unit tests for SqlServerProvider
-- [ ] Document SqlServerProvider usage
+- [x] Create `IDatabaseProvider` interface
+- [x] Create `SqlServerProvider` class
+- [x] Implement connection management
+- [x] Implement SQL generation
+- [x] Add SQL Server specific features
+- [x] Add unit tests for SqlServerProvider (63 tests passing ✅)
+- [x] Document SqlServerProvider usage
 
 ### 1.5 MySQL/MariaDB Provider
-- [ ] Create `MySqlProvider` class
-- [ ] Implement MySQL-specific SQL generation
-- [ ] Add auto increment support
-- [ ] Add JSON support
-- [ ] Add spatial data support
-- [ ] Add full-text search support
-- [ ] Add generated columns support
-- [ ] Add bulk operations with MySqlBulkLoader
-- [ ] Add unit tests for MySqlProvider
-- [ ] Document MySQL/MariaDB features
+- [x] Create `MySqlProvider` class
+- [x] Implement MySQL-specific SQL generation
+- [x] Add auto increment support
+- [x] Add JSON support
+- [x] Add spatial data support
+- [x] Add full-text search support
+- [x] Add generated columns support
+- [x] Add bulk operations with MySqlBulkLoader
+- [x] Add unit tests for MySqlProvider
+- [x] Document MySQL/MariaDB features
 
 ### 1.6 Repository Source Generator (Basic)
-- [ ] Create `RepositoryGenerator` class
-- [ ] Implement syntax receiver
-- [ ] Implement basic code generation
-- [ ] Add convention-based method generation
-- [ ] Add unit tests for generator
-- [ ] Document generator usage
+- [x] Create `RepositoryGenerator` class
+- [x] Implement syntax receiver
+- [x] Implement basic code generation
+- [x] Add convention-based method generation
+- [x] Add unit tests for generator
+- [x] Document generator usage
+
+> **Note**: Basic implementation complete. Advanced features deferred to Phase 4.
 
 ---
 
 ## 🚀 Phase 2: Advanced Features
 
 ### 2.1 Relationship Mapping
-- [ ] Create `OneToManyAttribute` class
-- [ ] Create `ManyToOneAttribute` class
-- [ ] Create `ManyToManyAttribute` class
-- [ ] Create `JoinColumnAttribute` class
-- [ ] Create `JoinTableAttribute` class
-- [ ] Implement relationship metadata
-- [ ] Add unit tests for relationships
-- [ ] Document relationship usage
+- [x] Create `OneToManyAttribute` class
+- [x] Create `ManyToOneAttribute` class
+- [x] Create `ManyToManyAttribute` class
+- [x] Create `JoinColumnAttribute` class
+- [x] Create `JoinTableAttribute` class
+- [x] Implement relationship metadata
+- [x] Add unit tests for relationships (27 tests passing ✅)
+- [x] Document relationship usage
+
+> **Note**: Lazy loading deferred to Phase 3.4. Join query SQL generation deferred to Phase 2.3.
 
 ### 2.2 Composite Key Support
 - [ ] Create `CompositeKey` class
