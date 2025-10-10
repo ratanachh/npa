@@ -74,7 +74,7 @@ public class PostgreSqlProviderTests
 
         // Assert
         sql.Should().NotBeNullOrEmpty();
-        sql.Should().Contain("SELECT \"Id\", \"Username\", \"Email\", \"CreatedAt\", \"IsActive\"");
+        sql.Should().Contain("SELECT \"Id\" AS Id, \"Username\" AS Username, \"Email\" AS Email, \"CreatedAt\" AS CreatedAt, \"IsActive\" AS IsActive");
         sql.Should().Contain("FROM \"public\".\"users\"");
     }
 
@@ -86,7 +86,7 @@ public class PostgreSqlProviderTests
 
         // Assert
         sql.Should().NotBeNullOrEmpty();
-        sql.Should().Contain("SELECT \"Id\", \"Username\", \"Email\", \"CreatedAt\", \"IsActive\"");
+        sql.Should().Contain("SELECT \"Id\" AS Id, \"Username\" AS Username, \"Email\" AS Email, \"CreatedAt\" AS CreatedAt, \"IsActive\" AS IsActive");
         sql.Should().Contain("FROM \"public\".\"users\"");
         sql.Should().Contain("WHERE \"Id\" = @id");
     }

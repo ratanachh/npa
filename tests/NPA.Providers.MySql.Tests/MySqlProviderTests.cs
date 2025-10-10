@@ -72,7 +72,7 @@ public class MySqlProviderTests
 
         // Assert
         sql.Should().NotBeNullOrEmpty();
-        sql.Should().Contain("SELECT `Id`, `Username`, `Email`, `CreatedAt`, `IsActive`");
+        sql.Should().Contain("SELECT `Id` AS Id, `Username` AS Username, `Email` AS Email, `CreatedAt` AS CreatedAt, `IsActive` AS IsActive");
         sql.Should().Contain("FROM `mydb`.`users`");
     }
 
@@ -84,7 +84,7 @@ public class MySqlProviderTests
 
         // Assert
         sql.Should().NotBeNullOrEmpty();
-        sql.Should().Contain("SELECT `Id`, `Username`, `Email`, `CreatedAt`, `IsActive`");
+        sql.Should().Contain("SELECT `Id` AS Id, `Username` AS Username, `Email` AS Email, `CreatedAt` AS CreatedAt, `IsActive` AS IsActive");
         sql.Should().Contain("FROM `mydb`.`users`");
         sql.Should().Contain("WHERE `Id` = @id");
     }
@@ -219,7 +219,7 @@ public class MySqlProviderTests
 
         // Assert
         sql.Should().NotBeNullOrEmpty();
-        sql.Should().Contain("SELECT `Id`, `Username`, `Email`, `CreatedAt`, `IsActive`");
+        sql.Should().Contain("SELECT `Id` AS Id, `Username` AS Username, `Email` AS Email, `CreatedAt` AS CreatedAt, `IsActive` AS IsActive");
         sql.Should().Contain("FROM `mydb`.`users`");
         sql.Should().Contain("WHERE `IsActive` = 1");
     }

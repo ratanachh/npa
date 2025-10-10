@@ -100,10 +100,13 @@ public sealed class EntityManager : IEntityManager
 
     private async Task InsertEntityAsync<T>(T entity, EntityMetadata metadata) where T : class
     {
+        var sql = "";
+        object? parameters;
         if (HasGeneratedId(metadata))
         {
-            var sql = _databaseProvider.GenerateInsertSql(metadata);
-            var parameters = ExtractParameters(entity, metadata);
+            // Entity has auto-generated ID (Identity, Sequence, etc.)
+            sql = _databaseProvider.GenerateInsertSql(metadata);
+            parameters = ExtractParameters(entity, metadata);
 
             try
             {
@@ -119,11 +122,24 @@ public sealed class EntityManager : IEntityManager
                 throw;
             }
         }
-        else
+        
+        sql = _databaseProvider.GenerateInsertSql(metadata);
+        parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include key column
+
+        try
         {
-            // Queue the operation for batch execution
+            await _connection.ExecuteAsync(sql, parameters);
             _changeTracker.Track(entity, EntityState.Added);
-            _logger?.LogDebug("Queued entity of type {EntityType} for batch persistence", typeof(T).Name);
+
+            _logger?.LogDebug(
+                metadata.HasCompositeKey
+                    ? "Successfully inserted entity of type {EntityType} with composite key"
+                    : "Successfully inserted entity of type {EntityType} with manual key", typeof(T).Name);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error inserting entity of type {EntityType}", typeof(T).Name);
+            throw;
         }
     }
 
@@ -544,10 +560,13 @@ public sealed class EntityManager : IEntityManager
 
     private void InsertEntity<T>(T entity, EntityMetadata metadata) where T : class
     {
+        var sql = "";
+        object? parameters;
         if (HasGeneratedId(metadata))
         {
-            var sql = _databaseProvider.GenerateInsertSql(metadata);
-            var parameters = ExtractParameters(entity, metadata);
+            // Entity has auto-generated ID (Identity, Sequence, etc.)
+            sql = _databaseProvider.GenerateInsertSql(metadata);
+            parameters = ExtractParameters(entity, metadata);
 
             try
             {
@@ -563,12 +582,26 @@ public sealed class EntityManager : IEntityManager
                 throw;
             }
         }
-        else
+
+        sql = _databaseProvider.GenerateInsertSql(metadata);
+        parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false); // Include key column
+
+        try
         {
-            // Queue the operation for batch execution
+            _connection.Execute(sql, parameters);
             _changeTracker.Track(entity, EntityState.Added);
-            _logger?.LogDebug("Queued entity of type {EntityType} for batch persistence (sync)", typeof(T).Name);
+
+            _logger?.LogDebug(
+                metadata.HasCompositeKey
+                    ? "Successfully inserted entity of type {EntityType} with manual key (sync)"
+                    : "Successfully inserted entity of type {EntityType} with composite key (sync)", typeof(T).Name);
         }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error inserting entity of type {EntityType} (sync)", typeof(T).Name);
+            throw;
+        }
+        
     }
 
     /// <inheritdoc />
@@ -990,7 +1023,7 @@ public sealed class EntityManager : IEntityManager
 
     private string GenerateSelectByCompositeKeySql(EntityMetadata metadata, CompositeKey key)
     {
-        var columns = metadata.Properties.Values.Select(p => p.ColumnName);
+        var columns = metadata.Properties.Values.Select(p => $"{p.ColumnName} AS {p.PropertyName}");
         var columnList = string.Join(", ", columns);
 
         var whereConditions = key.Values.Keys
@@ -1013,6 +1046,20 @@ public sealed class EntityManager : IEntityManager
 
     private bool HasGeneratedId(EntityMetadata metadata)
     {
+        // For composite keys, check if ANY of the keys is auto-generated
+        if (metadata.HasCompositeKey)
+        {
+            foreach (var keyProperty in metadata.CompositeKeyMetadata!.KeyProperties)
+            {
+                if (keyProperty.GenerationType != null && keyProperty.GenerationType != GenerationType.None)
+                {
+                    return true; // At least one key is auto-generated
+                }
+            }
+            return false; // No keys are auto-generated
+        }
+        
+        // For single keys, check the primary key property
         var idProperty = metadata.Properties[metadata.PrimaryKeyProperty];
         return idProperty.GenerationType != null && 
                idProperty.GenerationType != GenerationType.None;
