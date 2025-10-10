@@ -163,10 +163,22 @@ public interface IEntityManager : IDisposable
     IChangeTracker ChangeTracker { get; }
 
     /// <summary>
-    /// Creates a query for the specified entity type.
+    /// Creates a CPQL query for the specified entity type with support for advanced features.
     /// </summary>
     /// <typeparam name="T">The entity type.</typeparam>
     /// <param name="cpql">The CPQL query string.</param>
     /// <returns>A query instance.</returns>
+    /// <remarks>
+    /// Supports advanced CPQL features including:
+    /// <list type="bullet">
+    /// <item><description>JOIN operations (INNER, LEFT, RIGHT, FULL)</description></item>
+    /// <item><description>GROUP BY and HAVING clauses</description></item>
+    /// <item><description>Aggregate functions (COUNT, SUM, AVG, MIN, MAX) with DISTINCT</description></item>
+    /// <item><description>String functions (UPPER, LOWER, LENGTH, SUBSTRING, TRIM, CONCAT)</description></item>
+    /// <item><description>Date functions (YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, NOW)</description></item>
+    /// <item><description>Complex expressions with operators and parentheses</description></item>
+    /// <item><description>Named parameters (:paramName)</description></item>
+    /// </list>
+    /// </remarks>
     IQuery<T> CreateQuery<T>(string cpql) where T : class;
 }

@@ -6,6 +6,7 @@ using NPA.Core.Annotations;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using NPA.Core.Query;
+using NPA.Core.Query.CPQL;
 
 namespace NPA.Core.Core;
 
@@ -1187,6 +1188,7 @@ public sealed class EntityManager : IEntityManager
 
         _logger?.LogDebug("Creating query for entity type {EntityType} with CPQL: {Cpql}", typeof(T).Name, cpql);
 
+        // Use the legacy parser for backward compatibility with simple queries
         var parser = new QueryParser();
         var sqlGenerator = new SqlGenerator();
         var parameterBinder = new ParameterBinder();
