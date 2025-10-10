@@ -592,12 +592,19 @@ public class SqlGenerator : ISqlGenerator
     
     private string EscapeIdentifier(string identifier)
     {
-        // Use double quotes for identifier escaping (works for PostgreSQL and SQL Server)
-        // MySQL uses backticks, but this is handled by the provider
+        // For different database dialects:
+        // - SQL Server: Use brackets or no quotes for simple identifiers
+        // - PostgreSQL: Use double quotes to preserve case sensitivity (SQL standard)
+        // - SQLite: Use double quotes (SQL standard)
+        // - MySQL/MariaDB: Use backticks (MySQL-specific syntax)
         return _dialect.ToLowerInvariant() switch
         {
-            "mysql" or "mariadb" => $"`{identifier.Replace("`", "``")}`",
-            _ => $"\"{identifier.Replace("\"", "\"\"")}\"" // PostgreSQL, SQL Server, default
+            "mysql" => $"`{identifier.Replace("`", "``")}`",
+            "mariadb" => $"`{identifier.Replace("`", "``")}`",
+            "sqlserver" => identifier, // SQL Server doesn't require quotes for simple identifiers
+            "postgresql" => $"\"{identifier.Replace("\"", "\"\"")}\"", // PostgreSQL needs quotes for case sensitivity
+            "sqlite" => $"\"{identifier.Replace("\"", "\"\"")}\"", // SQLite uses double quotes (SQL standard)
+            _ => identifier // Default: no quotes for simple identifiers
         };
     }
 

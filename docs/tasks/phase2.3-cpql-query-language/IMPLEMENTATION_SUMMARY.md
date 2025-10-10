@@ -19,11 +19,12 @@ Phase 2.3 has successfully implemented a complete, production-ready CPQL (C# Per
   - Complete keyword recognition (SELECT, FROM, WHERE, JOIN, GROUP BY, HAVING, ORDER BY, etc.)
   - All operators (arithmetic, comparison, logical)
   - String literals with escape sequences
-  - Number literals (integer and floating-point)
+  - Number literals (integer and floating-point) with **InvariantCulture parsing**
   - Boolean literals (TRUE/FALSE)
   - Named parameters (`:paramName`)
   - Line comments (`--`) and block comments (`/* */`)
   - Position tracking for error reporting
+  - **Culture-independent number parsing** to ensure consistent behavior across locales
 
 #### Token System
 - **Files:** `TokenType.cs`, `Token.cs`
@@ -88,20 +89,32 @@ Phase 2.3 has successfully implemented a complete, production-ready CPQL (C# Per
 
 #### Function Registry
 - **Files:** `IFunctionRegistry.cs`, `FunctionRegistry.cs`
-- Database dialect support (SQL Server, MySQL, PostgreSQL)
+- Database dialect support (SQL Server, MySQL, MariaDB, PostgreSQL, SQLite)
 - Pre-registered functions:
   - **Aggregates:** COUNT, SUM, AVG, MIN, MAX
   - **String:** UPPER, LOWER, LENGTH, SUBSTRING, TRIM, CONCAT
   - **Date:** YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, NOW
 - Custom function registration capability
+- **Dialect-specific identifier escaping:**
+  - SQL Server: No quotes for simple identifiers
+  - PostgreSQL: Double quotes (`"Id"`) for case sensitivity
+  - SQLite: Double quotes (`"Id"`) following SQL standard
+  - MySQL: Backticks (`` `Id` ``)
+  - MariaDB: Backticks (`` `Id` ``)
 
 ### 4. SQL Generation ✅
 
 #### Core Generator
-- **File:** `SqlGeneration/AdvancedSqlGenerator.cs`
+- **File:** `SqlGenerator.cs`
 - Converts AST to database-specific SQL
 - Handles SELECT, UPDATE, DELETE queries
 - Full clause generation
+- **Dialect-aware identifier escaping:**
+  - Automatically adapts to database dialect
+  - SQL Server: No quotes (e.g., `Id`)
+  - PostgreSQL/SQLite: Double quotes (e.g., `"Id"`)
+  - MySQL/MariaDB: Backticks (e.g., `` `Id` ``)
+  - Default: No quotes for simple identifiers
 
 #### Supporting Generators
 - **EntityMapper** - Alias and column name mapping
@@ -223,11 +236,13 @@ tests/NPA.Core.Tests/Query/CPQL/
 - Unary operators (+, -, NOT)
 - Parenthesized expressions
 - Property access (alias.property)
-- Literals (string, number, boolean, NULL)
+- Literals (string, number with InvariantCulture parsing, boolean, NULL)
 - Named parameters (:paramName)
 
 ### ✅ Other Features
-- Database dialect support (SQL Server, MySQL, PostgreSQL)
+- Database dialect support (SQL Server, MySQL, MariaDB, PostgreSQL, SQLite)
+- Dialect-specific identifier escaping (automatic adaptation)
+- Culture-independent number parsing (InvariantCulture)
 - Parameter binding
 - Error handling with position information
 - Comment support (line and block)
@@ -263,6 +278,8 @@ tests/NPA.Core.Tests/Query/CPQL/
 - Follows C# naming conventions
 - Clean, readable code
 - Comprehensive error handling
+- Culture-independent parsing (no locale issues)
+- Properly escaped identifiers for all database dialects
 
 ## Integration Status
 

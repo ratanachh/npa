@@ -193,6 +193,116 @@ public class SqlGeneratorTests
         Assert.Contains("DELETE FROM test_customers", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("WHERE (c.is_active = @active)", sql, StringComparison.OrdinalIgnoreCase);
     }
+    
+    [Fact]
+    public void Generate_SqlServerDialect_ShouldNotQuoteIdentifiers()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SqlServer");
+        var cpql = "SELECT c FROM TestCustomer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert - SQL Server should not use quotes for simple identifiers
+        Assert.Contains("c.id AS Id", sql);
+        Assert.Contains("c.name AS Name", sql);
+        Assert.DoesNotContain("\"Id\"", sql);
+        Assert.DoesNotContain("`Id`", sql);
+    }
+    
+    [Fact]
+    public void Generate_PostgreSqlDialect_ShouldUseDoubleQuotes()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "PostgreSQL");
+        var cpql = "SELECT c FROM TestCustomer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert - PostgreSQL should use double quotes for case sensitivity
+        Assert.Contains("c.id AS \"Id\"", sql);
+        Assert.Contains("c.name AS \"Name\"", sql);
+        Assert.Contains("c.email AS \"Email\"", sql);
+    }
+    
+    [Fact]
+    public void Generate_MySqlDialect_ShouldUseBackticks()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "MySQL");
+        var cpql = "SELECT c FROM TestCustomer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert - MySQL should use backticks
+        Assert.Contains("c.id AS `Id`", sql);
+        Assert.Contains("c.name AS `Name`", sql);
+        Assert.Contains("c.email AS `Email`", sql);
+    }
+    
+    [Fact]
+    public void Generate_MariaDbDialect_ShouldUseBackticks()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "MariaDB");
+        var cpql = "SELECT c FROM TestCustomer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert - MariaDB should use backticks (same as MySQL)
+        Assert.Contains("c.id AS `Id`", sql);
+        Assert.Contains("c.name AS `Name`", sql);
+        Assert.Contains("c.email AS `Email`", sql);
+    }
+    
+    [Fact]
+    public void Generate_SqliteDialect_ShouldUseDoubleQuotes()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SQLite");
+        var cpql = "SELECT c FROM TestCustomer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert - SQLite should use double quotes (SQL standard)
+        Assert.Contains("c.id AS \"Id\"", sql);
+        Assert.Contains("c.name AS \"Name\"", sql);
+        Assert.Contains("c.email AS \"Email\"", sql);
+    }
+    
+    [Fact]
+    public void Generate_DefaultDialect_ShouldNotQuoteIdentifiers()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "default");
+        var cpql = "SELECT c FROM TestCustomer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert - Default should not use quotes
+        Assert.Contains("c.id AS Id", sql);
+        Assert.Contains("c.name AS Name", sql);
+        Assert.DoesNotContain("\"Id\"", sql);
+        Assert.DoesNotContain("`Id`", sql);
+    }
 }
 
 /// <summary>

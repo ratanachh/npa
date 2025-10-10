@@ -168,7 +168,17 @@ public class UserService
 
 ### 3. Query Language (CPQL) ✅
 
-NPA supports both **asynchronous** and **synchronous** query execution:
+NPA supports both **asynchronous** and **synchronous** query execution with full **multi-database support**:
+
+#### Database Dialect Support
+- **SQL Server** - No identifier quotes for simple identifiers
+- **PostgreSQL** - Double quotes for case-sensitive identifiers (`"Id"`)
+- **MySQL** - Backticks for identifiers (`` `Id` ``)
+- **MariaDB** - Backticks for identifiers (`` `Id` ``)
+- **SQLite** - Double quotes following SQL standard (`"Id"`)
+
+#### Culture-Independent Number Parsing
+The CPQL Lexer uses `InvariantCulture` for all number parsing, ensuring consistent behavior across different regional settings and locales.
 
 #### Asynchronous Queries (Recommended)
 ```csharp
@@ -366,7 +376,9 @@ var sortedUsers = await entityManager
 - DISTINCT keyword support
 - Multiple ORDER BY columns with ASC/DESC
 - Named parameters (`:paramName`)
-- Database dialect support (SQL Server, MySQL, PostgreSQL)
+- Database dialect support (SQL Server, MySQL, MariaDB, PostgreSQL, SQLite)
+- Dialect-specific identifier escaping (SQL Server: none, PostgreSQL/SQLite: `"Id"`, MySQL/MariaDB: `` `Id` ``)
+- Culture-independent number parsing using InvariantCulture
 - Comment support (line `--` and block `/* */`)
 - Comprehensive error handling with position tracking
 
@@ -471,13 +483,99 @@ public class User
 }
 ```
 
-#### Repository Pattern (Phase 2.4)
+### 4. Repository Pattern (Phase 2.4) ✅
+
+**Implemented in Phase 2.4:**
+- Generic `IRepository<T, TKey>` interface with full CRUD operations
+- `IReadOnlyRepository<T, TKey>` for query-only scenarios
+- `BaseRepository<T, TKey>` default implementation
+- `CustomRepositoryBase<T, TKey>` for custom repositories
+- LINQ expression support (predicates, ordering, paging)
+- Repository Factory for DI integration
+- Expression-to-SQL translation
+
+**Basic Repository Usage:**
+```csharp
+public class UserService
+{
+    private readonly IRepository<User, long> _userRepository;
+    
+    public UserService(IRepository<User, long> userRepository)
+    {
+        _userRepository = userRepository;
+    }
+    
+    // Get by ID
+    public async Task<User?> GetUserAsync(long id)
+    {
+        return await _userRepository.GetByIdAsync(id);
+    }
+    
+    // Get all users
+    public async Task<IEnumerable<User>> GetAllUsersAsync()
+    {
+        return await _userRepository.GetAllAsync();
+    }
+    
+    // Find with LINQ predicate
+    public async Task<IEnumerable<User>> GetActiveUsersAsync()
+    {
+        return await _userRepository.FindAsync(u => u.IsActive);
+    }
+    
+    // Find with ordering
+    public async Task<IEnumerable<User>> GetUsersSortedAsync()
+    {
+        return await _userRepository.FindAsync(
+            u => u.IsActive,
+            u => u.Username,
+            descending: false);
+    }
+    
+    // Find with paging
+    public async Task<IEnumerable<User>> GetUsersPagedAsync(int page, int pageSize)
+    {
+        var skip = (page - 1) * pageSize;
+        return await _userRepository.FindAsync(
+            u => u.IsActive,
+            skip,
+            pageSize);
+    }
+}
+```
+
+**Custom Repository:**
 ```csharp
 public interface IUserRepository : IRepository<User, long>
 {
-    Task<User> FindByUsernameAsync(string username);
     Task<IEnumerable<User>> FindByEmailDomainAsync(string domain);
+    Task<IEnumerable<User>> FindRecentlyCreatedAsync(int days);
 }
+
+public class UserRepository : CustomRepositoryBase<User, long>, IUserRepository
+{
+    public UserRepository(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)
+        : base(connection, entityManager, metadataProvider)
+    {
+    }
+    
+    public async Task<IEnumerable<User>> FindByEmailDomainAsync(string domain)
+    {
+        return await FindAsync(u => u.Email.Contains($"@{domain}"));
+    }
+    
+    public async Task<IEnumerable<User>> FindRecentlyCreatedAsync(int days)
+    {
+        var cutoffDate = DateTime.UtcNow.AddDays(-days);
+        return await FindAsync(
+            u => u.CreatedAt >= cutoffDate,
+            u => u.CreatedAt,
+            descending: true);
+    }
+}
+
+// Register in DI
+services.AddScoped<IUserRepository, UserRepository>();
 ```
 
 **Example (Planned for Phase 3.1):**
@@ -2060,7 +2158,15 @@ All query operations support both async and sync execution:
   - Named parameters with automatic extraction
   - 17 Lexer tests + 13 Parser tests passing
   - Integrated with existing QueryParser and SqlGenerator
-- [ ] **2.4 Repository pattern implementation** 📋 PLANNED
+- [x] **2.4 Repository pattern implementation** ✅ **COMPLETED**
+  - IRepository<T, TKey> and IReadOnlyRepository interfaces
+  - BaseRepository implementation with full CRUD operations
+  - CustomRepositoryBase for domain-specific repositories
+  - ExpressionTranslator for LINQ to SQL conversion
+  - Repository Factory pattern with DI integration
+  - Support for LINQ predicates, ordering, and paging
+  - 14 unit tests passing
+  - Sample application demonstrating repository usage
 - [x] **2.5 PostgreSQL database provider** ✅ **COMPLETED**
   - PostgreSqlProvider with full CRUD support
   - PostgreSqlDialect for PostgreSQL-specific SQL
@@ -2104,7 +2210,7 @@ All query operations support both async and sync execution:
 - [ ] **6.3 Performance profiling** 📋 PLANNED
 - [ ] **6.4 Comprehensive documentation** 📋 PLANNED
 
-**Current Progress: 9/33 tasks completed (27%)**
+**Current Progress: 10/33 tasks completed (30%)**
 
 ## 🤝 Contributing
 

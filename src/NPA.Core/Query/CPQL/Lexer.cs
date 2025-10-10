@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace NPA.Core.Query.CPQL;
@@ -225,12 +226,12 @@ public sealed class Lexer
         
         if (lexeme.Contains('.'))
         {
-            if (double.TryParse(lexeme, out var doubleValue))
+            if (double.TryParse(lexeme, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
                 return new Token(TokenType.NumberLiteral, lexeme, doubleValue, start);
         }
         else
         {
-            if (long.TryParse(lexeme, out var longValue))
+            if (long.TryParse(lexeme, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longValue))
                 return new Token(TokenType.NumberLiteral, lexeme, longValue, start);
         }
         

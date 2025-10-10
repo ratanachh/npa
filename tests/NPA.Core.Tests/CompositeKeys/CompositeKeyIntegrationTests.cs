@@ -3,8 +3,11 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Providers.PostgreSql;
 using NPA.Providers.SqlServer;
+using Npgsql;
 using Testcontainers.MsSql;
+using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace NPA.Core.Tests.CompositeKeys;
@@ -23,21 +26,24 @@ public class CompositeKeyIntegrationTestsCollection
 [Collection("Composite Key Integration Tests")]
 public class CompositeKeyIntegrationTests : IAsyncLifetime
 {
-    private MsSqlContainer? _container;
+    private PostgreSqlContainer? _container;
     private IDbConnection? _connection;
     private IEntityManager? _entityManager;
 
     public async Task InitializeAsync()
     {
-        _container = new MsSqlBuilder()
-            .WithPassword("YourStrong@Passw0rd")
-            .WithCleanUp(true)
+        _container =  new PostgreSqlBuilder()
+            .WithImage("postgres:17-alpine")
+            .WithDatabase("npadb")
+            .WithUsername("npa_user")
+            .WithPassword("npa_password")
+            .WithPortBinding(5432, true)
             .Build();
 
         await _container.StartAsync();
 
         var connectionString = _container.GetConnectionString();
-        _connection = new SqlConnection(connectionString);
+        _connection = new NpgsqlConnection(connectionString);
         _connection.Open();
 
         // Create table
@@ -45,7 +51,7 @@ public class CompositeKeyIntegrationTests : IAsyncLifetime
 
         // Setup EntityManager
         var metadataProvider = new MetadataProvider();
-        var databaseProvider = new SqlServerProvider();
+        var databaseProvider = new PostgreSqlProvider();
         _entityManager = new EntityManager(_connection, metadataProvider, databaseProvider, NullLogger<EntityManager>.Instance);
     }
 
@@ -244,21 +250,19 @@ public class CompositeKeyIntegrationTests : IAsyncLifetime
     private async Task CreateTestTable()
     {
         var createTableSql = @"
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'order_items')
-            BEGIN
-                CREATE TABLE order_items (
-                    order_id BIGINT NOT NULL,
-                    product_id BIGINT NOT NULL,
-                    quantity INT NOT NULL,
-                    unit_price DECIMAL(10, 2) NOT NULL,
-                    discount DECIMAL(10, 2) NULL,
-                    PRIMARY KEY (order_id, product_id)
-                );
-            END";
+            CREATE TABLE IF NOT EXISTS order_items (
+                order_id BIGINT NOT NULL,
+                product_id BIGINT NOT NULL,
+                quantity INT NOT NULL,
+                unit_price DECIMAL(10, 2) NOT NULL,
+                discount DECIMAL(10, 2) NULL,
+                PRIMARY KEY (order_id, product_id)
+            );
+        ";
 
-        if (_connection is SqlConnection sqlConnection)
+        if (_connection is NpgsqlConnection sqlConnection)
         {
-            using var command = new SqlCommand(createTableSql, sqlConnection);
+            using var command = new NpgsqlCommand(createTableSql, sqlConnection);
             await command.ExecuteNonQueryAsync();
         }
     }
