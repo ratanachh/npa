@@ -4,7 +4,7 @@
 
 This sample demonstrates **advanced CPQL (Custom Persistence Query Language)** capabilities using the Phase 1.3 implementation. It showcases complex WHERE conditions, aggregations, pattern matching, and bulk updates.
 
-> **Note**: This sample uses **CPQL** (Phase 1.3 ✅ completed). Advanced features like JOINs, subqueries, and CTEs require **JPQL** implementation (Phase 2.3 📋 planned).
+> **Note**: This sample uses **CPQL** (Phase 1.3 ✅ completed). Advanced features like JOINs, subqueries, and CTEs require **enhanced CPQL** implementation (Phase 2.3 📋 planned).
 
 ## 🎯 What This Sample Demonstrates
 
@@ -119,7 +119,7 @@ Unshipped orders:
 --------------------------------------------------------------------------------
 Active products: 9
 Electronics count: 6
-Note: SUM/AVG aggregations require Phase 2.3 (JPQL)
+Note: SUM/AVG aggregations require Phase 2.3 (Enhanced CPQL)
 
 7. Bulk UPDATE Operations
 --------------------------------------------------------------------------------
@@ -225,7 +225,7 @@ All queries execute through Dapper for optimal database performance.
 ## 🚀 Next Steps
 
 After running this sample, explore:
-- Phase 2.3 - JPQL for JOINs and subqueries (planned)
+- Phase 2.3 - Enhanced CPQL for JOINs and subqueries (planned)
 - Phase 3.3 - Bulk operations for large datasets (planned)
 - Phase 5.1 - Caching for query performance (planned)
 

@@ -13,7 +13,7 @@ namespace AdvancedQueries;
 /// Demonstrates complex WHERE clauses, aggregations, and parameter binding.
 /// 
 /// Note: This sample uses current CPQL implementation (Phase 1.3).
-/// Advanced features like JOIN, subqueries, and CTEs require Phase 2.3 (JPQL) - not yet implemented.
+/// Advanced features like JOIN, subqueries, and CTEs require Phase 2.3 (Enhanced CPQL) - not yet implemented.
 /// </summary>
 class Program
 {

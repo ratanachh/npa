@@ -263,13 +263,13 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 - [ ] Add unit tests for composite keys
 - [ ] Document composite key usage
 
-### 2.3 JPQL-like Query Language
-- [ ] Create `JPQLParser` class
-- [ ] Create `SqlGenerator` class
-- [ ] Implement query parsing
-- [ ] Implement SQL generation
-- [ ] Add unit tests for JPQL
-- [ ] Document JPQL usage
+### 2.3 CPQL Query Language Enhancements
+- [ ] Create `CPQLParser` class
+- [ ] Enhance `SqlGenerator` class
+- [ ] Implement advanced query parsing
+- [ ] Implement enhanced SQL generation
+- [ ] Add unit tests for CPQL
+- [ ] Document CPQL usage
 
 ### 2.4 Repository Pattern Implementation
 - [ ] Create `IRepository` interface

@@ -69,7 +69,7 @@
 
 ### 1. **Query Language Terminology**
 - ✅ Changed from "JPQL" to "CPQL" for Phase 1.3
-- ✅ Noted that JPQL is planned for Phase 2.3
+- ✅ Noted that enhanced CPQL is planned for Phase 2.3
 - ✅ Emphasized CPQL is lightweight, Dapper-powered
 
 ### 2. **Database Provider Alignment**
@@ -97,7 +97,7 @@
 3. **No functional samples** currently match the task documents exactly
 
 ### Documentation Issues (Resolved)
-- ~~Confusion between CPQL (implemented) and JPQL (planned)~~ ✅ Fixed
+- ~~Confusion between CPQL (implemented) and enhanced CPQL (planned)~~ ✅ Fixed
 - ~~No clear indication of which samples are functional~~ ✅ Fixed
 - ~~Missing status document for existing samples~~ ✅ Fixed
 
@@ -162,7 +162,7 @@ docs/tasks/samples/
 - ✅ All task documents align with actual implementation status
 - ✅ Clear distinction between "Ready" and "Planned" samples
 - ✅ PostgreSQL provider correctly identified as completed
-- ✅ CPQL vs JPQL terminology clarified
+- ✅ CPQL vs enhanced CPQL terminology clarified
 - ✅ Existing samples status documented
 - ✅ Recommendations provided for next steps
 - ✅ No misleading documentation about unimplemented features

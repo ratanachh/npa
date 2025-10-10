@@ -25,7 +25,7 @@ This index provides a complete overview of all sample projects organized by phas
 |--------|--------|------------|------|--------------|
 | [2.1 Relationship Mapping](./phase2.1-relationship-mapping-sample.md) | 📋 Planned | ⭐⭐⭐ Advanced | 6-8h | One-to-Many, Many-to-Many |
 | 2.2 Composite Keys | 📋 Planned | ⭐⭐ Intermediate | 4-5h | Multi-column Keys |
-| 2.3 JPQL Query Language | 📋 Planned | ⭐⭐⭐ Advanced | 5-6h | Advanced Query Language |
+| 2.3 Enhanced CPQL Query Language | 📋 Planned | ⭐⭐⭐ Advanced | 5-6h | Advanced Query Language |
 | 2.4 Repository Pattern | 📋 Planned | ⭐⭐ Intermediate | 4-5h | Design Patterns |
 | 2.5 Multi-Provider | 📋 Planned | ⭐⭐⭐ Advanced | 6-8h | Provider Abstraction |
 
@@ -137,7 +137,7 @@ This index provides a complete overview of all sample projects organized by phas
 ### Data Access
 - Phase 1.2 - CRUD Operations ⭐⭐
 - Phase 1.3 - Query API ⭐⭐
-- Phase 2.3 - JPQL Queries ⭐⭐⭐
+- Phase 2.3 - Enhanced CPQL Queries ⭐⭐⭐
 
 ### Performance
 - Phase 3.3 - Bulk Operations ⭐⭐⭐
@@ -175,7 +175,7 @@ This index provides a complete overview of all sample projects organized by phas
 - Phase 1.4 - SQL Server Integration (4-5h)
 - Phase 1.6 - Repository Generation (5-6h)
 - Phase 2.2 - Composite Keys (4-5h)
-- Phase 2.3 - JPQL Queries (5-6h)
+- Phase 2.3 - Enhanced CPQL Queries (5-6h)
 - Phase 2.4 - Repository Pattern (4-5h)
 - Phase 3.3 - Bulk Operations (4-6h)
 - Phase 4.2 - Query Method Generation (5-6h)
@@ -209,7 +209,7 @@ This index provides a complete overview of all sample projects organized by phas
 ### Requires Phase 1 Complete
 - Phase 2.1 - Relationship Mapping
 - Phase 2.2 - Composite Keys
-- Phase 2.3 - JPQL Queries
+- Phase 2.3 - Enhanced CPQL Queries
 - Phase 2.4 - Repository Pattern
 
 ### Requires Phase 1-2 Complete

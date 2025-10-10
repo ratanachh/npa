@@ -1,8 +1,8 @@
-# Phase 2.3: JPQL-like Query Language
+# Phase 2.3: CPQL Query Language
 
 ## 📋 Task Overview
 
-**Objective**: Implement a JPQL-like query language that provides object-oriented querying capabilities while generating efficient SQL using Dapper.
+**Objective**: Implement an enhanced CPQL (C# Persistence Query Language) that provides object-oriented querying capabilities while generating efficient SQL using Dapper.
 
 **Priority**: High  
 **Estimated Time**: 4-5 days  
@@ -11,17 +11,17 @@
 
 ## 🎯 Success Criteria
 
-- [ ] JPQLParser class is complete
-- [ ] SqlGenerator class is implemented
-- [ ] Query language supports all basic operations
+- [ ] CPQLParser class is complete
+- [ ] SqlGenerator class is enhanced for advanced features
+- [ ] Query language supports all basic and advanced operations
 - [ ] SQL generation is optimized
 - [ ] Unit tests cover all functionality
 - [ ] Documentation is complete
 
 ## 📝 Detailed Requirements
 
-### 1. JPQL Parser
-- **Purpose**: Parse JPQL-like queries into abstract syntax tree
+### 1. CPQL Parser
+- **Purpose**: Parse CPQL queries into abstract syntax tree
 - **Features**:
   - SELECT clause parsing
   - FROM clause parsing with entity resolution
@@ -32,8 +32,8 @@
   - JOIN clause parsing
   - Subquery support
 
-### 2. SQL Generator
-- **Purpose**: Convert parsed JPQL to database-specific SQL
+### 2. SQL Generator Enhancement
+- **Purpose**: Convert parsed CPQL to database-specific SQL
 - **Features**:
   - Entity name to table name mapping
   - Property name to column name mapping
@@ -69,7 +69,7 @@
 ## 🏗️ Implementation Plan
 
 ### Step 1: Create Parser Infrastructure
-1. Create `JPQLParser` class
+1. Create `CPQLParser` class
 2. Create `QueryAST` classes
 3. Create `Lexer` class
 4. Create `Parser` class
@@ -81,8 +81,8 @@
 4. Implement ORDER BY clause parsing
 5. Implement GROUP BY clause parsing
 
-### Step 3: Implement SQL Generation
-1. Create `SqlGenerator` class
+### Step 3: Enhance SQL Generation
+1. Enhance `SqlGenerator` class
 2. Implement entity resolution
 3. Implement property mapping
 4. Implement JOIN generation
@@ -109,15 +109,15 @@
 ### Step 7: Add Documentation
 1. XML documentation comments
 2. Usage examples
-3. JPQL syntax guide
+3. CPQL syntax guide
 4. Best practices
 
 ## 📁 File Structure
 
 ```
 src/NPA.Core/Query/
-├── JPQL/
-│   ├── JPQLParser.cs
+├── CPQL/
+│   ├── CPQLParser.cs
 │   ├── QueryAST.cs
 │   ├── Lexer.cs
 │   ├── Parser.cs
@@ -135,8 +135,8 @@ src/NPA.Core/Query/
     └── JoinOptimizer.cs
 
 tests/NPA.Core.Tests/Query/
-├── JPQL/
-│   ├── JPQLParserTests.cs
+├── CPQL/
+│   ├── CPQLParserTests.cs
 │   ├── LexerTests.cs
 │   ├── ParserTests.cs
 │   └── EntityResolverTests.cs
@@ -153,25 +153,25 @@ tests/NPA.Core.Tests/Query/
 
 ## 💻 Code Examples
 
-### JPQL Parser
+### CPQL Parser
 ```csharp
-public class JPQLParser
+public class CPQLParser
 {
     private readonly IEntityResolver _entityResolver;
     private readonly IFunctionRegistry _functionRegistry;
     
-    public JPQLParser(IEntityResolver entityResolver, IFunctionRegistry functionRegistry)
+    public CPQLParser(IEntityResolver entityResolver, IFunctionRegistry functionRegistry)
     {
         _entityResolver = entityResolver ?? throw new ArgumentNullException(nameof(entityResolver));
         _functionRegistry = functionRegistry ?? throw new ArgumentNullException(nameof(functionRegistry));
     }
     
-    public QueryAST Parse(string jpql)
+    public QueryAST Parse(string cpql)
     {
-        if (string.IsNullOrEmpty(jpql))
-            throw new ArgumentException("JPQL cannot be null or empty", nameof(jpql));
+        if (string.IsNullOrEmpty(cpql))
+            throw new ArgumentException("CPQL cannot be null or empty", nameof(cpql));
         
-        var lexer = new Lexer(jpql);
+        var lexer = new Lexer(cpql);
         var parser = new Parser(lexer, _entityResolver, _functionRegistry);
         return parser.Parse();
     }
@@ -783,13 +783,13 @@ var usersWithOrders = await entityManager
 - [ ] Usage examples
 
 ### Usage Guide
-- [ ] Basic JPQL syntax
+- [ ] Basic CPQL syntax
 - [ ] Query examples
 - [ ] Function reference
 - [ ] Performance considerations
 - [ ] Best practices
 
-### JPQL Syntax Guide
+### CPQL Syntax Guide
 - [ ] SELECT clause
 - [ ] FROM clause
 - [ ] WHERE clause
@@ -821,7 +821,7 @@ After completing this task:
 
 ## 📞 Questions/Issues
 
-- [ ] Clarification needed on JPQL syntax
+- [ ] Clarification needed on CPQL syntax extensions
 - [ ] Performance considerations for parsing
 - [ ] Integration with existing features
 - [ ] Error message localization
@@ -830,4 +830,5 @@ After completing this task:
 
 *Created: [Current Date]*  
 *Last Updated: [Current Date]*  
-*Status: In Progress*
+*Status: Planned*
+

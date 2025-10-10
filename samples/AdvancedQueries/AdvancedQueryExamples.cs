@@ -7,7 +7,7 @@ namespace AdvancedQueries;
 /// <summary>
 /// Demonstrates advanced CPQL query capabilities (Phase 1.3).
 /// Shows complex WHERE clauses, aggregations, and parameter binding patterns.
-/// Note: Joins and subqueries require Phase 2.3 (JPQL) - not yet implemented.
+/// Note: Joins and subqueries require Phase 2.3 (Enhanced CPQL) - not yet implemented.
 /// </summary>
 public class AdvancedQueryExamples
 {
@@ -227,7 +227,7 @@ public class AdvancedQueryExamples
         // Total inventory value (conceptual - would need SUM support)
         Console.WriteLine($"Active products: {activeCount}");
         Console.WriteLine($"Electronics count: {electronicsCount}");
-        Console.WriteLine($"Note: SUM/AVG aggregations require Phase 2.3 (JPQL)");
+        Console.WriteLine($"Note: SUM/AVG aggregations require Phase 2.3 (Enhanced CPQL)");
         Console.WriteLine();
     }
 

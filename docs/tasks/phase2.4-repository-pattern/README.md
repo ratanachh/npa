@@ -6,7 +6,7 @@
 
 **Priority**: High  
 **Estimated Time**: 3-4 days  
-**Dependencies**: Phase 1.1-1.5, Phase 2.1-2.3 (Relationship Mapping, Composite Key Support, JPQL Query Language)  
+**Dependencies**: Phase 1.1-1.5, Phase 2.1-2.3 (Relationship Mapping, Composite Key Support, Enhanced CPQL Query Language)  
 **Assigned To**: [Developer Name]  
 
 ## 🎯 Success Criteria

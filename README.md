@@ -1191,7 +1191,7 @@ NPA/
 │   │   │   ├── IParameterBinder.cs
 │   │   │   ├── ParameterBinder.cs
 │   │   │   ├── QueryBuilder.cs                 # 🚧 Planned (Phase 2.3)
-│   │   │   ├── JPQLParser.cs                   # 🚧 Planned (Phase 2.3)
+│   │   │   ├── CPQLParser.cs                   # 🚧 Planned (Phase 2.3)
 │   │   │   ├── NamedQueryRegistry.cs           # 🚧 Planned (Phase 2.3)
 │   │   │   └── QueryCache.cs                   # 🚧 Planned (Phase 5.1)
 │   │   ├── Providers/                  # Database provider interfaces ✅
@@ -1404,7 +1404,7 @@ NPA/
 │       ├── phase1.6-repository-source-generator-basic/
 │       ├── phase2.1-relationship-mapping/
 │       ├── phase2.2-composite-key-support/
-│       ├── phase2.3-jpql-query-language/
+│       ├── phase2.3-cpql-query-language/
 │       ├── phase2.4-repository-pattern/
 │       ├── phase2.5-additional-database-providers/
 │       ├── phase2.6-metadata-source-generator/
@@ -1622,7 +1622,7 @@ public class UserService
   - Automatic join column/table naming
   - 27 comprehensive tests passing
 - [ ] **2.2 Composite key support** 📋 PLANNED
-- [ ] **2.3 JPQL-like query language** 📋 PLANNED
+- [ ] **2.3 CPQL query language enhancements** 📋 PLANNED
 - [ ] **2.4 Repository pattern implementation** 📋 PLANNED
 - [ ] **2.5 Additional database providers** (PostgreSQL, MySQL, SQLite) 📋 PLANNED
 - [ ] **2.6 Metadata Source Generator** 📋 PLANNED

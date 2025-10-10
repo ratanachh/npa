@@ -35,7 +35,7 @@
 - **Purpose**: Implementation of query operations
 - **Dependencies**: IDbConnection, IMetadataProvider, IQueryParser
 - **Features**:
-  - JPQL parsing
+  - CPQL parsing
   - SQL generation
   - Parameter binding
   - Result mapping
@@ -141,16 +141,16 @@ public class Query<T> : IQuery<T>
     private readonly ISqlGenerator _sqlGenerator;
     private readonly IParameterBinder _parameterBinder;
     private readonly Dictionary<string, object> _parameters;
-    private readonly string _jpql;
+    private readonly string _cpql;
     private string? _sql;
     
-    public Query(IDbConnection connection, IQueryParser parser, ISqlGenerator sqlGenerator, IParameterBinder parameterBinder, string jpql)
+    public Query(IDbConnection connection, IQueryParser parser, ISqlGenerator sqlGenerator, IParameterBinder parameterBinder, string cpql)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _parser = parser ?? throw new ArgumentNullException(nameof(parser));
         _sqlGenerator = sqlGenerator ?? throw new ArgumentNullException(nameof(sqlGenerator));
         _parameterBinder = parameterBinder ?? throw new ArgumentNullException(nameof(parameterBinder));
-        _jpql = jpql ?? throw new ArgumentNullException(nameof(jpql));
+        _cpql = cpql ?? throw new ArgumentNullException(nameof(cpql));
         _parameters = new Dictionary<string, object>();
     }
     
@@ -179,7 +179,7 @@ public class Query<T> : IQuery<T>
     {
         if (_sql == null)
         {
-            var parsedQuery = _parser.Parse(_jpql);
+            var parsedQuery = _parser.Parse(_cpql);
             _sql = _sqlGenerator.Generate(parsedQuery);
         }
         return _sql;

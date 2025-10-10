@@ -29,7 +29,7 @@
 **UPDATE Queries** - Bulk update operations
 **Aggregate Queries** - COUNT, SUM, AVG, etc.
 
-> **Note**: CPQL is NPA's lightweight query language. JPQL-like syntax is planned for Phase 2.3.
+> **Note**: CPQL is NPA's lightweight query language. Enhanced CPQL with advanced features is planned for Phase 2.3.
 
 ### 2. Query Features
 
@@ -393,7 +393,7 @@ samples/CpqlQuerySample/
 - **Type Safety**: Strongly-typed query results
 - **SQL Injection Prevention**: Parameterized queries
 - **Dapper Integration**: High-performance query execution
-- **Flexible Syntax**: Similar to JPA/JPQL but lightweight
+- **Flexible Syntax**: Similar to JPA but lightweight and tailored for .NET
 - **Aggregate Support**: COUNT, SUM, and other operations
 
 ## 💡 Best Practices
@@ -407,7 +407,7 @@ samples/CpqlQuerySample/
 ## 🔄 Next Steps
 
 - Explore Phase 1.4 - SQL Server Provider
-- Learn Phase 2.3 - JPQL-like Query Language (advanced)
+- Learn Phase 2.3 - Enhanced CPQL Query Language (advanced features)
 - Try Phase 2.4 - Repository Pattern
 
 ---

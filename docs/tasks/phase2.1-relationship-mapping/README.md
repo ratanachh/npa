@@ -386,7 +386,7 @@ After completing this task:
 
 ### Deferred to Later Phases
 - **Lazy Loading Proxies**: Phase 3.4 (Lazy Loading)
-- **Join Query Generation**: Phase 2.3 (JPQL Query Language)
+- **Join Query Generation**: Phase 2.3 (Enhanced CPQL Query Language)
 - **Cascade Operations**: Phase 3.2 (Cascade Operations)
 
 ---

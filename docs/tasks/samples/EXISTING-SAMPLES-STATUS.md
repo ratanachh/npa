@@ -50,13 +50,13 @@ string provider = args.Length > 0 ? args[0].ToLowerInvariant() : "postgresql";
 
 #### Issues
 - All code is TODO placeholders
-- Features depend on advanced query language (Phase 2.3 JPQL - not implemented)
+- Features depend on advanced query language (Phase 2.3 Enhanced CPQL - not implemented)
 - Cannot run meaningfully
 
 #### Recommendation
 - Mark as **Phase 2.3 Placeholder**
 - Remove from active samples or clearly mark as non-functional
-- Wait for JPQL implementation (Phase 2.3)
+- Wait for enhanced CPQL implementation (Phase 2.3)
 
 ---
 
@@ -191,7 +191,7 @@ string provider = args.Length > 0 ? args[0].ToLowerInvariant() : "postgresql";
 | BasicUsage | phase1.1-basic-entity-mapping-sample.md | ⚠️ Partial |
 | BasicUsage | phase1.2-crud-operations-sample.md | ⚠️ Partial |
 | BasicUsage | phase1.3-cpql-query-sample.md | ⚠️ Partial |
-| AdvancedQueries | phase2.3-jpql-query-sample.md (planned) | ❌ No match |
+| AdvancedQueries | phase2.3-cpql-query-sample.md (planned) | ❌ No match |
 | RepositoryPattern | phase2.4-repository-pattern-sample.md (planned) | ❌ No match |
 | SourceGeneratorDemo | phase4.1-repository-generation-sample.md (planned) | ❌ No match |
 | WebApplication | phase6.1-aspnet-core-integration-sample.md (planned) | ❌ No match |

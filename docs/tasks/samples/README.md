@@ -29,7 +29,7 @@ Each sample project is designed to showcase specific features and best practices
 ### Phase 2: Advanced Features Samples (Planned)
 - [Phase 2.1 - Relationship Mapping Sample](./phase2.1-relationship-mapping-sample.md) 📋
 - Phase 2.2 - Composite Keys Sample 📋
-- Phase 2.3 - JPQL Query Language Sample 📋
+- Phase 2.3 - Enhanced CPQL Query Language Sample 📋
 - Phase 2.4 - Repository Pattern Sample 📋
 - Phase 2.5 - Multi-Provider Sample 📋
 

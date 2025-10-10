@@ -535,7 +535,7 @@ public class OrderItemService
 ## 🚀 Next Steps
 
 After completing this task:
-1. Move to Phase 2.3: JPQL-like Query Language
+1. Move to Phase 2.3: Enhanced CPQL Query Language
 2. Update checklist with completion status
 3. Create pull request for review
 4. Update documentation
