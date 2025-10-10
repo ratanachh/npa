@@ -53,16 +53,16 @@ public class AdvancedQueryExamples
         // Seed Products
         var products = new[]
         {
-            new Product { Name = "Laptop Pro 15", Category = "Electronics", Price = 1299.99m, StockQuantity = 15, SupplierId = 1 },
-            new Product { Name = "Laptop Air 13", Category = "Electronics", Price = 999.99m, StockQuantity = 25, SupplierId = 1 },
-            new Product { Name = "Wireless Mouse", Category = "Electronics", Price = 29.99m, StockQuantity = 100, SupplierId = 2 },
-            new Product { Name = "Mechanical Keyboard", Category = "Electronics", Price = 149.99m, StockQuantity = 50, SupplierId = 2 },
-            new Product { Name = "Office Chair Pro", Category = "Furniture", Price = 299.99m, StockQuantity = 20, SupplierId = 3 },
-            new Product { Name = "Standing Desk", Category = "Furniture", Price = 599.99m, StockQuantity = 10, SupplierId = 3 },
-            new Product { Name = "Monitor 27\"", Category = "Electronics", Price = 399.99m, StockQuantity = 30, SupplierId = 1 },
-            new Product { Name = "USB-C Cable", Category = "Electronics", Price = 12.99m, StockQuantity = 200, SupplierId = 2, IsActive = false },
-            new Product { Name = "Desk Lamp LED", Category = "Furniture", Price = 49.99m, StockQuantity = 60, SupplierId = 3 },
-            new Product { Name = "Webcam HD", Category = "Electronics", Price = 79.99m, StockQuantity = 45, SupplierId = 1 },
+            new Product { Name = "Laptop Pro 15", CategoryName = "Electronics", Price = 1299.99m, StockQuantity = 15 },
+            new Product { Name = "Laptop Air 13", CategoryName = "Electronics", Price = 999.99m, StockQuantity = 25 },
+            new Product { Name = "Wireless Mouse", CategoryName = "Electronics", Price = 29.99m, StockQuantity = 100 },
+            new Product { Name = "Mechanical Keyboard", CategoryName = "Electronics", Price = 149.99m, StockQuantity = 50 },
+            new Product { Name = "Office Chair Pro", CategoryName = "Furniture", Price = 299.99m, StockQuantity = 20 },
+            new Product { Name = "Standing Desk", CategoryName = "Furniture", Price = 599.99m, StockQuantity = 10 },
+            new Product { Name = "Monitor 27\"", CategoryName = "Electronics", Price = 399.99m, StockQuantity = 30 },
+            new Product { Name = "USB-C Cable", CategoryName = "Electronics", Price = 12.99m, StockQuantity = 200, IsActive = false },
+            new Product { Name = "Desk Lamp LED", CategoryName = "Furniture", Price = 49.99m, StockQuantity = 60 },
+            new Product { Name = "Webcam HD", CategoryName = "Electronics", Price = 79.99m, StockQuantity = 45 },
         };
 
         foreach (var product in products)
@@ -98,7 +98,7 @@ public class AdvancedQueryExamples
 
         // Electronics under $100 OR Furniture over $200
         var query = em.CreateQuery<Product>(
-            "SELECT p FROM Product p WHERE (p.Category = @category1 AND p.Price < @maxPrice) OR (p.Category = @category2 AND p.Price > @minPrice)")
+            "SELECT p FROM Product p WHERE (p.CategoryName = @category1 AND p.Price < @maxPrice) OR (p.CategoryName = @category2 AND p.Price > @minPrice)")
             .SetParameter("category1", "Electronics")
             .SetParameter("maxPrice", 100m)
             .SetParameter("category2", "Furniture")
@@ -219,7 +219,7 @@ public class AdvancedQueryExamples
 
         // Count electronics
         var electronicsQuery = em.CreateQuery<Product>(
-            "SELECT COUNT(p) FROM Product p WHERE p.Category = @category")
+            "SELECT COUNT(p) FROM Product p WHERE p.CategoryName = @category")
             .SetParameter("category", "Electronics");
         var electronicsCountResult = await electronicsQuery.ExecuteScalarAsync();
         var electronicsCount = Convert.ToInt64(electronicsCountResult ?? 0);
@@ -241,7 +241,7 @@ public class AdvancedQueryExamples
 
         // Increase price of all Electronics by 5%
         var updateQuery = em.CreateQuery<Product>(
-            "UPDATE Product p SET p.Price = p.Price * @multiplier WHERE p.Category = @category")
+            "UPDATE Product p SET p.Price = p.Price * @multiplier WHERE p.CategoryName = @category")
             .SetParameter("multiplier", 1.05m)
             .SetParameter("category", "Furniture");
 
@@ -260,7 +260,7 @@ public class AdvancedQueryExamples
 
         // High-value electronics with good stock
         var query = em.CreateQuery<Product>(
-            "SELECT p FROM Product p WHERE p.Category = @cat AND p.Price > @price AND p.StockQuantity > @stock AND p.IsActive = @active")
+            "SELECT p FROM Product p WHERE p.CategoryName = @cat AND p.Price > @price AND p.StockQuantity > @stock AND p.IsActive = @active")
             .SetParameter("cat", "Electronics")
             .SetParameter("price", 100m)
             .SetParameter("stock", 20)

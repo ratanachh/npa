@@ -34,6 +34,9 @@ class Program
             Console.WriteLine("Available providers: sqlserver (default), mysql, postgresql");
         }
         
+        // Phase 2.1: Demonstrate relationship mapping
+        RelationshipDemo.ShowRelationshipMetadata();
+        
         Console.WriteLine("\nNPA Demo Completed Successfully!");
     }
 }

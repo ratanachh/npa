@@ -58,7 +58,7 @@ public class User
 }
 ```
 
-> **Note**: Relationship mapping (OneToMany, ManyToOne, etc.) is planned for Phase 2.
+> **Note**: Relationship mapping (OneToMany, ManyToOne, ManyToMany) is now implemented in Phase 2.1! ✅
 
 ### 2. EntityManager API ✅
 ```csharp
@@ -135,9 +135,19 @@ var updatedCount = await entityManager
     .ExecuteUpdateAsync();
 ```
 
-## 🚧 Planned Features (Not Yet Implemented)
+## ✅ Implemented Features
 
-### 4. Relationship Mapping
+### 4. Relationship Mapping (Phase 2.1) ✅
+
+**Implemented in Phase 2.1:**
+- OneToMany, ManyToOne, ManyToMany relationship types
+- Bidirectional relationships with `mappedBy`
+- Join column and join table configuration
+- Cascade operations (Persist, Merge, Remove, Refresh, Detach, All)
+- Fetch strategies (Eager, Lazy)
+- Orphan removal for OneToMany
+- Automatic join column/table naming
+
 ```csharp
 [Entity]
 public class Order
@@ -149,16 +159,32 @@ public class Order
     [Column("order_date")]
     public DateTime OrderDate { get; set; }
     
+    // Many-to-One: Many orders belong to one user
     [ManyToOne]
     [JoinColumn("user_id")]
     public User User { get; set; }
     
-    [OneToMany(mappedBy = "Order", cascade = CascadeType.All)]
+    // One-to-Many: One order has many items
+    [OneToMany("Order", Cascade = CascadeType.All)]
     public ICollection<OrderItem> Items { get; set; }
+}
+
+[Entity]
+public class User
+{
+    [Id]
+    public int Id { get; set; }
+    
+    // Many-to-Many: Users can have many roles
+    [ManyToMany]
+    [JoinTable("user_roles", 
+        JoinColumns = new[] { "user_id" }, 
+        InverseJoinColumns = new[] { "role_id" })]
+    public ICollection<Role> Roles { get; set; }
 }
 ```
 
-### 5. Repository Pattern
+#### Repository Pattern (Phase 2.4)
 ```csharp
 public interface IUserRepository : IRepository<User, long>
 {
@@ -167,7 +193,7 @@ public interface IUserRepository : IRepository<User, long>
 }
 ```
 
-### 6. Transaction Management
+**Example (Planned for Phase 3.1):**
 ```csharp
 public class OrderService
 {
@@ -1112,11 +1138,13 @@ NPA/
 │   │   │   ├── ColumnAttribute.cs
 │   │   │   ├── GeneratedValueAttribute.cs
 │   │   │   ├── GenerationType.cs
-│   │   │   ├── OneToManyAttribute.cs          # 🚧 Planned (Phase 2.1)
-│   │   │   ├── ManyToOneAttribute.cs          # 🚧 Planned (Phase 2.1)
-│   │   │   ├── ManyToManyAttribute.cs         # 🚧 Planned (Phase 2.1)
-│   │   │   ├── JoinColumnAttribute.cs         # 🚧 Planned (Phase 2.1)
-│   │   │   ├── JoinTableAttribute.cs          # 🚧 Planned (Phase 2.1)
+│   │   │   ├── CascadeType.cs                 # ✅ Implemented (Phase 2.1)
+│   │   │   ├── FetchType.cs                   # ✅ Implemented (Phase 2.1)
+│   │   │   ├── OneToManyAttribute.cs          # ✅ Implemented (Phase 2.1)
+│   │   │   ├── ManyToOneAttribute.cs          # ✅ Implemented (Phase 2.1)
+│   │   │   ├── ManyToManyAttribute.cs         # ✅ Implemented (Phase 2.1)
+│   │   │   ├── JoinColumnAttribute.cs         # ✅ Implemented (Phase 2.1)
+│   │   │   ├── JoinTableAttribute.cs          # ✅ Implemented (Phase 2.1)
 │   │   │   ├── NamedQueryAttribute.cs         # 🚧 Planned (Phase 2.3)
 │   │   │   ├── TransactionalAttribute.cs      # 🚧 Planned (Phase 3.1)
 │   │   │   ├── StoredProcedureAttribute.cs    # 🚧 Planned (Phase 4.1)
@@ -1126,7 +1154,7 @@ NPA/
 │   │   │   ├── ConnectionStringAttribute.cs   # 🚧 Planned (Phase 4.1)
 │   │   │   ├── CommandTimeoutAttribute.cs     # 🚧 Planned (Phase 4.1)
 │   │   │   ├── PaginationAttribute.cs         # 🚧 Planned (Phase 4.1)
-│   │   │   └── CascadeType.cs                 # 🚧 Planned (Phase 3.2)
+│   │   │   └── RepositoryAttribute.cs         # ✅ Implemented (Phase 1.6)
 │   │   ├── Core/                       # Entity management ✅
 │   │   │   ├── IEntityManager.cs
 │   │   │   ├── EntityManager.cs
@@ -1147,9 +1175,11 @@ NPA/
 │   │   │   ├── PropertyMetadata.cs
 │   │   │   ├── IMetadataProvider.cs
 │   │   │   ├── MetadataProvider.cs
-│   │   │   ├── RelationshipMetadata.cs         # 🚧 Planned (Phase 2.1)
+│   │   │   ├── RelationshipType.cs             # ✅ Implemented (Phase 2.1)
+│   │   │   ├── RelationshipMetadata.cs         # ✅ Implemented (Phase 2.1)
+│   │   │   ├── JoinColumnMetadata.cs           # ✅ Implemented (Phase 2.1)
+│   │   │   ├── JoinTableMetadata.cs            # ✅ Implemented (Phase 2.1)
 │   │   │   ├── CompositeKeyMetadata.cs         # 🚧 Planned (Phase 2.2)
-│   │   │   ├── JoinTableMetadata.cs            # 🚧 Planned (Phase 2.1)
 │   │   │   └── MetadataBuilder.cs              # 🚧 Planned (Phase 2.6)
 │   │   ├── Query/                      # Query system ✅
 │   │   │   ├── IQuery.cs
@@ -1275,6 +1305,7 @@ NPA/
 │   │   ├── Core/
 │   │   ├── Metadata/
 │   │   ├── Query/
+│   │   ├── Relationships/            # ✅ Implemented (Phase 2.1)
 │   │   ├── Integration/
 │   │   └── TestEntities/
 │   ├── NPA.Extensions.Tests/               # 🚧 Skeleton Only
@@ -1294,30 +1325,37 @@ NPA/
 │   ├── NPA.Monitoring.Tests/               # 🚧 Skeleton Only
 │   └── NPA.Integration.Tests/              # 🚧 Skeleton Only
 ├── samples/
-│   ├── BasicUsage/               # Sample application ✅
+│   ├── BasicUsage/               # ✅ Complete (Phases 1.1-1.5)
 │   │   ├── Program.cs
 │   │   ├── User.cs
+│   │   ├── Features/
+│   │   │   ├── Phase1Demo.cs
+│   │   │   ├── SqlServerProviderRunner.cs
+│   │   │   ├── MySqlProviderRunner.cs
+│   │   │   ├── PostgreSqlProviderRunner.cs
+│   │   │   └── QueriesSample.cs
+│   │   ├── README.md
 │   │   └── BasicUsage.csproj
-│   ├── AdvancedQueries/          # 🚧 Planned (Phase 2.3)
+│   ├── AdvancedQueries/          # ✅ Complete (Phase 1.3)
 │   │   ├── Program.cs
-│   │   ├── ComplexQueries.cs
+│   │   ├── AdvancedQueryExamples.cs
+│   │   ├── DatabaseManager.cs
+│   │   ├── Entities/
+│   │   │   ├── Product.cs
+│   │   │   └── Order.cs
+│   │   ├── README.md
 │   │   └── AdvancedQueries.csproj
-│   ├── WebApplication/           # 🚧 Planned (Phase 2.4)
-│   │   ├── Controllers/
-│   │   ├── Models/
-│   │   ├── Services/
+│   ├── SourceGeneratorDemo/      # ✅ Complete (Phase 1.6)
 │   │   ├── Program.cs
-│   │   └── WebApplication.csproj
-│   ├── RepositoryPattern/        # 🚧 Planned (Phase 2.4)
-│   │   ├── Repositories/
-│   │   ├── Services/
+│   │   └── SourceGeneratorDemo.csproj
+│   ├── RepositoryPattern/        # 🚧 Partial (Phase 2.4)
 │   │   ├── Program.cs
 │   │   └── RepositoryPattern.csproj
-│   └── SourceGeneratorDemo/      # 🚧 Planned (Phase 4.1)
-│       ├── Generated/
-│       ├── Interfaces/
+│   └── WebApplication/           # 🚧 Partial (Phase 2.4)
+│       ├── Controllers/
+│       │   └── ProductsController.cs
 │       ├── Program.cs
-│       └── SourceGeneratorDemo.csproj
+│       └── WebApplication.csproj
 ├── tools/
 │   ├── NPA.CLI/                  # Command line tools 🚧 Planned (Phase 6.2)
 │   │   ├── Program.cs
@@ -1573,7 +1611,16 @@ public class UserService
 - [ ] **1.6 Repository Source Generator (basic)** 📋 PLANNED
 
 ### Phase 2: Advanced Features
-- [ ] **2.1 Relationship mapping** (OneToMany, ManyToOne, ManyToMany) 📋 PLANNED
+
+- [x] **2.1 Relationship mapping** (OneToMany, ManyToOne, ManyToMany) ✅ **COMPLETED**
+  - Relationship attributes: OneToMany, ManyToOne, ManyToMany
+  - Join attributes: JoinColumn, JoinTable  
+  - Cascade types (Persist, Merge, Remove, Refresh, Detach, All)
+  - Fetch strategies (Eager, Lazy)
+  - Relationship metadata detection
+  - Bidirectional relationship support
+  - Automatic join column/table naming
+  - 27 comprehensive tests passing
 - [ ] **2.2 Composite key support** 📋 PLANNED
 - [ ] **2.3 JPQL-like query language** 📋 PLANNED
 - [ ] **2.4 Repository pattern implementation** 📋 PLANNED

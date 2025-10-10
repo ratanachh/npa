@@ -8,8 +8,8 @@ This directory contains sample applications demonstrating NPA features.
 |--------|--------|-------------|-------|-------------|
 | **BasicUsage** | ✅ Complete | Yes | 1.1-1.5 | Entity mapping, CRUD, queries with SQL Server/MySQL/PostgreSQL |
 | **AdvancedQueries** | ✅ Complete | Yes | 1.3 | Advanced CPQL queries with PostgreSQL |
-| **RepositoryPattern** | ✅ Builds | Partial | 2.4 | Repository pattern (needs full implementation) |
 | **SourceGeneratorDemo** | ✅ Complete | Yes | 1.6 | Repository source generator demonstration |
+| **RepositoryPattern** | ✅ Builds | Partial | 2.4 | Repository pattern (needs full implementation) |
 | **WebApplication** | ✅ Builds | Partial | 2.4 | ASP.NET Core integration (basic) |
 
 ## ✅ Fully Functional Samples
@@ -59,9 +59,9 @@ dotnet run                    # Uses PostgreSQL with Testcontainers
 - 🚧 Basic ASP.NET Core integration
 - Needs full implementation for production use
 
-### SourceGeneratorDemo
-- 🚧 Stub only - depends on Phase 1.6/4.1
-- Cannot build until NPA.Generators is implemented
+### SourceGeneratorDemo (Phase 1.6)
+- ✅ Complete - demonstrates repository source generator
+- Shows convention-based code generation
 
 ## 🎯 Creating New Samples
 
@@ -102,12 +102,13 @@ dotnet run --project samples/BasicUsage
 
 1. **Use BasicUsage** as the primary reference for Phases 1.1-1.5
 2. **Use AdvancedQueries** to learn CPQL query capabilities
-3. **SQL Server provider** is production-ready with 63 passing tests (Phase 1.4)
-4. **MySQL provider** is production-ready with 86 passing tests (Phase 1.5) 🆕
-5. **PostgreSQL provider** is available as an alternative
-6. **Follow task documents** in `docs/tasks/` for phase-specific guidance
+3. **Use SourceGeneratorDemo** to see Phase 1.6 code generation
+4. **SQL Server provider** is production-ready with 63 passing tests (Phase 1.4)
+5. **MySQL provider** is production-ready with 86 passing tests (Phase 1.5)
+6. **PostgreSQL provider** is available as an alternative
+7. **Follow task documents** in `docs/tasks/` for phase-specific guidance
 
 ---
 
-*Last Updated: October 9, 2025*  
-*Status: 2 fully functional samples demonstrating Phases 1.1-1.5*
+*Last Updated: October 10, 2025*  
+*Status: 3 fully functional samples demonstrating Phases 1.1-1.6*

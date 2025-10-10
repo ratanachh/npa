@@ -31,6 +31,11 @@ public sealed class EntityMetadata
     public Dictionary<string, PropertyMetadata> Properties { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the relationship metadata.
+    /// </summary>
+    public Dictionary<string, RelationshipMetadata> Relationships { get; set; } = new();
+
+    /// <summary>
     /// Gets the full table name including schema if specified.
     /// </summary>
     public string FullTableName => string.IsNullOrEmpty(SchemaName) ? TableName : $"{SchemaName}.{TableName}";

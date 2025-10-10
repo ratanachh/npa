@@ -14,8 +14,8 @@ public class Product
     [Column("name")]
     public string Name { get; set; } = string.Empty;
 
-    [Column("category")]
-    public string Category { get; set; } = string.Empty;
+    [Column("category_name")]
+    public string CategoryName { get; set; } = string.Empty;
 
     [Column("price")]
     public decimal Price { get; set; }
@@ -23,17 +23,19 @@ public class Product
     [Column("stock_quantity")]
     public int StockQuantity { get; set; }
 
-    [Column("supplier_id")]
-    public long? SupplierId { get; set; }
-
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // Phase 2.1: ManyToOne relationship - Many products belong to one category
+    [ManyToOne]
+    [JoinColumn("category_id")]
+    public Category? Category { get; set; }
+
     public override string ToString()
     {
-        return $"Product[{Id}] {Name} - {Category} (${Price}) Stock: {StockQuantity}";
+        return $"Product[{Id}] {Name} - {CategoryName} (${Price}) Stock: {StockQuantity}";
     }
 }

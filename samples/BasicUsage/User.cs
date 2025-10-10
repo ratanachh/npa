@@ -1,15 +1,15 @@
 using NPA.Core.Annotations;
-using System;
 
-namespace BasicUsage
+namespace BasicUsage;
+
+/// <summary>
+/// Sample User entity for demonstration.
+/// Demonstrates basic entity mapping (Phase 1.1) and relationships (Phase 2.1).
+/// </summary>
+[Entity]
+[Table("users")]
+public class User
 {
-    [Entity]
-    [Table("users")]
-    /// <summary>
-    /// Sample User entity for demonstration.
-    /// </summary>
-    public class User
-    {
     [Id]
     [GeneratedValue(GenerationType.Identity)]
     [Column("id")]
@@ -26,5 +26,8 @@ namespace BasicUsage
 
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
-    }
+
+    // Phase 2.1: OneToMany relationship - One user can have many orders
+    [OneToMany("User", Cascade = CascadeType.All)]
+    public ICollection<Entities.Order> Orders { get; set; } = new List<Entities.Order>();
 }

@@ -82,6 +82,9 @@ public sealed class MetadataProvider : IMetadataProvider
             throw new InvalidOperationException($"Entity {entityType.Name} must have a property marked with [Id] attribute.");
         }
 
+        // Build relationships after properties are set
+        BuildRelationships(entityType, metadata);
+
         return metadata;
     }
 
@@ -131,6 +134,143 @@ public sealed class MetadataProvider : IMetadataProvider
         }
 
         return metadata;
+    }
+
+    private void BuildRelationships(Type entityType, EntityMetadata metadata)
+    {
+        var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        
+        foreach (var property in properties)
+        {
+            // Check for OneToMany relationship
+            var oneToMany = property.GetCustomAttribute<OneToManyAttribute>();
+            if (oneToMany != null)
+            {
+                var relationship = new RelationshipMetadata
+                {
+                    PropertyName = property.Name,
+                    RelationshipType = RelationshipType.OneToMany,
+                    TargetEntityType = GetCollectionElementType(property.PropertyType),
+                    MappedBy = oneToMany.MappedBy,
+                    CascadeType = oneToMany.Cascade,
+                    FetchType = oneToMany.Fetch,
+                    OrphanRemoval = oneToMany.OrphanRemoval,
+                    IsOwner = string.IsNullOrEmpty(oneToMany.MappedBy)
+                };
+                metadata.Relationships[property.Name] = relationship;
+                continue;
+            }
+
+            // Check for ManyToOne relationship
+            var manyToOne = property.GetCustomAttribute<ManyToOneAttribute>();
+            if (manyToOne != null)
+            {
+                var relationship = new RelationshipMetadata
+                {
+                    PropertyName = property.Name,
+                    RelationshipType = RelationshipType.ManyToOne,
+                    TargetEntityType = property.PropertyType,
+                    CascadeType = manyToOne.Cascade,
+                    FetchType = manyToOne.Fetch,
+                    IsOptional = manyToOne.Optional,
+                    IsOwner = true
+                };
+
+                // Check for JoinColumn attribute
+                var joinColumn = property.GetCustomAttribute<JoinColumnAttribute>();
+                if (joinColumn != null)
+                {
+                    relationship.JoinColumn = new JoinColumnMetadata
+                    {
+                        Name = joinColumn.Name,
+                        ReferencedColumnName = joinColumn.ReferencedColumnName,
+                        Unique = joinColumn.Unique,
+                        Nullable = joinColumn.Nullable,
+                        Insertable = joinColumn.Insertable,
+                        Updatable = joinColumn.Updatable
+                    };
+                }
+                else
+                {
+                    // Default join column name: {property_name}_id
+                    relationship.JoinColumn = new JoinColumnMetadata
+                    {
+                        Name = ConvertToSnakeCase(property.Name) + "_id",
+                        ReferencedColumnName = "id",
+                        Nullable = manyToOne.Optional
+                    };
+                }
+
+                metadata.Relationships[property.Name] = relationship;
+                continue;
+            }
+
+            // Check for ManyToMany relationship
+            var manyToMany = property.GetCustomAttribute<ManyToManyAttribute>();
+            if (manyToMany != null)
+            {
+                var relationship = new RelationshipMetadata
+                {
+                    PropertyName = property.Name,
+                    RelationshipType = RelationshipType.ManyToMany,
+                    TargetEntityType = GetCollectionElementType(property.PropertyType),
+                    MappedBy = manyToMany.MappedBy,
+                    CascadeType = manyToMany.Cascade,
+                    FetchType = manyToMany.Fetch,
+                    IsOwner = string.IsNullOrEmpty(manyToMany.MappedBy)
+                };
+
+                // Check for JoinTable attribute (only on owning side)
+                if (relationship.IsOwner)
+                {
+                    var joinTable = property.GetCustomAttribute<JoinTableAttribute>();
+                    if (joinTable != null)
+                    {
+                        relationship.JoinTable = new JoinTableMetadata
+                        {
+                            Name = joinTable.Name,
+                            Schema = joinTable.Schema,
+                            JoinColumns = new List<string>(joinTable.JoinColumns),
+                            InverseJoinColumns = new List<string>(joinTable.InverseJoinColumns)
+                        };
+                    }
+                    else
+                    {
+                        // Default join table name: {entity1}_{entity2}
+                        var targetType = relationship.TargetEntityType;
+                        relationship.JoinTable = new JoinTableMetadata
+                        {
+                            Name = $"{ConvertToSnakeCase(entityType.Name)}_{ConvertToSnakeCase(targetType.Name)}",
+                            JoinColumns = new List<string> { ConvertToSnakeCase(entityType.Name) + "_id" },
+                            InverseJoinColumns = new List<string> { ConvertToSnakeCase(targetType.Name) + "_id" }
+                        };
+                    }
+                }
+
+                metadata.Relationships[property.Name] = relationship;
+            }
+        }
+    }
+
+    private static Type GetCollectionElementType(Type collectionType)
+    {
+        // Handle ICollection<T>, IList<T>, List<T>, etc.
+        if (collectionType.IsGenericType)
+        {
+            var genericArgs = collectionType.GetGenericArguments();
+            if (genericArgs.Length > 0)
+            {
+                return genericArgs[0];
+            }
+        }
+
+        // Handle arrays
+        if (collectionType.IsArray)
+        {
+            return collectionType.GetElementType()!;
+        }
+
+        throw new InvalidOperationException($"Unable to determine element type for collection type: {collectionType.Name}");
     }
 
     private static string ConvertToSnakeCase(string input)
