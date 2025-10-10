@@ -16,8 +16,10 @@ namespace ConsoleAppSync.Features;
 /// </summary>
 public static class SyncMethodsRunner
 {
-    public static async Task RunAsync()
+    public static async Task RunAsync(bool showSql = false)
     {
+        Console.WriteLine(showSql ? "Running with SQL logging enabled\n" : "Running in normal mode (use --show-sql to see SQL)\n");
+        
         var sqlServerContainer = new MsSqlBuilder()
             .WithPassword("YourStrong@Passw0rd")
             .WithCleanUp(true)
@@ -38,7 +40,7 @@ public static class SyncMethodsRunner
             // Setup Dependency Injection
             var services = new ServiceCollection();
             services.AddLogging(builder => 
-                builder.AddConsole().SetMinimumLevel(LogLevel.Warning)); // Reduce noise
+                builder.AddConsole().SetMinimumLevel(showSql ? LogLevel.Debug : LogLevel.Information));
             
             // Register NPA services with SQL Server provider
             services.AddSingleton<IMetadataProvider, MetadataProvider>();
@@ -66,6 +68,12 @@ public static class SyncMethodsRunner
             SyncMethodsDemo.RunBatchOperations(entityManager);
 
             Console.WriteLine("\n=== Demo Complete ===");
+            
+            if (!showSql)
+            {
+                Console.WriteLine("\n💡 Tip: Run with --show-sql or -v to see generated SQL and parameter values");
+                Console.WriteLine("   Example: dotnet run -- --show-sql");
+            }
         }
         catch (Exception ex)
         {

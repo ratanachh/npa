@@ -71,6 +71,26 @@ dotnet run --project samples/AdvancedQueries
 # Or from sample directory
 cd samples/AdvancedQueries
 dotnet run
+
+# Run with SQL logging to see generated SQL and parameter values
+dotnet run -- --show-sql
+# or
+dotnet run -- -v
+```
+
+**SQL Logging Output Example:**
+```
+=== Query Execution Details ===
+SQL: SELECT p.id, p.name, p.category_name, p.price, p.stock_quantity, p.is_active 
+     FROM products p 
+     WHERE (p.category_name = @category1 AND p.price < @maxPrice) 
+        OR (p.category_name = @category2 AND p.price > @minPrice)
+Parameters:
+  @category1 = 'Electronics'
+  @maxPrice = 100
+  @category2 = 'Furniture'
+  @minPrice = 200
+==============================
 ```
 
 ## 📊 Expected Output
