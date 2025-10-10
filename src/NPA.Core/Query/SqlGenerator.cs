@@ -208,6 +208,16 @@ public class SqlGenerator : ISqlGenerator
 
     private string GenerateSelectItem(SelectItem item, EntityMetadata entityMetadata, string alias)
     {
+        // Special case: If the expression is just the alias itself (e.g., "SELECT c FROM Customer c"),
+        // it means "select all columns", so we should generate the full column list
+        if (item.Expression is PropertyExpression prop && 
+            prop.EntityAlias == null && 
+            prop.PropertyName == alias)
+        {
+            // This is "SELECT c" meaning "SELECT all columns"
+            return GenerateSelectColumns(entityMetadata, alias);
+        }
+        
         var expression = GenerateExpression(item.Expression, entityMetadata, alias);
         
         if (!string.IsNullOrEmpty(item.Alias))
