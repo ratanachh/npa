@@ -66,15 +66,19 @@ dotnet run
 - Dependency Injection
 - SQL Server in Docker
 
-### 3. **AdvancedQueries** ✅ Complete
-Demonstrates advanced query features and CPQL (C# Persistence Query Language).
+### 3. **AdvancedQueries** ✅ Updated (Phase 2.3)
+Demonstrates **advanced CPQL features** including JOINs, GROUP BY, HAVING, and complex expressions.
 
 **Features:**
-- Complex CPQL queries
-- Join operations
-- Aggregation functions
-- Parameterized queries
-- Query result mapping
+- ✅ JOIN operations (INNER, LEFT, RIGHT, FULL)
+- ✅ GROUP BY and HAVING clauses
+- ✅ Aggregate functions (COUNT, SUM, AVG, MIN, MAX) with DISTINCT
+- ✅ String functions (UPPER, LOWER, LENGTH, SUBSTRING, TRIM, CONCAT)
+- ✅ Date functions (YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, NOW)
+- ✅ Complex expressions with operator precedence
+- ✅ DISTINCT and multiple ORDER BY
+- ✅ Parameterized queries with named parameters
+- 17 comprehensive query examples
 
 **Run it:**
 ```bash

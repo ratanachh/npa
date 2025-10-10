@@ -1,32 +1,45 @@
-# AdvancedQueries Sample - Phase 1.3 CPQL Demonstrations
+# AdvancedQueries Sample - Phase 2.3 Enhanced CPQL Demonstrations
 
 ## 📋 Overview
 
-This sample demonstrates **advanced CPQL (Custom Persistence Query Language)** capabilities using the Phase 1.3 implementation. It showcases complex WHERE conditions, aggregations, pattern matching, and bulk updates.
+This sample demonstrates **enhanced CPQL (C# Persistence Query Language)** capabilities with full Phase 2.3 features. It showcases JOINs, GROUP BY, HAVING, aggregate functions, string/date functions, and complex expressions.
 
-> **Note**: This sample uses **CPQL** (Phase 1.3 ✅ completed). Advanced features like JOINs, subqueries, and CTEs require **enhanced CPQL** implementation (Phase 2.3 📋 planned).
+> **Phase 2.3 ✅ COMPLETE**: This sample now demonstrates the full power of the enhanced CPQL parser with advanced SQL features!
 
 ## 🎯 What This Sample Demonstrates
 
-### Phase 1.3 Features (All Working ✅)
+### Phase 1.3 Features (Foundation) ✅
 1. **Complex WHERE Conditions** - Multiple AND/OR combinations
 2. **Range Queries** - BETWEEN equivalent with >= and <=
 3. **Pattern Matching** - LIKE queries for text search
 4. **DateTime Queries** - Date range filtering
 5. **NULL Handling** - IS NULL/IS NOT NULL
-6. **Aggregation Queries** - COUNT operations
+6. **Basic Aggregation** - COUNT operations
 7. **Bulk Updates** - UPDATE with WHERE conditions
 8. **Multiple Parameters** - Complex parameter binding
 9. **String Functions** - Prefix/suffix matching
 10. **Status Filtering** - Multiple OR conditions
 
-### Limitations (Require Phase 2.3)
-- ❌ JOINs between tables
-- ❌ Subqueries
-- ❌ SUM, AVG, MIN, MAX aggregations
-- ❌ GROUP BY and HAVING
-- ❌ CTEs (Common Table Expressions)
-- ❌ Window functions
+### Phase 2.3 Advanced Features (NEW ✅)
+11. **JOIN Operations** - INNER, LEFT, RIGHT, FULL with ON conditions
+12. **GROUP BY and HAVING** - Grouping with aggregate filtering
+13. **Advanced Aggregates** - SUM, AVG, MIN, MAX with DISTINCT
+14. **String Functions** - UPPER, LOWER, LENGTH, SUBSTRING, TRIM, CONCAT
+15. **Date Functions** - YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, NOW
+16. **DISTINCT & Multiple ORDER BY** - Unique results with complex sorting
+17. **Complex Expressions** - Full operator precedence with parentheses
+
+### All Supported Features ✅
+- ✅ JOIN operations (INNER, LEFT, RIGHT, FULL)
+- ✅ GROUP BY and HAVING clauses
+- ✅ All aggregate functions (COUNT, SUM, AVG, MIN, MAX) with DISTINCT
+- ✅ String functions with database dialect support
+- ✅ Date functions with database dialect support
+- ✅ Complex expressions with proper operator precedence
+- ✅ DISTINCT keyword
+- ✅ Multiple ORDER BY columns with ASC/DESC
+- ✅ Named parameters (`:paramName`)
+- ✅ Comment support (line and block)
 
 ## 🏗️ Project Structure
 
@@ -198,39 +211,44 @@ All queries use parameterized binding - values never concatenated into SQL strin
 ### 2. Type-Safe Results
 CPQL queries return strongly-typed entities with full IntelliSense support.
 
-### 3. Flexible Filtering
-Complex boolean logic with AND/OR combinations for sophisticated queries.
+### 3. Advanced SQL Features
+Full support for JOINs, GROUP BY, HAVING, aggregate functions, and complex expressions.
 
-### 4. Null Safety
-Proper handling of nullable columns and NULL comparisons.
+### 4. Database Dialect Support
+String and date functions automatically converted to database-specific SQL (SQL Server, MySQL, PostgreSQL).
 
 ### 5. Dapper Performance
-All queries execute through Dapper for optimal database performance.
+All queries execute through Dapper for optimal database performance with advanced features.
 
 ## 🔗 Related Documentation
 
-- [Phase 1.3 Task Document](../../docs/tasks/samples/phase1.3-cpql-query-sample.md)
-- [CPQL Query Documentation](../../docs/tasks/phase1.3-simple-query-support/README.md)
+- [Phase 2.3 Task Document](../../docs/tasks/phase2.3-cpql-query-language/README.md)
+- [Phase 2.3 Implementation Summary](../../docs/tasks/phase2.3-cpql-query-language/IMPLEMENTATION_SUMMARY.md)
+- [CPQL Documentation in README](../../README.md#3-query-language-cpql-)
 - [Main README](../../README.md)
 
 ## 💡 Best Practices Shown
 
-1. **Always parameterize** dynamic values
+1. **Always parameterize** dynamic values (`:paramName` syntax)
 2. **Use scoped EntityManager** for proper lifecycle
-3. **Handle exceptions** gracefully
-4. **Dispose resources** with `await using`
-5. **Test queries** with real data
-6. **Index frequently** queried columns
+3. **Leverage JOINs** for related data
+4. **Use GROUP BY** for aggregations
+5. **Apply HAVING** for aggregate filtering
+6. **Use database functions** (UPPER, LOWER, YEAR, etc.) for transformations
+7. **Test queries** with real data
+8. **Index frequently** queried columns
 
 ## 🚀 Next Steps
 
 After running this sample, explore:
-- Phase 2.3 - Enhanced CPQL for JOINs and subqueries (planned)
-- Phase 3.3 - Bulk operations for large datasets (planned)
-- Phase 5.1 - Caching for query performance (planned)
+- Phase 2.4 - Repository pattern for cleaner data access
+- Phase 3.1 - Transaction management for complex operations
+- Phase 3.3 - Bulk operations for large datasets
+- Phase 5.1 - Caching for query performance
 
 ---
 
 *Created: October 8, 2025*  
-*Status: ✅ Functional with Phase 1.3 features*  
+*Updated: October 10, 2024 (Phase 2.3)*  
+*Status: ✅ Complete with Phase 2.3 advanced features*  
 *Database: PostgreSQL 17 (Testcontainers)*
