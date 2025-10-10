@@ -2,882 +2,401 @@
 
 ## 📋 Task Overview
 
-**Objective**: Implement support for additional database providers (PostgreSQL, MySQL, SQLite) to make NPA database-agnostic while maintaining Dapper's performance benefits.
+**Objective**: Complete database provider support by implementing the SQLite provider, making NPA fully database-agnostic.
 
 **Priority**: Medium  
-**Estimated Time**: 4-5 days  
+**Estimated Time**: 1-2 days (only SQLite remaining)  
 **Dependencies**: Phase 1.1-1.5, Phase 2.1-2.4 (All previous Phase 2 tasks)  
 **Assigned To**: [Developer Name]  
+**Status**: ✅ **PARTIALLY COMPLETE** - Only SQLite remaining
 
 ## 🎯 Success Criteria
 
-- [ ] PostgreSQL provider is implemented
-- [ ] MySQL provider is implemented
-- [ ] SQLite provider is implemented
-- [ ] Provider abstraction is complete
-- [ ] Unit tests cover all functionality
-- [ ] Documentation is complete
+- [x] PostgreSQL provider is implemented ✅ (Completed in Phase 2.5)
+- [x] MySQL provider is implemented ✅ (Completed in Phase 1.5)
+- [x] SQL Server provider is implemented ✅ (Completed in Phase 1.4)
+- [ ] SQLite provider is implemented 🚧 REMAINING
+- [x] Provider abstraction is complete ✅
+- [x] Unit tests cover all functionality ✅ (63 SQL Server, 63 MySQL, 132 PostgreSQL tests)
+- [x] Documentation is complete ✅
 
-## 📝 Detailed Requirements
+## 📝 Current Implementation Status
 
-### 1. Database Provider Abstraction
-- **IDatabaseProvider Interface**: Common interface for all database providers
-- **Provider Registration**: Register providers with dependency injection
-- **Provider Selection**: Select provider based on configuration
-- **Provider Factory**: Factory for creating provider instances
+### ✅ Already Implemented Providers
 
-### 2. PostgreSQL Provider
-- **Connection Management**: PostgreSQL connection handling
-- **SQL Generation**: PostgreSQL-specific SQL generation
-- **Data Type Mapping**: PostgreSQL data type mapping
-- **Feature Support**: PostgreSQL-specific features
-- **Performance Optimization**: PostgreSQL-specific optimizations
+#### 1. **SQL Server Provider** (Phase 1.4) ✅
+- **Location:** `src/NPA.Providers.SqlServer/`
+- **Files:**
+  - `SqlServerProvider.cs` - Main provider implementation
+  - `SqlServerDialect.cs` - SQL Server-specific SQL dialect
+  - `SqlServerTypeConverter.cs` - Type mapping for SQL Server
+  - `SqlServerBulkOperationProvider.cs` - Bulk operations
+  - `Extensions/ServiceCollectionExtensions.cs` - DI integration
+- **Tests:** 63 tests passing
+- **Features:**
+  - SCOPE_IDENTITY() for identity columns
+  - OFFSET/FETCH for paging
+  - Bracket identifiers `[TableName]`
+  - No quotes for simple identifiers in aliases
 
-### 3. MySQL Provider
-- **Connection Management**: MySQL connection handling
-- **SQL Generation**: MySQL-specific SQL generation
-- **Data Type Mapping**: MySQL data type mapping
-- **Feature Support**: MySQL-specific features
-- **Performance Optimization**: MySQL-specific optimizations
+#### 2. **MySQL/MariaDB Provider** (Phase 1.5) ✅
+- **Location:** `src/NPA.Providers.MySql/`
+- **Files:**
+  - `MySqlProvider.cs` - Main provider implementation
+  - `MySqlDialect.cs` - MySQL-specific SQL dialect
+  - `MySqlTypeConverter.cs` - Type mapping for MySQL
+  - `MySqlBulkOperationProvider.cs` - Bulk operations
+  - `Extensions/ServiceCollectionExtensions.cs` - DI integration
+- **Tests:** 63 tests passing
+- **Features:**
+  - LAST_INSERT_ID() for identity columns
+  - LIMIT/OFFSET for paging
+  - Backtick identifiers `` `TableName` ``
 
-### 4. SQLite Provider
+#### 3. **PostgreSQL Provider** (Phase 2.5) ✅
+- **Location:** `src/NPA.Providers.PostgreSql/`
+- **Files:**
+  - `PostgreSqlProvider.cs` - Main provider implementation
+  - `PostgreSqlDialect.cs` - PostgreSQL-specific SQL dialect
+  - `PostgreSqlTypeConverter.cs` - Type mapping for PostgreSQL
+  - `PostgreSqlBulkOperationProvider.cs` - Bulk operations with COPY
+  - `Extensions/ServiceCollectionExtensions.cs` - DI integration
+- **Tests:** 132 tests passing
+- **Features:**
+  - RETURNING clause for identity columns
+  - OFFSET/LIMIT for paging
+  - Double-quoted identifiers `"TableName"`
+  - JSONB, UUID, arrays, intervals support
+  - Full-text search with GIN indexes
+  - UPSERT (INSERT...ON CONFLICT)
+
+## 📝 Remaining Requirements - SQLite Provider Only
+
+### SQLite Provider Implementation Needed
 - **Connection Management**: SQLite connection handling
 - **SQL Generation**: SQLite-specific SQL generation
 - **Data Type Mapping**: SQLite data type mapping
 - **Feature Support**: SQLite-specific features
 - **Performance Optimization**: SQLite-specific optimizations
 
-### 5. Provider Features
-- **Connection String Parsing**: Parse provider-specific connection strings
-- **SQL Dialect Support**: Support for different SQL dialects
-- **Data Type Support**: Support for provider-specific data types
-- **Feature Detection**: Detect provider capabilities
-- **Error Handling**: Provider-specific error handling
+### SQLite-Specific Features
+- **AUTOINCREMENT**: For identity columns
+- **LIMIT/OFFSET**: For paging
+- **Double quotes**: For identifiers `"TableName"`
+- **Pragma support**: For database configuration
+- **In-memory database**: Support for `:memory:` databases
+- **JSON support**: JSON1 extension
+- **Full-text search**: FTS5 extension
 
-## 🏗️ Implementation Plan
+## 🏗️ Implementation Plan - SQLite Only
 
-### Step 1: Create Provider Abstraction
-1. Create `IDatabaseProvider` interface
-2. Create `DatabaseProvider` enum
-3. Create `IDatabaseProviderFactory` interface
-4. Create `DatabaseProviderFactory` class
+### Step 1: Create SQLite Provider Structure
+1. Create `NPA.Providers.Sqlite` project
+2. Create `SqliteProvider.cs` class implementing `IDatabaseProvider`
+3. Create `SqliteDialect.cs` for SQLite-specific SQL
+4. Create `SqliteTypeConverter.cs` for type mapping
 
-### Step 2: Implement PostgreSQL Provider
-1. Create `PostgreSQLProvider` class
-2. Implement connection management
-3. Implement SQL generation
-4. Implement data type mapping
+### Step 2: Implement SQLite-Specific Features
+1. Implement AUTOINCREMENT for identity columns
+2. Implement LIMIT/OFFSET for paging (note: different order than other DBs)
+3. Implement double-quote identifier escaping
+4. Add pragma support for configuration
 
-### Step 3: Implement MySQL Provider
-1. Create `MySQLProvider` class
-2. Implement connection management
-3. Implement SQL generation
-4. Implement data type mapping
+### Step 3: Implement Bulk Operations
+1. Create `SqliteBulkOperationProvider.cs`
+2. Implement batch insert optimization
+3. Implement transaction-based bulk operations
 
-### Step 4: Implement SQLite Provider
-1. Create `SQLiteProvider` class
-2. Implement connection management
-3. Implement SQL generation
-4. Implement data type mapping
+### Step 4: Add DI Extensions
+1. Create `Extensions/ServiceCollectionExtensions.cs`
+2. Add provider registration methods
 
-### Step 5: Add Provider Features
-1. Implement connection string parsing
-2. Implement SQL dialect support
-3. Implement data type support
-4. Implement feature detection
+### Step 5: Create Unit Tests
+1. Test SQLite provider following existing patterns
+2. Test type conversions
+3. Test dialect-specific SQL generation
+4. Test bulk operations
 
-### Step 6: Create Unit Tests
-1. Test provider abstraction
-2. Test PostgreSQL provider
-3. Test MySQL provider
-4. Test SQLite provider
-
-### Step 7: Add Documentation
+### Step 6: Add Documentation
 1. XML documentation comments
-2. Usage examples
-3. Provider configuration guide
-4. Best practices
+2. Update main README with SQLite support
+3. Create implementation summary
 
-## 📁 File Structure
+## 📁 File Structure for SQLite Provider
 
 ```
-src/NPA.Core/Providers/
-├── IDatabaseProvider.cs
-├── DatabaseProvider.cs
-├── IDatabaseProviderFactory.cs
-├── DatabaseProviderFactory.cs
-├── PostgreSQL/
-│   ├── PostgreSQLProvider.cs
-│   ├── PostgreSQLConnectionManager.cs
-│   ├── PostgreSQLSqlGenerator.cs
-│   ├── PostgreSQLTypeMapper.cs
-│   └── PostgreSQLFeatureDetector.cs
-├── MySQL/
-│   ├── MySQLProvider.cs
-│   ├── MySQLConnectionManager.cs
-│   ├── MySQLSqlGenerator.cs
-│   ├── MySQLTypeMapper.cs
-│   └── MySQLFeatureDetector.cs
-└── SQLite/
-    ├── SQLiteProvider.cs
-    ├── SQLiteConnectionManager.cs
-    ├── SQLiteSqlGenerator.cs
-    ├── SQLiteTypeMapper.cs
-    └── SQLiteFeatureDetector.cs
+src/NPA.Providers.Sqlite/           (TO BE CREATED)
+├── SqliteProvider.cs
+├── SqliteDialect.cs
+├── SqliteTypeConverter.cs
+├── SqliteBulkOperationProvider.cs
+├── Extensions/
+│   └── ServiceCollectionExtensions.cs
+└── NPA.Providers.Sqlite.csproj
 
-tests/NPA.Core.Tests/Providers/
-├── DatabaseProviderFactoryTests.cs
-├── PostgreSQL/
-│   ├── PostgreSQLProviderTests.cs
-│   ├── PostgreSQLConnectionManagerTests.cs
-│   ├── PostgreSQLSqlGeneratorTests.cs
-│   └── PostgreSQLTypeMapperTests.cs
-├── MySQL/
-│   ├── MySQLProviderTests.cs
-│   ├── MySQLConnectionManagerTests.cs
-│   ├── MySQLSqlGeneratorTests.cs
-│   └── MySQLTypeMapperTests.cs
-└── SQLite/
-    ├── SQLiteProviderTests.cs
-    ├── SQLiteConnectionManagerTests.cs
-    ├── SQLiteSqlGeneratorTests.cs
-    └── SQLiteTypeMapperTests.cs
+tests/NPA.Providers.Sqlite.Tests/   (TO BE CREATED)
+├── SqliteProviderTests.cs
+├── SqliteDialectTests.cs
+├── SqliteTypeConverterTests.cs
+└── NPA.Providers.Sqlite.Tests.csproj
 ```
 
-## 💻 Code Examples
+### Existing Provider Structure (for reference)
+```
+src/
+├── NPA.Providers.SqlServer/        ✅ (Phase 1.4)
+├── NPA.Providers.MySql/            ✅ (Phase 1.5)
+└── NPA.Providers.PostgreSql/       ✅ (Phase 2.5)
 
-### Database Provider Interface
+tests/
+├── NPA.Providers.SqlServer.Tests/  ✅ (63 tests)
+├── NPA.Providers.MySql.Tests/      ✅ (63 tests)
+└── NPA.Providers.PostgreSql.Tests/ ✅ (132 tests)
+```
+
+## 💻 Code Examples for SQLite Provider
+
+### Reference: Existing Provider Pattern
+You can reference the existing provider implementations as templates:
+- SQL Server: `src/NPA.Providers.SqlServer/`
+- MySQL: `src/NPA.Providers.MySql/`
+- PostgreSQL: `src/NPA.Providers.PostgreSql/`
+
+### SQLite Provider (To Be Implemented)
 ```csharp
-public interface IDatabaseProvider
-{
-    DatabaseProvider Type { get; }
-    string Name { get; }
-    string Version { get; }
-    
-    Task<IDbConnection> CreateConnectionAsync(string connectionString);
-    Task<bool> TestConnectionAsync(string connectionString);
-    Task<DatabaseInfo> GetDatabaseInfoAsync(IDbConnection connection);
-    
-    string GenerateSelectSql(EntityMetadata metadata, string whereClause = null, string orderBy = null, int? skip = null, int? take = null);
-    string GenerateInsertSql(EntityMetadata metadata);
-    string GenerateUpdateSql(EntityMetadata metadata, string whereClause);
-    string GenerateDeleteSql(EntityMetadata metadata, string whereClause);
-    string GenerateCountSql(EntityMetadata metadata, string whereClause = null);
-    
-    string GetColumnName(string propertyName, PropertyMetadata property);
-    string GetTableName(string entityName, EntityMetadata metadata);
-    string GetParameterName(string parameterName, int index = 0);
-    
-    string MapToDatabaseType(Type clrType, PropertyMetadata property);
-    Type MapToClrType(string databaseType, PropertyMetadata property);
-    
-    bool SupportsFeature(DatabaseFeature feature);
-    string GetFeatureSql(DatabaseFeature feature, params object[] parameters);
-}
+using System.Data;
+using NPA.Core.Annotations;
+using NPA.Core.Metadata;
+using NPA.Core.Providers;
 
-public enum DatabaseProvider
-{
-    SqlServer,
-    PostgreSQL,
-    MySQL,
-    SQLite
-}
+namespace NPA.Providers.Sqlite;
 
-public enum DatabaseFeature
+/// <summary>
+/// SQLite-specific database provider implementation.
+/// </summary>
+public class SqliteProvider : IDatabaseProvider
 {
-    IdentityColumns,
-    Sequences,
-    Schemas,
-    Indexes,
-    ForeignKeys,
-    CheckConstraints,
-    Triggers,
-    StoredProcedures,
-    Functions,
-    Views,
-    MaterializedViews,
-    Partitioning,
-    FullTextSearch,
-    SpatialData,
-    JsonData,
-    ArrayData,
-    RangeData,
-    CustomTypes,
-    Extensions
-}
-```
+    private readonly ISqlDialect _dialect;
+    private readonly ITypeConverter _typeConverter;
+    private readonly IBulkOperationProvider _bulkOperationProvider;
 
-### PostgreSQL Provider
-```csharp
-public class PostgreSQLProvider : IDatabaseProvider
-{
-    public DatabaseProvider Type => DatabaseProvider.PostgreSQL;
-    public string Name => "PostgreSQL";
-    public string Version => "13+";
-    
-    private readonly IPostgreSQLConnectionManager _connectionManager;
-    private readonly IPostgreSQLSqlGenerator _sqlGenerator;
-    private readonly IPostgreSQLTypeMapper _typeMapper;
-    private readonly IPostgreSQLFeatureDetector _featureDetector;
-    
-    public PostgreSQLProvider(
-        IPostgreSQLConnectionManager connectionManager,
-        IPostgreSQLSqlGenerator sqlGenerator,
-        IPostgreSQLTypeMapper typeMapper,
-        IPostgreSQLFeatureDetector featureDetector)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SqliteProvider"/> class.
+    /// </summary>
+    public SqliteProvider()
     {
-        _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
-        _sqlGenerator = sqlGenerator ?? throw new ArgumentNullException(nameof(sqlGenerator));
-        _typeMapper = typeMapper ?? throw new ArgumentNullException(nameof(typeMapper));
-        _featureDetector = featureDetector ?? throw new ArgumentNullException(nameof(featureDetector));
+        _dialect = new SqliteDialect();
+        _typeConverter = new SqliteTypeConverter();
+        _bulkOperationProvider = new SqliteBulkOperationProvider(_dialect, _typeConverter);
     }
-    
-    public async Task<IDbConnection> CreateConnectionAsync(string connectionString)
-    {
-        if (string.IsNullOrEmpty(connectionString))
-            throw new ArgumentException("Connection string cannot be null or empty", nameof(connectionString));
-        
-        return await _connectionManager.CreateConnectionAsync(connectionString);
-    }
-    
-    public async Task<bool> TestConnectionAsync(string connectionString)
-    {
-        try
-        {
-            using var connection = await CreateConnectionAsync(connectionString);
-            await connection.OpenAsync();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-    
-    public async Task<DatabaseInfo> GetDatabaseInfoAsync(IDbConnection connection)
-    {
-        var sql = @"
-            SELECT 
-                version() as version,
-                current_database() as database_name,
-                current_user as user_name,
-                inet_server_addr() as server_address,
-                inet_server_port() as server_port";
-        
-        var result = await connection.QueryFirstAsync<DatabaseInfo>(sql);
-        return result;
-    }
-    
-    public string GenerateSelectSql(EntityMetadata metadata, string whereClause = null, string orderBy = null, int? skip = null, int? take = null)
-    {
-        return _sqlGenerator.GenerateSelectSql(metadata, whereClause, orderBy, skip, take);
-    }
-    
+
+    /// <inheritdoc />
     public string GenerateInsertSql(EntityMetadata metadata)
     {
-        return _sqlGenerator.GenerateInsertSql(metadata);
+        // Similar to PostgreSQL but uses AUTOINCREMENT instead of SERIAL
+        // Returns last_insert_rowid() for identity columns
     }
     
-    public string GenerateUpdateSql(EntityMetadata metadata, string whereClause)
+    // ... implement other IDatabaseProvider methods
+}
+```
+
+### SQLite Dialect (To Be Implemented)
+```csharp
+public class SqliteDialect : ISqlDialect
+{
+    public string ParameterPrefix => "@";
+    public string IdentifierPrefix => "\"";
+    public string IdentifierSuffix => "\"";
+    
+    public string GetLastInsertIdSql()
     {
-        return _sqlGenerator.GenerateUpdateSql(metadata, whereClause);
+        return "SELECT last_insert_rowid()";
     }
     
-    public string GenerateDeleteSql(EntityMetadata metadata, string whereClause)
+    public string GetPagingSql(int skip, int take)
     {
-        return _sqlGenerator.GenerateDeleteSql(metadata, whereClause);
-    }
-    
-    public string GenerateCountSql(EntityMetadata metadata, string whereClause = null)
-    {
-        return _sqlGenerator.GenerateCountSql(metadata, whereClause);
-    }
-    
-    public string GetColumnName(string propertyName, PropertyMetadata property)
-    {
-        return _sqlGenerator.GetColumnName(propertyName, property);
-    }
-    
-    public string GetTableName(string entityName, EntityMetadata metadata)
-    {
-        return _sqlGenerator.GetTableName(entityName, metadata);
-    }
-    
-    public string GetParameterName(string parameterName, int index = 0)
-    {
-        return _sqlGenerator.GetParameterName(parameterName, index);
-    }
-    
-    public string MapToDatabaseType(Type clrType, PropertyMetadata property)
-    {
-        return _typeMapper.MapToDatabaseType(clrType, property);
-    }
-    
-    public Type MapToClrType(string databaseType, PropertyMetadata property)
-    {
-        return _typeMapper.MapToClrType(databaseType, property);
-    }
-    
-    public bool SupportsFeature(DatabaseFeature feature)
-    {
-        return _featureDetector.SupportsFeature(feature);
-    }
-    
-    public string GetFeatureSql(DatabaseFeature feature, params object[] parameters)
-    {
-        return _featureDetector.GetFeatureSql(feature, parameters);
+        // SQLite uses LIMIT/OFFSET like PostgreSQL
+        if (skip > 0 && take > 0)
+            return $"LIMIT {take} OFFSET {skip}";
+        else if (take > 0)
+            return $"LIMIT {take}";
+        else if (skip > 0)
+            return $"LIMIT -1 OFFSET {skip}"; // SQLite requires LIMIT with OFFSET
+        
+        return string.Empty;
     }
 }
 ```
 
-### PostgreSQL SQL Generator
+### SQLite Type Converter (To Be Implemented)
 ```csharp
-public class PostgreSQLSqlGenerator : IPostgreSQLSqlGenerator
+public class SqliteTypeConverter : ITypeConverter
 {
-    public string GenerateSelectSql(EntityMetadata metadata, string whereClause = null, string orderBy = null, int? skip = null, int? take = null)
-    {
-        var columns = string.Join(", ", metadata.Properties.Select(p => p.ColumnName));
-        var sql = $"SELECT {columns} FROM {metadata.TableName}";
-        
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            sql += $" WHERE {whereClause}";
-        }
-        
-        if (!string.IsNullOrEmpty(orderBy))
-        {
-            sql += $" ORDER BY {orderBy}";
-        }
-        
-        if (skip.HasValue)
-        {
-            sql += $" OFFSET {skip.Value}";
-        }
-        
-        if (take.HasValue)
-        {
-            sql += $" LIMIT {take.Value}";
-        }
-        
-        return sql;
-    }
-    
-    public string GenerateInsertSql(EntityMetadata metadata)
-    {
-        var columns = metadata.Properties
-            .Where(p => !p.IsIdentity)
-            .Select(p => p.ColumnName)
-            .ToArray();
-        
-        var parameters = columns.Select(c => $"@{c}").ToArray();
-        
-        var sql = $"INSERT INTO {metadata.TableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters)})";
-        
-        if (metadata.HasIdentityColumn)
-        {
-            var identityColumn = metadata.Properties.First(p => p.IsIdentity);
-            sql += $" RETURNING {identityColumn.ColumnName}";
-        }
-        
-        return sql;
-    }
-    
-    public string GenerateUpdateSql(EntityMetadata metadata, string whereClause)
-    {
-        var columns = metadata.Properties
-            .Where(p => !p.IsPrimaryKey)
-            .Select(p => $"{p.ColumnName} = @{p.Name}")
-            .ToArray();
-        
-        var sql = $"UPDATE {metadata.TableName} SET {string.Join(", ", columns)}";
-        
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            sql += $" WHERE {whereClause}";
-        }
-        
-        return sql;
-    }
-    
-    public string GenerateDeleteSql(EntityMetadata metadata, string whereClause)
-    {
-        var sql = $"DELETE FROM {metadata.TableName}";
-        
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            sql += $" WHERE {whereClause}";
-        }
-        
-        return sql;
-    }
-    
-    public string GenerateCountSql(EntityMetadata metadata, string whereClause = null)
-    {
-        var sql = $"SELECT COUNT(*) FROM {metadata.TableName}";
-        
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            sql += $" WHERE {whereClause}";
-        }
-        
-        return sql;
-    }
-    
-    public string GetColumnName(string propertyName, PropertyMetadata property)
-    {
-        return property?.ColumnName ?? propertyName.ToSnakeCase();
-    }
-    
-    public string GetTableName(string entityName, EntityMetadata metadata)
-    {
-        return metadata?.TableName ?? entityName.ToSnakeCase();
-    }
-    
-    public string GetParameterName(string parameterName, int index = 0)
-    {
-        return $"@{parameterName}";
-    }
-}
-```
-
-### PostgreSQL Type Mapper
-```csharp
-public class PostgreSQLTypeMapper : IPostgreSQLTypeMapper
-{
-    private readonly Dictionary<Type, string> _clrToPostgreSQL = new()
+    // SQLite has limited type system (TEXT, INTEGER, REAL, BLOB, NULL)
+    // Map CLR types to SQLite affinity types
+    private readonly Dictionary<Type, string> _clrToSqlite = new()
     {
         { typeof(string), "TEXT" },
         { typeof(int), "INTEGER" },
-        { typeof(long), "BIGINT" },
-        { typeof(short), "SMALLINT" },
-        { typeof(byte), "SMALLINT" },
-        { typeof(bool), "BOOLEAN" },
-        { typeof(decimal), "DECIMAL" },
-        { typeof(double), "DOUBLE PRECISION" },
+        { typeof(long), "INTEGER" },
+        { typeof(short), "INTEGER" },
+        { typeof(byte), "INTEGER" },
+        { typeof(bool), "INTEGER" },  // 0 or 1
+        { typeof(decimal), "REAL" },
+        { typeof(double), "REAL" },
         { typeof(float), "REAL" },
-        { typeof(DateTime), "TIMESTAMP" },
-        { typeof(DateTimeOffset), "TIMESTAMPTZ" },
-        { typeof(TimeSpan), "INTERVAL" },
-        { typeof(Guid), "UUID" },
-        { typeof(byte[]), "BYTEA" },
-        { typeof(char), "CHAR(1)" }
+        { typeof(DateTime), "TEXT" },  // ISO8601 string
+        { typeof(DateTimeOffset), "TEXT" },
+        { typeof(TimeSpan), "TEXT" },
+        { typeof(Guid), "TEXT" },
+        { typeof(byte[]), "BLOB" }
     };
     
-    private readonly Dictionary<string, Type> _postgreSQLToClr = new()
+    public object? ConvertToDatabase(object? value, Type clrType)
     {
-        { "TEXT", typeof(string) },
-        { "VARCHAR", typeof(string) },
-        { "CHAR", typeof(string) },
-        { "INTEGER", typeof(int) },
-        { "BIGINT", typeof(long) },
-        { "SMALLINT", typeof(short) },
-        { "BOOLEAN", typeof(bool) },
-        { "DECIMAL", typeof(decimal) },
-        { "NUMERIC", typeof(decimal) },
-        { "DOUBLE PRECISION", typeof(double) },
-        { "REAL", typeof(float) },
-        { "TIMESTAMP", typeof(DateTime) },
-        { "TIMESTAMPTZ", typeof(DateTimeOffset) },
-        { "INTERVAL", typeof(TimeSpan) },
-        { "UUID", typeof(Guid) },
-        { "BYTEA", typeof(byte[]) }
-    };
-    
-    public string MapToDatabaseType(Type clrType, PropertyMetadata property)
-    {
-        if (clrType == typeof(string))
-        {
-            if (property?.Length.HasValue == true)
-            {
-                return property.Length.Value <= 255 ? $"VARCHAR({property.Length.Value})" : "TEXT";
-            }
-            return "TEXT";
-        }
-        
-        if (clrType == typeof(decimal))
-        {
-            var precision = property?.Precision ?? 18;
-            var scale = property?.Scale ?? 2;
-            return $"DECIMAL({precision},{scale})";
-        }
-        
-        if (clrType == typeof(DateTime))
-        {
-            return property?.Precision.HasValue == true ? $"TIMESTAMP({property.Precision.Value})" : "TIMESTAMP";
-        }
-        
-        if (_clrToPostgreSQL.TryGetValue(clrType, out var postgreSQLType))
-        {
-            return postgreSQLType;
-        }
-        
-        return "TEXT";
-    }
-    
-    public Type MapToClrType(string databaseType, PropertyMetadata property)
-    {
-        var normalizedType = databaseType.ToUpper().Split('(')[0];
-        
-        if (_postgreSQLToClr.TryGetValue(normalizedType, out var clrType))
-        {
-            return clrType;
-        }
-        
-        return typeof(string);
-    }
-}
-```
-
-### MySQL Provider
-```csharp
-public class MySQLProvider : IDatabaseProvider
-{
-    public DatabaseProvider Type => DatabaseProvider.MySQL;
-    public string Name => "MySQL";
-    public string Version => "8.0+";
-    
-    private readonly IMySQLConnectionManager _connectionManager;
-    private readonly IMySQLSqlGenerator _sqlGenerator;
-    private readonly IMySQLTypeMapper _typeMapper;
-    private readonly IMySQLFeatureDetector _featureDetector;
-    
-    public MySQLProvider(
-        IMySQLConnectionManager connectionManager,
-        IMySQLSqlGenerator sqlGenerator,
-        IMySQLTypeMapper typeMapper,
-        IMySQLFeatureDetector featureDetector)
-    {
-        _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
-        _sqlGenerator = sqlGenerator ?? throw new ArgumentNullException(nameof(sqlGenerator));
-        _typeMapper = typeMapper ?? throw new ArgumentNullException(nameof(typeMapper));
-        _featureDetector = featureDetector ?? throw new ArgumentNullException(nameof(featureDetector));
-    }
-    
-    // ... similar implementation to PostgreSQLProvider
-}
-
-public class MySQLSqlGenerator : IMySQLSqlGenerator
-{
-    public string GenerateSelectSql(EntityMetadata metadata, string whereClause = null, string orderBy = null, int? skip = null, int? take = null)
-    {
-        var columns = string.Join(", ", metadata.Properties.Select(p => p.ColumnName));
-        var sql = $"SELECT {columns} FROM {metadata.TableName}";
-        
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            sql += $" WHERE {whereClause}";
-        }
-        
-        if (!string.IsNullOrEmpty(orderBy))
-        {
-            sql += $" ORDER BY {orderBy}";
-        }
-        
-        if (take.HasValue)
-        {
-            sql += $" LIMIT {take.Value}";
+        // Special handling for DateTime (store as ISO8601)
+        if (value is DateTime dt)
+            return dt.ToString("yyyy-MM-dd HH:mm:ss.fff");
             
-            if (skip.HasValue)
-            {
-                sql += $" OFFSET {skip.Value}";
-            }
-        }
-        
-        return sql;
-    }
-    
-    // ... other methods similar to PostgreSQL
-}
-```
-
-### SQLite Provider
-```csharp
-public class SQLiteProvider : IDatabaseProvider
-{
-    public DatabaseProvider Type => DatabaseProvider.SQLite;
-    public string Name => "SQLite";
-    public string Version => "3.35+";
-    
-    private readonly ISQLiteConnectionManager _connectionManager;
-    private readonly ISQLiteSqlGenerator _sqlGenerator;
-    private readonly ISQLiteTypeMapper _typeMapper;
-    private readonly ISQLiteFeatureDetector _featureDetector;
-    
-    public SQLiteProvider(
-        ISQLiteConnectionManager connectionManager,
-        ISQLiteSqlGenerator sqlGenerator,
-        ISQLiteTypeMapper typeMapper,
-        ISQLiteFeatureDetector featureDetector)
-    {
-        _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
-        _sqlGenerator = sqlGenerator ?? throw new ArgumentNullException(nameof(sqlGenerator));
-        _typeMapper = typeMapper ?? throw new ArgumentNullException(nameof(typeMapper));
-        _featureDetector = featureDetector ?? throw new ArgumentNullException(nameof(featureDetector));
-    }
-    
-    // ... similar implementation to other providers
-}
-
-public class SQLiteSqlGenerator : ISQLiteSqlGenerator
-{
-    public string GenerateSelectSql(EntityMetadata metadata, string whereClause = null, string orderBy = null, int? skip = null, int? take = null)
-    {
-        var columns = string.Join(", ", metadata.Properties.Select(p => p.ColumnName));
-        var sql = $"SELECT {columns} FROM {metadata.TableName}";
-        
-        if (!string.IsNullOrEmpty(whereClause))
-        {
-            sql += $" WHERE {whereClause}";
-        }
-        
-        if (!string.IsNullOrEmpty(orderBy))
-        {
-            sql += $" ORDER BY {orderBy}";
-        }
-        
-        if (take.HasValue)
-        {
-            sql += $" LIMIT {take.Value}";
+        // Special handling for bool (store as 0/1)
+        if (value is bool b)
+            return b ? 1 : 0;
             
-            if (skip.HasValue)
-            {
-                sql += $" OFFSET {skip.Value}";
-            }
-        }
-        
-        return sql;
+        return value;
     }
     
-    // ... other methods similar to other providers
-}
-```
-
-### Database Provider Factory
-```csharp
-public class DatabaseProviderFactory : IDatabaseProviderFactory
-{
-    private readonly IServiceProvider _serviceProvider;
-    private readonly Dictionary<DatabaseProvider, Type> _providerTypes;
-    
-    public DatabaseProviderFactory(IServiceProvider serviceProvider)
+    public object? ConvertFromDatabase(object? value, Type clrType)
     {
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-        _providerTypes = new Dictionary<DatabaseProvider, Type>
-        {
-            { DatabaseProvider.SqlServer, typeof(SqlServerProvider) },
-            { DatabaseProvider.PostgreSQL, typeof(PostgreSQLProvider) },
-            { DatabaseProvider.MySQL, typeof(MySQLProvider) },
-            { DatabaseProvider.SQLite, typeof(SQLiteProvider) }
-        };
-    }
-    
-    public IDatabaseProvider CreateProvider(DatabaseProvider providerType)
-    {
-        if (!_providerTypes.TryGetValue(providerType, out var providerTypeInfo))
-        {
-            throw new NotSupportedException($"Database provider {providerType} is not supported");
-        }
-        
-        return (IDatabaseProvider)_serviceProvider.GetService(providerTypeInfo);
-    }
-    
-    public IDatabaseProvider CreateProvider(string connectionString)
-    {
-        var providerType = DetectProviderFromConnectionString(connectionString);
-        return CreateProvider(providerType);
-    }
-    
-    private DatabaseProvider DetectProviderFromConnectionString(string connectionString)
-    {
-        if (string.IsNullOrEmpty(connectionString))
-            throw new ArgumentException("Connection string cannot be null or empty", nameof(connectionString));
-        
-        var connectionStringBuilder = new DbConnectionStringBuilder { ConnectionString = connectionString };
-        
-        if (connectionStringBuilder.ContainsKey("Server") || connectionStringBuilder.ContainsKey("Data Source"))
-        {
-            if (connectionStringBuilder.ContainsKey("Database"))
-            {
-                return DatabaseProvider.SqlServer;
-            }
-            else if (connectionStringBuilder.ContainsKey("Initial Catalog"))
-            {
-                return DatabaseProvider.SqlServer;
-            }
-        }
-        
-        if (connectionStringBuilder.ContainsKey("Host") || connectionStringBuilder.ContainsKey("Server"))
-        {
-            if (connectionStringBuilder.ContainsKey("Database"))
-            {
-                return DatabaseProvider.PostgreSQL;
-            }
-        }
-        
-        if (connectionStringBuilder.ContainsKey("Server") && connectionStringBuilder.ContainsKey("Database"))
-        {
-            return DatabaseProvider.MySQL;
-        }
-        
-        if (connectionStringBuilder.ContainsKey("Data Source") && connectionStringBuilder.ContainsKey("Version"))
-        {
-            return DatabaseProvider.SQLite;
-        }
-        
-        throw new NotSupportedException("Could not detect database provider from connection string");
+        if (value == null || value is DBNull)
+            return null;
+            
+        // Special handling for DateTime
+        if (clrType == typeof(DateTime) && value is string dateStr)
+            return DateTime.Parse(dateStr);
+            
+        // Special handling for bool
+        if (clrType == typeof(bool))
+            return Convert.ToInt64(value) != 0;
+            
+        return Convert.ChangeType(value, clrType);
     }
 }
 ```
 
-### Usage Examples
+### Usage Examples for SQLite
+
 ```csharp
-// Provider registration
-services.AddNPA(config =>
+// SQLite provider registration (once implemented)
+services.AddSingleton<IMetadataProvider, MetadataProvider>();
+services.AddScoped<IDatabaseProvider, SqliteProvider>();
+
+services.AddScoped<IDbConnection>(sp =>
 {
-    config.DatabaseProvider = DatabaseProvider.PostgreSQL;
-    config.ConnectionString = "Host=localhost;Database=MyApp;Username=postgres;Password=password";
+    var connectionString = "Data Source=myapp.db;Version=3;";
+    var connection = new SqliteConnection(connectionString);
+    connection.Open();
+    return connection;
 });
 
-// Provider usage
-public class UserService
+services.AddScoped<IEntityManager>(sp =>
 {
-    private readonly IDatabaseProvider _databaseProvider;
-    private readonly IEntityManager _entityManager;
-    
-    public UserService(IDatabaseProvider databaseProvider, IEntityManager entityManager)
-    {
-        _databaseProvider = databaseProvider;
-        _entityManager = entityManager;
-    }
-    
-    public async Task<User> GetUserAsync(long id)
-    {
-        var connection = await _databaseProvider.CreateConnectionAsync(_connectionString);
-        return await _entityManager.FindAsync<User>(id);
-    }
-    
-    public async Task<bool> TestConnectionAsync()
-    {
-        return await _databaseProvider.TestConnectionAsync(_connectionString);
-    }
-    
-    public async Task<DatabaseInfo> GetDatabaseInfoAsync()
-    {
-        var connection = await _databaseProvider.CreateConnectionAsync(_connectionString);
-        return await _databaseProvider.GetDatabaseInfoAsync(connection);
-    }
-}
+    var connection = sp.GetRequiredService<IDbConnection>();
+    var metadata = sp.GetRequiredService<IMetadataProvider>();
+    var provider = sp.GetRequiredService<IDatabaseProvider>();
+    var logger = sp.GetRequiredService<ILogger<EntityManager>>();
+    return new EntityManager(connection, metadata, provider, logger);
+});
 
-// Provider-specific features
-public class PostgreSQLUserService
+// In-memory SQLite database
+services.AddScoped<IDbConnection>(sp =>
 {
-    private readonly IDatabaseProvider _databaseProvider;
-    
-    public PostgreSQLUserService(IDatabaseProvider databaseProvider)
-    {
-        _databaseProvider = databaseProvider;
-    }
-    
-    public async Task<IEnumerable<User>> GetUsersWithJsonDataAsync()
-    {
-        if (!_databaseProvider.SupportsFeature(DatabaseFeature.JsonData))
-        {
-            throw new NotSupportedException("JSON data is not supported by this database provider");
-        }
-        
-        var sql = _databaseProvider.GetFeatureSql(DatabaseFeature.JsonData, "users", "metadata");
-        // Execute query with JSON support
-        return await ExecuteQueryAsync(sql);
-    }
-}
+    var connection = new SqliteConnection("Data Source=:memory:;");
+    connection.Open();
+    return connection;
+});
+
+// SQLite-specific features
+var provider = new SqliteProvider();
+var lastIdSql = provider.Dialect.GetLastInsertIdSql(); // "SELECT last_insert_rowid()"
+var pagingSql = provider.Dialect.GetPagingSql(10, 20); // "LIMIT 20 OFFSET 10"
 ```
 
-## 🧪 Test Cases
+## 🧪 Test Cases for SQLite Provider
 
-### Provider Abstraction Tests
-- [ ] Provider interface
-- [ ] Provider factory
-- [ ] Provider selection
-- [ ] Provider registration
+### SQLite Provider Tests (To Be Created)
+- [ ] SqliteProviderTests
+  - [ ] GenerateInsertSql with AUTOINCREMENT
+  - [ ] GenerateUpdateSql
+  - [ ] GenerateDeleteSql
+  - [ ] GenerateSelectSql with LIMIT/OFFSET
+  - [ ] GetLastInsertId using last_insert_rowid()
+  
+- [ ] SqliteDialectTests  
+  - [ ] Parameter prefix (@)
+  - [ ] Identifier escaping (double quotes)
+  - [ ] Paging SQL generation
+  - [ ] Last insert ID syntax
+  
+- [ ] SqliteTypeConverterTests
+  - [ ] CLR to SQLite type mapping
+  - [ ] DateTime to ISO8601 string conversion
+  - [ ] Boolean to INTEGER (0/1) conversion
+  - [ ] BLOB handling for byte arrays
+  - [ ] NULL handling
 
-### PostgreSQL Provider Tests
-- [ ] Connection management
-- [ ] SQL generation
-- [ ] Type mapping
-- [ ] Feature detection
-- [ ] Error handling
+### Reference: Existing Provider Tests
+- ✅ SQL Server: 63 tests passing (Phase 1.4)
+- ✅ MySQL: 63 tests passing (Phase 1.5)
+- ✅ PostgreSQL: 132 tests passing (Phase 2.5)
 
-### MySQL Provider Tests
-- [ ] Connection management
-- [ ] SQL generation
-- [ ] Type mapping
-- [ ] Feature detection
-- [ ] Error handling
+**Target:** ~60-70 tests for SQLite provider (similar to SQL Server and MySQL)
 
-### SQLite Provider Tests
-- [ ] Connection management
-- [ ] SQL generation
-- [ ] Type mapping
-- [ ] Feature detection
-- [ ] Error handling
-
-### Integration Tests
-- [ ] End-to-end provider operations
-- [ ] Cross-provider compatibility
-- [ ] Performance testing
-- [ ] Error handling
-
-## 📚 Documentation Requirements
+## 📚 Documentation Requirements for SQLite
 
 ### XML Documentation
-- [ ] All public members documented
-- [ ] Parameter descriptions
-- [ ] Return value descriptions
-- [ ] Exception documentation
-- [ ] Usage examples
+- [ ] All public members documented (follow existing provider patterns)
+- [ ] SQLite-specific considerations noted
+- [ ] Usage examples with in-memory databases
 
-### Usage Guide
-- [ ] Provider configuration
-- [ ] Connection string examples
-- [ ] Provider-specific features
-- [ ] Performance considerations
-- [ ] Best practices
+### Updates Needed
+- [ ] Update main README.md with SQLite support
+- [ ] Create implementation summary document
+- [ ] Add SQLite example to samples
 
-### Provider Guide
-- [ ] Supported providers
-- [ ] Provider features
-- [ ] Configuration options
-- [ ] Migration between providers
-- [ ] Troubleshooting
+## 🔍 Implementation Checklist
 
-## 🔍 Code Review Checklist
-
-- [ ] Code follows .NET naming conventions
+- [ ] Follow existing provider naming conventions (SqlServer, MySql, PostgreSql patterns)
 - [ ] All public members have XML documentation
-- [ ] Error handling is appropriate
-- [ ] Unit tests cover all scenarios
+- [ ] Error handling matches other providers
+- [ ] Unit tests follow existing test patterns (~60-70 tests)
 - [ ] Code is readable and maintainable
-- [ ] Performance is optimized
-- [ ] Memory usage is efficient
-- [ ] Thread safety considerations
+- [ ] Performance is optimized (use transactions for bulk operations)
+- [ ] Support both file-based and in-memory databases
 
 ## 🚀 Next Steps
 
-After completing this task:
-1. Move to Phase 2.6: Metadata Source Generator
-2. Update checklist with completion status
-3. Create pull request for review
-4. Update documentation
+After completing SQLite provider:
+1. Phase 2.5 will be 100% complete (all 4 major database providers)
+2. Move to Phase 2.6: Metadata Source Generator (optional)
+3. Then begin Phase 3: Transaction & Performance
+4. Update main README progress to 11/33 tasks
 
-## 📞 Questions/Issues
+## Summary
 
-- [ ] Clarification needed on provider design
-- [ ] Performance considerations for providers
-- [ ] Integration with existing features
-- [ ] Error message localization
+**Current State:**
+- ✅ 3 out of 4 providers complete (SQL Server, MySQL, PostgreSQL)
+- 🚧 1 provider remaining (SQLite)
+- ✅ Provider abstraction complete
+- ✅ 258 provider tests passing across 3 providers
+
+**Remaining Work:**
+- Implement SQLite provider following existing patterns
+- Create ~60-70 tests for SQLite
+- Update documentation
 
 ---
 
-*Created: [Current Date]*  
-*Last Updated: [Current Date]*  
-*Status: In Progress*
+*Created: Phase 2 Planning*  
+*Last Updated: October 10, 2024*  
+*Status: 75% Complete - Only SQLite Remaining*
