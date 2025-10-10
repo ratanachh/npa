@@ -10,8 +10,17 @@ using Xunit;
 namespace NPA.Core.Tests.CompositeKeys;
 
 /// <summary>
+/// Collection definition to prevent parallel test execution for Composite Key integration tests.
+/// </summary>
+[CollectionDefinition("Composite Key Integration Tests", DisableParallelization = true)]
+public class CompositeKeyIntegrationTestsCollection
+{
+}
+
+/// <summary>
 /// Integration tests for composite key support with actual database.
 /// </summary>
+[Collection("Composite Key Integration Tests")]
 public class CompositeKeyIntegrationTests : IAsyncLifetime
 {
     private MsSqlContainer? _container;

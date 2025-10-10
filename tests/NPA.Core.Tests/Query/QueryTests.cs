@@ -13,8 +13,17 @@ using Xunit;
 namespace NPA.Core.Tests.Query;
 
 /// <summary>
+/// Collection definition to prevent parallel test execution for Query tests.
+/// </summary>
+[CollectionDefinition("Query Tests", DisableParallelization = true)]
+public class QueryTestsCollection
+{
+}
+
+/// <summary>
 /// Integration tests for the Query class using real PostgreSQL container.
 /// </summary>
+[Collection("Query Tests")]
 [Trait("Category", "Integration")]
 public class QueryTests : IAsyncLifetime
 {
@@ -57,6 +66,9 @@ public class QueryTests : IAsyncLifetime
         // Create test tables
         await CreateTestTables();
         
+        // Clear any existing data and reset sequences
+        await ClearTestData();
+        
         // Insert test data
         await InsertTestData();
         
@@ -89,6 +101,13 @@ public class QueryTests : IAsyncLifetime
         await command.ExecuteNonQueryAsync();
     }
 
+    private async Task ClearTestData()
+    {
+        var clearDataSql = "TRUNCATE TABLE users RESTART IDENTITY CASCADE;";
+        using var command = new NpgsqlCommand(clearDataSql, _connection);
+        await command.ExecuteNonQueryAsync();
+    }
+    
     private async Task InsertTestData()
     {
         var insertSql = @"

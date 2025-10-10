@@ -13,8 +13,17 @@ using Xunit;
 namespace NPA.Core.Tests.Core;
 
 /// <summary>
+/// Collection definition to prevent parallel test execution for EntityManager tests.
+/// </summary>
+[CollectionDefinition("EntityManager Tests", DisableParallelization = true)]
+public class EntityManagerTestsCollection
+{
+}
+
+/// <summary>
 /// Integration tests for the EntityManager class using real PostgreSQL container.
 /// </summary>
+[Collection("EntityManager Tests")]
 [Trait("Category", "Integration")]
 public class EntityManagerTests : IAsyncLifetime
 {
@@ -50,6 +59,9 @@ public class EntityManagerTests : IAsyncLifetime
         // Create test tables
         await CreateTestTables();
         
+        // Clear any existing data and reset sequences
+        await ClearTestData();
+        
         var mockLogger = new Mock<ILogger<EntityManager>>();
         var databaseProvider = new PostgreSqlProvider();
         _entityManager = new EntityManager(_connection, _metadataProvider, databaseProvider, mockLogger.Object);
@@ -81,7 +93,9 @@ public class EntityManagerTests : IAsyncLifetime
 
     private async Task ClearTestData()
     {
-        var clearDataSql = "DELETE FROM users;";
+        var clearDataSql = @"
+            TRUNCATE TABLE users RESTART IDENTITY CASCADE;
+        ";
         using var command = new NpgsqlCommand(clearDataSql, _connection);
         await command.ExecuteNonQueryAsync();
     }

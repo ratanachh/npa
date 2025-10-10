@@ -14,8 +14,17 @@ using Xunit;
 namespace NPA.Core.Tests.Integration;
 
 /// <summary>
+/// Collection definition to prevent parallel test execution for EntityManager integration tests.
+/// </summary>
+[CollectionDefinition("EntityManager Integration Tests", DisableParallelization = true)]
+public class EntityManagerIntegrationTestsCollection
+{
+}
+
+/// <summary>
 /// Integration tests for EntityManager using real PostgreSQL container.
 /// </summary>
+[Collection("EntityManager Integration Tests")]
 [Trait("Category", "Integration")]
 public class EntityManagerIntegrationTests : IAsyncLifetime
 {
@@ -40,6 +49,9 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
         
         // Create test tables
         await CreateTestTables();
+        
+        // Clear any existing data and reset sequences
+        await ClearTestData();
         
         var metadataProvider = new MetadataProvider();
         var logger = new Mock<ILogger<EntityManager>>();
@@ -229,5 +241,12 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
             );";
         
         await createTableCommand.ExecuteNonQueryAsync();
+    }
+    
+    private async Task ClearTestData()
+    {
+        var clearCommand = _connection.CreateCommand();
+        clearCommand.CommandText = "TRUNCATE TABLE users RESTART IDENTITY CASCADE;";
+        await clearCommand.ExecuteNonQueryAsync();
     }
 }
