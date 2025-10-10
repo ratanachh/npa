@@ -71,7 +71,9 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PersistAsync_WithRealDatabase_ShouldPersistEntity()
     {
-        // Arrange
+        // Arrange - Clear data first to ensure clean state
+        await ClearTestData();
+        
         var user = new User
         {
             Username = "integration_test_user",
@@ -98,7 +100,10 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FindAsync_WithRealDatabase_ShouldReturnEntity()
     {
-        // Arrange - Insert a user directly
+        // Arrange - Clear data first to ensure clean state
+        await ClearTestData();
+        
+        // Insert a user directly
         var insertCommand = _connection.CreateCommand();
         insertCommand.CommandText = @"
             INSERT INTO users (username, email, created_at, is_active) 
@@ -125,7 +130,10 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task MergeAsync_WithRealDatabase_ShouldUpdateEntity()
     {
-        // Arrange - Insert a user directly
+        // Arrange - Clear data first to ensure clean state
+        await ClearTestData();
+        
+        // Insert a user directly
         var insertCommand = _connection.CreateCommand();
         insertCommand.CommandText = @"
             INSERT INTO users (username, email, created_at, is_active) 
@@ -167,7 +175,10 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RemoveAsync_WithRealDatabase_ShouldDeleteEntity()
     {
-        // Arrange - Insert a user directly
+        // Arrange - Clear data first to ensure clean state
+        await ClearTestData();
+        
+        // Insert a user directly
         var insertCommand = _connection.CreateCommand();
         insertCommand.CommandText = @"
             INSERT INTO users (username, email, created_at, is_active) 
@@ -196,7 +207,9 @@ public class EntityManagerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FlushAsync_WithRealDatabase_ShouldExecuteBatchOperations()
     {
-        // Arrange
+        // Arrange - Clear data first to ensure clean state
+        await ClearTestData();
+        
         var user1 = new User
         {
             Username = "batch_user_1",
