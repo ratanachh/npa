@@ -1193,7 +1193,10 @@ public sealed class EntityManager : IEntityManager
         
         // Determine database dialect for SQL generation
         var dialect = _databaseProvider.GetType().Name.Replace("Provider", "");
-        var sqlGenerator = new SqlGenerator(_metadataProvider, dialect);
+        
+        // Create SqlGenerator with logger for SQL/parameter logging
+        // Note: SqlGenerator doesn't have a direct logger parameter, it will be added via Query
+        var sqlGenerator = new SqlGenerator(_metadataProvider, dialect, null);
         
         var parameterBinder = new ParameterBinder();
 
@@ -1201,6 +1204,7 @@ public sealed class EntityManager : IEntityManager
         var entityResolver = new EntityResolver(_metadataProvider);
         entityResolver.RegisterEntity(typeof(T).Name, typeof(T));
 
-        return new Query<T>(_connection, parser, sqlGenerator, parameterBinder, _metadataProvider, cpql, null);
+        // Create Query with logger - this will show SQL and parameters
+        return new Query<T>(_connection, parser, sqlGenerator, parameterBinder, _metadataProvider, cpql, _logger as ILogger<Query<T>>);
     }
 }

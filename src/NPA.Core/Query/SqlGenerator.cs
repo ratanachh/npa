@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using NPA.Core.Metadata;
 using NPA.Core.Query.CPQL;
 using NPA.Core.Query.CPQL.AST;
@@ -13,35 +14,56 @@ public class SqlGenerator : ISqlGenerator
 {
     private readonly IMetadataProvider? _metadataProvider;
     private readonly string _dialect;
+    private readonly ILogger<SqlGenerator>? _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SqlGenerator"/> class.
     /// </summary>
     /// <param name="metadataProvider">The metadata provider (optional).</param>
     /// <param name="dialect">The database dialect (default: "default").</param>
-    public SqlGenerator(IMetadataProvider? metadataProvider = null, string dialect = "default")
+    /// <param name="logger">The logger (optional).</param>
+    public SqlGenerator(IMetadataProvider? metadataProvider = null, string dialect = "default", ILogger<SqlGenerator>? logger = null)
     {
         _metadataProvider = metadataProvider;
         _dialect = dialect;
+        _logger = logger;
     }
 
     /// <inheritdoc />
     public string Generate(ParsedQuery parsedQuery, EntityMetadata entityMetadata)
     {
+        _logger?.LogDebug("Generating SQL for {QueryType} query (Dialect: {Dialect})", parsedQuery.Type, _dialect);
+        _logger?.LogDebug("Original CPQL: {Cpql}", parsedQuery.OriginalCpql);
+        
+        string sql;
+        
         // If AST is available, use advanced generation
         if (parsedQuery.Ast != null)
         {
-            return GenerateFromAst(parsedQuery.Ast, parsedQuery, entityMetadata);
+            _logger?.LogDebug("Using advanced SQL generation from AST");
+            sql = GenerateFromAst(parsedQuery.Ast, parsedQuery, entityMetadata);
         }
-
-        // Fallback to basic generation (should not happen with new parser)
-        return parsedQuery.Type switch
+        else
         {
-            QueryType.Select => GenerateSelect(parsedQuery, entityMetadata),
-            QueryType.Update => GenerateUpdate(parsedQuery, entityMetadata),
-            QueryType.Delete => GenerateDelete(parsedQuery, entityMetadata),
-            _ => throw new ArgumentException($"Unsupported query type: {parsedQuery.Type}")
-        };
+            // Fallback to basic generation (should not happen with new parser)
+            _logger?.LogDebug("Using basic SQL generation (fallback)");
+            sql = parsedQuery.Type switch
+            {
+                QueryType.Select => GenerateSelect(parsedQuery, entityMetadata),
+                QueryType.Update => GenerateUpdate(parsedQuery, entityMetadata),
+                QueryType.Delete => GenerateDelete(parsedQuery, entityMetadata),
+                _ => throw new ArgumentException($"Unsupported query type: {parsedQuery.Type}")
+            };
+        }
+        
+        _logger?.LogDebug("Generated SQL: {Sql}", sql);
+        
+        if (parsedQuery.ParameterNames.Count > 0)
+        {
+            _logger?.LogDebug("Query parameters: [{Parameters}]", string.Join(", ", parsedQuery.ParameterNames));
+        }
+        
+        return sql;
     }
 
     private string GenerateFromAst(object ast, ParsedQuery parsedQuery, EntityMetadata entityMetadata)

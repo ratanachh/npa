@@ -85,6 +85,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -107,6 +109,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -129,6 +133,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -151,6 +157,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -207,6 +215,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -229,6 +239,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -251,6 +263,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -273,6 +287,8 @@ public sealed class Query<T> : IQuery<T>
 
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
+        
+        LogExecutionDetails(sql, boundParameters);
 
         try
         {
@@ -322,6 +338,41 @@ public sealed class Query<T> : IQuery<T>
         }
 
         return _parameterBinder.BindParameters(_parameters);
+    }
+
+    private void LogExecutionDetails(string sql, object boundParameters)
+    {
+        if (_logger == null || !_logger.IsEnabled(LogLevel.Debug))
+            return;
+        
+        _logger.LogDebug("=== Query Execution Details ===");
+        _logger.LogDebug("SQL: {Sql}", sql);
+        
+        // Log parameter values
+        if (boundParameters is IDictionary<string, object?> paramDict)
+        {
+            if (paramDict.Count > 0)
+            {
+                _logger.LogDebug("Parameters:");
+                foreach (var param in paramDict)
+                {
+                    var valueDisplay = param.Value switch
+                    {
+                        null => "NULL",
+                        string str => $"'{str}'",
+                        DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
+                        _ => param.Value.ToString()
+                    };
+                    _logger.LogDebug("  @{ParamName} = {ParamValue}", param.Key, valueDisplay);
+                }
+            }
+            else
+            {
+                _logger.LogDebug("Parameters: (none)");
+            }
+        }
+        
+        _logger.LogDebug("==============================");
     }
 
     private void ThrowIfDisposed()
