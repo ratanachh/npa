@@ -10,6 +10,10 @@ public class MigrationManager
 {
     private readonly ILogger<MigrationManager> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MigrationManager"/> class.
+    /// </summary>
+    /// <param name="logger">Logger for migration operations</param>
     public MigrationManager(ILogger<MigrationManager> logger)
     {
         _logger = logger;

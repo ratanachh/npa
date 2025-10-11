@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using NPA.Core.Query.CPQL;
 using NPA.Core.Query.CPQL.AST;
 
@@ -168,7 +167,7 @@ public class QueryParser : IQueryParser
         parsed.ParameterNames = parameters.ToList();
     }
 
-    private void ExtractParametersRecursive(object node, HashSet<string> parameters)
+    private static void ExtractParametersRecursive(object? node, HashSet<string> parameters)
     {
         if (node == null) return;
 

@@ -11,6 +11,10 @@ public class PerformanceMonitor
     private readonly ILogger<PerformanceMonitor> _logger;
     private readonly List<PerformanceMetric> _metrics;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PerformanceMonitor"/> class.
+    /// </summary>
+    /// <param name="logger">Logger for performance monitoring</param>
     public PerformanceMonitor(ILogger<PerformanceMonitor> logger)
     {
         _logger = logger;
@@ -60,18 +64,54 @@ public class PerformanceMonitor
     }
 }
 
+/// <summary>
+/// Represents a single performance metric for a database operation.
+/// </summary>
 public class PerformanceMetric
 {
+    /// <summary>
+    /// Gets or sets the type of database operation (e.g., SELECT, INSERT, UPDATE).
+    /// </summary>
     public string OperationType { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Gets or sets the duration of the operation.
+    /// </summary>
     public TimeSpan Duration { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the number of records affected by the operation.
+    /// </summary>
     public int RecordCount { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the timestamp when the metric was recorded.
+    /// </summary>
     public DateTime Timestamp { get; set; }
 }
 
+/// <summary>
+/// Represents aggregated performance statistics for a specific operation type.
+/// </summary>
 public class PerformanceStats
 {
+    /// <summary>
+    /// Gets or sets the average duration of operations.
+    /// </summary>
     public TimeSpan AverageDuration { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the maximum duration of operations.
+    /// </summary>
     public TimeSpan MaxDuration { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the minimum duration of operations.
+    /// </summary>
     public TimeSpan MinDuration { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the total number of operations recorded.
+    /// </summary>
     public int TotalOperations { get; set; }
 }

@@ -86,19 +86,36 @@ cd AdvancedQueries
 dotnet run
 ```
 
-### 4. **SourceGeneratorDemo** ✅ Complete
-Demonstrates the repository source generator for automatic repository implementation.
+### 4. **SourceGeneratorDemo** ✅ Complete (Phase 1.6 & 2.6)
+Demonstrates **both** NPA source generators for automatic code generation at compile time.
 
 **Features:**
-- Repository pattern with source generators
-- Compile-time code generation
-- Type-safe repository methods
-- Automatic CRUD implementation
+- **Repository Generator (Phase 1.6):**
+  - Automatic repository implementation from interfaces
+  - Convention-based method generation
+  - Type-safe CRUD operations
+  - Zero runtime overhead
+  
+- **Metadata Generator (Phase 2.6):** ⭐ NEW
+  - Compile-time entity metadata generation
+  - Zero reflection at runtime (10-100x faster)
+  - Automatic entity discovery
+  - Pre-computed property information
+  - Generated `GeneratedMetadataProvider` class
 
 **Run it:**
 ```bash
 cd SourceGeneratorDemo
 dotnet run
+```
+
+**Generated Files:**
+```
+obj/Debug/net8.0/generated/
+├── NPA.Generators.RepositoryGenerator/
+│   └── UserRepositoryImplementation.g.cs
+└── NPA.Generators.EntityMetadataGenerator/
+    └── GeneratedMetadataProvider.g.cs
 ```
 
 ### 5. **RepositoryPattern** 🚧 Partial

@@ -28,10 +28,10 @@ public class User
     [Column("id")]
     public long Id { get; set; }
 
-    [Column("username", nullable: false, length: 50)]
+    [Column("username", IsNullable = false, Length = 50)]
     public string Username { get; set; } = string.Empty;
 
-    [Column("email", nullable: false, unique: true)]
+    [Column("email", IsNullable = false, IsUnique = true)]
     public string Email { get; set; } = string.Empty;
 
     [Column("created_at")]
@@ -46,23 +46,83 @@ public class User
 
 Register NPA services in your `Program.cs` or `Startup.cs`:
 
+#### Option A: SQL Server
 ```csharp
 using Microsoft.Data.SqlClient;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Core.Providers;
+using NPA.Providers.SqlServer;
+using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Register NPA services
 builder.Services.AddSingleton<IMetadataProvider, MetadataProvider>();
+builder.Services.AddScoped<IDatabaseProvider, SqlServerProvider>();
 builder.Services.AddScoped<IDbConnection>(provider =>
 {
     var connectionString = "Server=localhost;Database=MyApp;Trusted_Connection=true;";
     return new SqlConnection(connectionString);
 });
-builder.Services.AddScoped<IEntityManager, EntityManager>();
+builder.Services.AddScoped<IEntityManager>(provider =>
+{
+    var connection = provider.GetRequiredService<IDbConnection>();
+    var metadata = provider.GetRequiredService<IMetadataProvider>();
+    var dbProvider = provider.GetRequiredService<IDatabaseProvider>();
+    var logger = provider.GetService<ILogger<EntityManager>>();
+    return new EntityManager(connection, metadata, dbProvider, logger);
+});
 
 var app = builder.Build();
+```
+
+#### Option B: PostgreSQL
+```csharp
+using Npgsql;
+using NPA.Providers.PostgreSql;
+
+// Use PostgreSQL provider
+builder.Services.AddSingleton<IDatabaseProvider, PostgreSqlProvider>();
+builder.Services.AddScoped<IDbConnection>(provider =>
+{
+    var connectionString = "Host=localhost;Database=MyApp;Username=postgres;Password=password;";
+    return new NpgsqlConnection(connectionString);
+});
+// ... EntityManager registration same as above
+```
+
+#### Option C: MySQL/MariaDB
+```csharp
+using MySqlConnector;
+using NPA.Providers.MySql;
+
+// Use MySQL provider
+builder.Services.AddSingleton<IDatabaseProvider, MySqlProvider>();
+builder.Services.AddScoped<IDbConnection>(provider =>
+{
+    var connectionString = "Server=localhost;Database=MyApp;User=root;Password=password;";
+    return new MySqlConnection(connectionString);
+});
+// ... EntityManager registration same as above
+```
+
+#### Option D: SQLite
+```csharp
+using Microsoft.Data.Sqlite;
+using NPA.Providers.Sqlite;
+
+// Use SQLite provider
+builder.Services.AddSingleton<IDatabaseProvider, SqliteProvider>();
+builder.Services.AddScoped<IDbConnection>(provider =>
+{
+    var connectionString = "Data Source=myapp.db;";
+    // Or for in-memory: "Data Source=:memory:;"
+    var connection = new SqliteConnection(connectionString);
+    connection.Open();
+    return connection;
+});
+// ... EntityManager registration same as above
 ```
 
 ### 3. Use EntityManager
@@ -190,7 +250,10 @@ Configure your connection string in `appsettings.json`:
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Database=MyApp;Trusted_Connection=true;"
+    "DefaultConnection": "Server=localhost;Database=MyApp;Trusted_Connection=true;",
+    "PostgreSQL": "Host=localhost;Database=MyApp;Username=postgres;Password=password;",
+    "MySQL": "Server=localhost;Database=MyApp;User=root;Password=password;",
+    "SQLite": "Data Source=myapp.db;"
   }
 }
 ```
@@ -198,10 +261,34 @@ Configure your connection string in `appsettings.json`:
 Then use it in your service registration:
 
 ```csharp
+// SQL Server
 builder.Services.AddScoped<IDbConnection>(provider =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     return new SqlConnection(connectionString);
+});
+
+// PostgreSQL
+builder.Services.AddScoped<IDbConnection>(provider =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("PostgreSQL");
+    return new NpgsqlConnection(connectionString);
+});
+
+// MySQL/MariaDB
+builder.Services.AddScoped<IDbConnection>(provider =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("MySQL");
+    return new MySqlConnection(connectionString);
+});
+
+// SQLite
+builder.Services.AddScoped<IDbConnection>(provider =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("SQLite");
+    var connection = new SqliteConnection(connectionString);
+    connection.Open(); // SQLite should be opened immediately
+    return connection;
 });
 ```
 
