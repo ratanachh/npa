@@ -20,6 +20,8 @@
 
 **Status: ✅ COMPLETED**
 
+⚠️ **Integration Note:** This phase generates the metadata, but integration with the runtime `MetadataProvider` is completed in **Phase 2.7**. See [Phase 2.7: Metadata Provider Integration](../phase2.7-metadata-provider-integration/README.md) for details on achieving the actual 10-100x performance improvement.
+
 ## 📝 Detailed Requirements
 
 ### 1. Incremental Source Generator

@@ -47,11 +47,14 @@ namespace TestNamespace
         generatedSource.HintName.Should().Be("GeneratedMetadataProvider.g.cs");
         
         var sourceText = generatedSource.SourceText.ToString();
-        sourceText.Should().Contain("public static class GeneratedMetadataProvider");
+        sourceText.Should().Contain("public sealed class GeneratedMetadataProvider : NPA.Core.Metadata.IMetadataProvider");
         sourceText.Should().Contain("UserMetadata");
         sourceText.Should().Contain("typeof(TestNamespace.User)");
         sourceText.Should().Contain("TableName = \"users\"");
         sourceText.Should().Contain("PrimaryKeyProperty = \"Id\"");
+        sourceText.Should().Contain("public EntityMetadata GetEntityMetadata<T>()");
+        sourceText.Should().Contain("public EntityMetadata GetEntityMetadata(Type entityType)");
+        sourceText.Should().Contain("public bool IsEntity(Type type)");
     }
 
     [Fact]
@@ -275,8 +278,8 @@ namespace TestNamespace
 
         // Assert
         var sourceText = result.GeneratedSources[0].SourceText.ToString();
-        sourceText.Should().Contain("public static EntityMetadata? GetMetadata(Type entityType)");
-        sourceText.Should().Contain("_metadata.TryGetValue(entityType, out var metadata);");
+        sourceText.Should().Contain("public EntityMetadata GetEntityMetadata(Type entityType)");
+        sourceText.Should().Contain("_metadata.TryGetValue(entityType, out var metadata)");
     }
 
     [Fact]
@@ -301,7 +304,7 @@ namespace TestNamespace
 
         // Assert
         var sourceText = result.GeneratedSources[0].SourceText.ToString();
-        sourceText.Should().Contain("public static IEnumerable<EntityMetadata> GetAllMetadata()");
+        sourceText.Should().Contain("public IEnumerable<EntityMetadata> GetAllMetadata()");
         sourceText.Should().Contain("return _metadata.Values;");
     }
 

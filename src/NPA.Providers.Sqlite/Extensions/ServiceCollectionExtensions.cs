@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NPA.Core.Core;
+using NPA.Core.Extensions;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using System.Data;
@@ -43,8 +44,8 @@ public static class ServiceCollectionExtensions
         // Register connection factory
         services.AddTransient<IDbConnection>(_ => new SqliteConnection(connectionString));
 
-        // Register metadata provider
-        services.AddSingleton<IMetadataProvider, MetadataProvider>();
+        // Register metadata provider (uses generated provider if available for 10-100x performance)
+        services.AddNpaMetadataProvider();
 
         // Register entity manager as both interface and concrete type
         services.AddScoped<IEntityManager, EntityManager>();
@@ -137,7 +138,7 @@ public static class ServiceCollectionExtensions
         });
 
         // Register metadata provider
-        services.AddSingleton<IMetadataProvider, MetadataProvider>();
+        services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
 
         // Register entity manager
         services.AddScoped<IEntityManager>(provider =>
@@ -183,7 +184,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient(connectionFactory);
 
         // Register metadata provider
-        services.AddSingleton<IMetadataProvider, MetadataProvider>();
+        services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
 
         // Register entity manager
         services.AddScoped<IEntityManager>(provider =>

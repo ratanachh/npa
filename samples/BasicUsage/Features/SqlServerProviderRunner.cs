@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
 using NPA.Core.Core;
+using NPA.Core.Extensions;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using NPA.Providers.SqlServer;
@@ -42,7 +43,7 @@ public static class SqlServerProviderRunner
                 builder.AddConsole().SetMinimumLevel(LogLevel.Information));
             
             // Register NPA services with SQL Server provider
-            services.AddSingleton<IMetadataProvider, MetadataProvider>();
+            services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
             services.AddSingleton<IDatabaseProvider, SqlServerProvider>();
             services.AddScoped<IDbConnection>(sp =>
             {

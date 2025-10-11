@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MySqlConnector;
 using NPA.Core.Core;
+using NPA.Core.Extensions;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using NPA.Providers.MySql;
@@ -42,7 +43,7 @@ public static class MySqlProviderRunner
                 builder.AddConsole().SetMinimumLevel(LogLevel.Information));
             
             // Register NPA services with MySQL provider
-            services.AddSingleton<IMetadataProvider, MetadataProvider>();
+            services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
             services.AddSingleton<IDatabaseProvider, MySqlProvider>();
             services.AddScoped<IDbConnection>(sp =>
             {

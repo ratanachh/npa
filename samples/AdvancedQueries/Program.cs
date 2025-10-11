@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NPA.Core.Core;
+using NPA.Core.Extensions;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using NPA.Providers.PostgreSql;
@@ -36,7 +37,7 @@ class Program
         });
 
         // Register NPA services with PostgreSQL provider
-        services.AddSingleton<IMetadataProvider, MetadataProvider>();
+        services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
         services.AddSingleton<IDatabaseProvider, PostgreSqlProvider>();
         services.AddSingleton<IDbConnection>(connection);
         services.AddScoped<EntityManager>();

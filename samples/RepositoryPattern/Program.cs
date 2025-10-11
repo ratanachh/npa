@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NPA.Core.Annotations;
 using NPA.Core.Core;
+using NPA.Core.Extensions;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using NPA.Core.Repositories;
@@ -85,7 +86,7 @@ class Program
                 });
                 
                 // Configure NPA services
-                services.AddSingleton<IMetadataProvider, MetadataProvider>();
+                services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
                 services.AddScoped<IDatabaseProvider, PostgreSqlProvider>();
                 
                 // Configure database connection - use singleton to ensure same connection

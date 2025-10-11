@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using NPA.Core.Core;
+using NPA.Core.Extensions;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
 using MySqlConnector;
@@ -27,7 +28,7 @@ public static class ServiceCollectionExtensions
             throw new ArgumentException("Connection string cannot be null or empty.", nameof(connectionString));
 
         // Register core services
-        services.AddSingleton<IMetadataProvider, MetadataProvider>();
+        services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
         services.AddSingleton<IDatabaseProvider, MySqlProvider>();
         
         // Register MySQL connection
@@ -59,7 +60,7 @@ public static class ServiceCollectionExtensions
             throw new ArgumentNullException(nameof(connectionFactory));
 
         // Register core services
-        services.AddSingleton<IMetadataProvider, MetadataProvider>();
+        services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
         services.AddSingleton<IDatabaseProvider, MySqlProvider>();
         
         // Register MySQL connection with factory
