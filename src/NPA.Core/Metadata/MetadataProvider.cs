@@ -10,6 +10,7 @@ namespace NPA.Core.Metadata;
 public sealed class MetadataProvider : IMetadataProvider
 {
     private readonly Dictionary<Type, EntityMetadata> _metadataCache = new();
+    private readonly Dictionary<string, Type> _nameToTypeCache = new();
 
     /// <inheritdoc />
     public EntityMetadata GetEntityMetadata<T>()
@@ -31,7 +32,32 @@ public sealed class MetadataProvider : IMetadataProvider
 
         var metadata = BuildEntityMetadata(entityType);
         _metadataCache[entityType] = metadata;
+        _nameToTypeCache[entityType.Name] = entityType;
         return metadata;
+    }
+
+    /// <inheritdoc />
+    public EntityMetadata GetEntityMetadata(string entityName)
+    {
+        if (string.IsNullOrEmpty(entityName))
+            throw new ArgumentNullException(nameof(entityName));
+
+        if (_nameToTypeCache.TryGetValue(entityName, out var cachedType))
+        {
+            return GetEntityMetadata(cachedType);
+        }
+
+        // Scan assemblies to find the type
+        var entityType = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a => a.GetTypes())
+            .FirstOrDefault(t => t.Name == entityName && IsEntity(t));
+
+        if (entityType == null)
+        {
+            throw new ArgumentException($"No entity with the name '{entityName}' could be found in the current AppDomain.", nameof(entityName));
+        }
+
+        return GetEntityMetadata(entityType);
     }
 
     /// <inheritdoc />
@@ -50,56 +76,47 @@ public sealed class MetadataProvider : IMetadataProvider
             EntityType = entityType
         };
 
-        // Get table information
         var tableAttribute = entityType.GetCustomAttribute<TableAttribute>();
-        if (tableAttribute != null)
-        {
-            metadata.TableName = tableAttribute.Name;
-            metadata.SchemaName = tableAttribute.Schema;
-        }
-        else
-        {
-            // Default to class name if no Table attribute
-            metadata.TableName = entityType.Name;
-        }
+        metadata.TableName = tableAttribute?.Name ?? entityType.Name;
+        metadata.SchemaName = tableAttribute?.Schema;
 
-        // Get property metadata
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
         var primaryKeyProperties = new List<PropertyMetadata>();
-        
+
         foreach (var property in properties)
         {
+            // Ignore properties that are marked as relationships
+            if (property.GetCustomAttribute<OneToOneAttribute>() != null ||
+                property.GetCustomAttribute<OneToManyAttribute>() != null ||
+                property.GetCustomAttribute<ManyToOneAttribute>() != null ||
+                property.GetCustomAttribute<ManyToManyAttribute>() != null)
+            {
+                continue;
+            }
+
             var propertyMetadata = BuildPropertyMetadata(property);
             metadata.Properties[property.Name] = propertyMetadata;
 
-            // Collect all primary key properties
             if (propertyMetadata.IsPrimaryKey)
             {
                 primaryKeyProperties.Add(propertyMetadata);
             }
         }
 
-        // Validate and configure primary key
         if (primaryKeyProperties.Count == 0)
         {
             throw new InvalidOperationException($"Entity {entityType.Name} must have at least one property marked with [Id] attribute.");
         }
         else if (primaryKeyProperties.Count == 1)
         {
-            // Single primary key
             metadata.PrimaryKeyProperty = primaryKeyProperties[0].PropertyName;
         }
         else
         {
-            // Composite key (multiple [Id] attributes)
-            metadata.PrimaryKeyProperty = primaryKeyProperties[0].PropertyName; // Set first as primary for compatibility
-            metadata.CompositeKeyMetadata = new CompositeKeyMetadata
-            {
-                KeyProperties = primaryKeyProperties
-            };
+            metadata.PrimaryKeyProperty = primaryKeyProperties[0].PropertyName; // Compatibility
+            metadata.CompositeKeyMetadata = new CompositeKeyMetadata { KeyProperties = primaryKeyProperties };
         }
 
-        // Build relationships after properties are set
         BuildRelationships(entityType, metadata);
 
         return metadata;
@@ -109,45 +126,29 @@ public sealed class MetadataProvider : IMetadataProvider
     {
         var metadata = new PropertyMetadata
         {
+            PropertyInfo = property,
             PropertyName = property.Name,
             PropertyType = property.PropertyType
         };
 
-        // Check for Id attribute
         var idAttribute = property.GetCustomAttribute<IdAttribute>();
         if (idAttribute != null)
         {
             metadata.IsPrimaryKey = true;
-
-            // Check for GeneratedValue attribute
             var generatedValueAttribute = property.GetCustomAttribute<GeneratedValueAttribute>();
-            if (generatedValueAttribute != null)
-            {
-                metadata.GenerationType = generatedValueAttribute.Strategy;
-            }
-            else
-            {
-                // Default to None for primary keys when no [GeneratedValue] is specified
-                metadata.GenerationType = GenerationType.None;
-            }
+            metadata.GenerationType = generatedValueAttribute?.Strategy ?? GenerationType.None;
         }
 
-        // Check for Column attribute
         var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+        metadata.ColumnName = columnAttribute?.Name ?? ConvertToSnakeCase(property.Name);
         if (columnAttribute != null)
         {
-            metadata.ColumnName = columnAttribute.Name;
             metadata.IsNullable = columnAttribute.IsNullable;
             metadata.IsUnique = columnAttribute.IsUnique;
             metadata.Length = columnAttribute.Length;
             metadata.Precision = columnAttribute.Precision;
             metadata.Scale = columnAttribute.Scale;
             metadata.TypeName = columnAttribute.TypeName;
-        }
-        else
-        {
-            // Default column name based on property name (convert to snake_case)
-            metadata.ColumnName = ConvertToSnakeCase(property.Name);
         }
 
         return metadata;
@@ -159,7 +160,39 @@ public sealed class MetadataProvider : IMetadataProvider
         
         foreach (var property in properties)
         {
-            // Check for OneToMany relationship
+            var oneToOne = property.GetCustomAttribute<OneToOneAttribute>();
+            if (oneToOne != null)
+            {
+                var relationship = new RelationshipMetadata
+                {
+                    PropertyName = property.Name,
+                    RelationshipType = RelationshipType.OneToOne,
+                    TargetEntityType = property.PropertyType,
+                    MappedBy = oneToOne.MappedBy,
+                    CascadeType = oneToOne.Cascade,
+                    FetchType = oneToOne.Fetch,
+                    IsOptional = oneToOne.Optional,
+                    IsOwner = string.IsNullOrEmpty(oneToOne.MappedBy)
+                };
+
+                if (relationship.IsOwner)
+                {
+                    var joinColumn = property.GetCustomAttribute<JoinColumnAttribute>();
+                    relationship.JoinColumn = new JoinColumnMetadata
+                    {
+                        Name = joinColumn?.Name ?? ConvertToSnakeCase(property.Name) + "_id",
+                        ReferencedColumnName = joinColumn?.ReferencedColumnName ?? "id",
+                        Unique = joinColumn?.Unique ?? false,
+                        Nullable = joinColumn?.Nullable ?? oneToOne.Optional,
+                        Insertable = joinColumn?.Insertable ?? true,
+                        Updatable = joinColumn?.Updatable ?? true
+                    };
+                }
+
+                metadata.Relationships[property.Name] = relationship;
+                continue;
+            }
+
             var oneToMany = property.GetCustomAttribute<OneToManyAttribute>();
             if (oneToMany != null)
             {
@@ -178,7 +211,6 @@ public sealed class MetadataProvider : IMetadataProvider
                 continue;
             }
 
-            // Check for ManyToOne relationship
             var manyToOne = property.GetCustomAttribute<ManyToOneAttribute>();
             if (manyToOne != null)
             {
@@ -193,36 +225,21 @@ public sealed class MetadataProvider : IMetadataProvider
                     IsOwner = true
                 };
 
-                // Check for JoinColumn attribute
                 var joinColumn = property.GetCustomAttribute<JoinColumnAttribute>();
-                if (joinColumn != null)
+                relationship.JoinColumn = new JoinColumnMetadata
                 {
-                    relationship.JoinColumn = new JoinColumnMetadata
-                    {
-                        Name = joinColumn.Name,
-                        ReferencedColumnName = joinColumn.ReferencedColumnName,
-                        Unique = joinColumn.Unique,
-                        Nullable = joinColumn.Nullable,
-                        Insertable = joinColumn.Insertable,
-                        Updatable = joinColumn.Updatable
-                    };
-                }
-                else
-                {
-                    // Default join column name: {property_name}_id
-                    relationship.JoinColumn = new JoinColumnMetadata
-                    {
-                        Name = ConvertToSnakeCase(property.Name) + "_id",
-                        ReferencedColumnName = "id",
-                        Nullable = manyToOne.Optional
-                    };
-                }
+                    Name = joinColumn?.Name ?? ConvertToSnakeCase(property.Name) + "_id",
+                    ReferencedColumnName = joinColumn?.ReferencedColumnName ?? "id",
+                    Unique = joinColumn?.Unique ?? false,
+                    Nullable = joinColumn?.Nullable ?? manyToOne.Optional,
+                    Insertable = joinColumn?.Insertable ?? true,
+                    Updatable = joinColumn?.Updatable ?? true
+                };
 
                 metadata.Relationships[property.Name] = relationship;
                 continue;
             }
 
-            // Check for ManyToMany relationship
             var manyToMany = property.GetCustomAttribute<ManyToManyAttribute>();
             if (manyToMany != null)
             {
@@ -237,7 +254,6 @@ public sealed class MetadataProvider : IMetadataProvider
                     IsOwner = string.IsNullOrEmpty(manyToMany.MappedBy)
                 };
 
-                // Check for JoinTable attribute (only on owning side)
                 if (relationship.IsOwner)
                 {
                     var joinTable = property.GetCustomAttribute<JoinTableAttribute>();
@@ -253,7 +269,6 @@ public sealed class MetadataProvider : IMetadataProvider
                     }
                     else
                     {
-                        // Default join table name: {entity1}_{entity2}
                         var targetType = relationship.TargetEntityType;
                         relationship.JoinTable = new JoinTableMetadata
                         {
@@ -271,7 +286,6 @@ public sealed class MetadataProvider : IMetadataProvider
 
     private static Type GetCollectionElementType(Type collectionType)
     {
-        // Handle ICollection<T>, IList<T>, List<T>, etc.
         if (collectionType.IsGenericType)
         {
             var genericArgs = collectionType.GetGenericArguments();
@@ -281,7 +295,6 @@ public sealed class MetadataProvider : IMetadataProvider
             }
         }
 
-        // Handle arrays
         if (collectionType.IsArray)
         {
             return collectionType.GetElementType()!;

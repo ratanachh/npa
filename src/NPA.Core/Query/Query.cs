@@ -26,13 +26,6 @@ public sealed class Query<T> : IQuery<T>
     /// <summary>
     /// Initializes a new instance of the <see cref="Query{T}"/> class.
     /// </summary>
-    /// <param name="connection">The database connection.</param>
-    /// <param name="parser">The query parser.</param>
-    /// <param name="sqlGenerator">The SQL generator.</param>
-    /// <param name="parameterBinder">The parameter binder.</param>
-    /// <param name="metadataProvider">The metadata provider.</param>
-    /// <param name="cpql">The CPQL query string.</param>
-    /// <param name="logger">The logger (optional).</param>
     public Query(
         IDbConnection connection,
         IQueryParser parser,
@@ -57,10 +50,7 @@ public sealed class Query<T> : IQuery<T>
     public IQuery<T> SetParameter(string name, object? value)
     {
         ThrowIfDisposed();
-        if (string.IsNullOrEmpty(name))
-            throw new ArgumentException("Parameter name cannot be null or empty", nameof(name));
-
-        _logger?.LogDebug("Setting parameter {ParameterName} = {ParameterValue}", name, value);
+        if (string.IsNullOrEmpty(name)) throw new ArgumentException("Parameter name cannot be null or empty", nameof(name));
         _parameters[name] = _parameterBinder.SanitizeParameter(value);
         return this;
     }
@@ -69,10 +59,7 @@ public sealed class Query<T> : IQuery<T>
     public IQuery<T> SetParameter(int index, object? value)
     {
         ThrowIfDisposed();
-        if (index < 0)
-            throw new ArgumentOutOfRangeException(nameof(index), "Parameter index cannot be negative");
-
-        _logger?.LogDebug("Setting parameter at index {ParameterIndex} = {ParameterValue}", index, value);
+        if (index < 0) throw new ArgumentOutOfRangeException(nameof(index), "Parameter index cannot be negative");
         _indexedParameters[index] = _parameterBinder.SanitizeParameter(value);
         return this;
     }
@@ -81,129 +68,55 @@ public sealed class Query<T> : IQuery<T>
     public async Task<IEnumerable<T>> GetResultListAsync()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing query to get result list");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var results = await _connection.QueryAsync<T>(sql, boundParameters);
-            _logger?.LogDebug("Query executed successfully, returned {ResultCount} results", results.Count());
-            return results;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing query: {Sql}", sql);
-            throw;
-        }
+        return await _connection.QueryAsync<T>(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public IEnumerable<T> GetResultList()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing query to get result list (sync)");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var results = _connection.Query<T>(sql, boundParameters);
-            _logger?.LogDebug("Query executed successfully, returned {ResultCount} results", results.Count());
-            return results;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing query: {Sql}", sql);
-            throw;
-        }
+        return _connection.Query<T>(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public async Task<T?> GetSingleResultAsync()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing query to get single result");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var result = await _connection.QueryFirstOrDefaultAsync<T>(sql, boundParameters);
-            _logger?.LogDebug("Query executed successfully, returned {HasResult} result", result != null ? "one" : "no");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing query: {Sql}", sql);
-            throw;
-        }
+        return await _connection.QueryFirstOrDefaultAsync<T>(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public T? GetSingleResult()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing query to get single result (sync)");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var result = _connection.QueryFirstOrDefault<T>(sql, boundParameters);
-            _logger?.LogDebug("Query executed successfully, returned {HasResult} result", result != null ? "one" : "no");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing query: {Sql}", sql);
-            throw;
-        }
+        return _connection.QueryFirstOrDefault<T>(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public async Task<T> GetSingleResultRequiredAsync()
     {
-        ThrowIfDisposed();
-        _logger?.LogDebug("Executing query to get single required result");
-
         var result = await GetSingleResultAsync();
-        if (result == null)
-        {
-            var message = "Query returned no results, but a single result was required";
-            _logger?.LogWarning(message);
-            throw new InvalidOperationException(message);
-        }
-
+        if (result == null) throw new InvalidOperationException("Query returned no results, but a single result was required");
         return result;
     }
 
     /// <inheritdoc />
     public T GetSingleResultRequired()
     {
-        ThrowIfDisposed();
-        _logger?.LogDebug("Executing query to get single required result (sync)");
-
         var result = GetSingleResult();
-        if (result == null)
-        {
-            var message = "Query returned no results, but a single result was required";
-            _logger?.LogWarning(message);
-            throw new InvalidOperationException(message);
-        }
-
+        if (result == null) throw new InvalidOperationException("Query returned no results, but a single result was required");
         return result;
     }
 
@@ -211,173 +124,94 @@ public sealed class Query<T> : IQuery<T>
     public async Task<int> ExecuteUpdateAsync()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing update query");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var affectedRows = await _connection.ExecuteAsync(sql, boundParameters);
-            _logger?.LogDebug("Update query executed successfully, affected {AffectedRows} rows", affectedRows);
-            return affectedRows;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing update query: {Sql}", sql);
-            throw;
-        }
+        return await _connection.ExecuteAsync(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public int ExecuteUpdate()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing update query (sync)");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var affectedRows = _connection.Execute(sql, boundParameters);
-            _logger?.LogDebug("Update query executed successfully, affected {AffectedRows} rows", affectedRows);
-            return affectedRows;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing update query: {Sql}", sql);
-            throw;
-        }
+        return _connection.Execute(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public async Task<object?> ExecuteScalarAsync()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing scalar query");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var result = await _connection.ExecuteScalarAsync(sql, boundParameters);
-            _logger?.LogDebug("Scalar query executed successfully, returned {HasResult} result", result != null ? "a" : "no");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing scalar query: {Sql}", sql);
-            throw;
-        }
+        return await _connection.ExecuteScalarAsync(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public object? ExecuteScalar()
     {
         ThrowIfDisposed();
-        _logger?.LogDebug("Executing scalar query (sync)");
-
         var sql = GetSql();
         var boundParameters = GetBoundParameters();
-        
         LogExecutionDetails(sql, boundParameters);
-
-        try
-        {
-            var result = _connection.ExecuteScalar(sql, boundParameters);
-            _logger?.LogDebug("Scalar query executed successfully, returned {HasResult} result", result != null ? "a" : "no");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error executing scalar query: {Sql}", sql);
-            throw;
-        }
+        return _connection.ExecuteScalar(sql, boundParameters);
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        if (!_disposed)
-        {
-            _parameters.Clear();
-            _indexedParameters.Clear();
-            _disposed = true;
-        }
+        if (_disposed) return;
+        _parameters.Clear();
+        _indexedParameters.Clear();
+        _disposed = true;
     }
 
     private string GetSql()
     {
-        if (_sql == null)
+        if (_sql != null) return _sql;
+
+        _logger?.LogDebug("Parsing CPQL: {Cpql}", _cpql);
+        var parsedQuery = _parser.Parse(_cpql);
+
+        if (string.IsNullOrEmpty(parsedQuery.EntityName))
         {
-            _logger?.LogDebug("Parsing CPQL: {Cpql}", _cpql);
-            var parsedQuery = _parser.Parse(_cpql);
-            
-            var entityMetadata = _metadataProvider.GetEntityMetadata<T>();
-            _sql = _sqlGenerator.Generate(parsedQuery, entityMetadata);
-            
-            _logger?.LogDebug("Generated SQL: {Sql}", _sql);
+            throw new InvalidOperationException("CPQL query must have a FROM clause specifying an entity.");
         }
+
+        var entityMetadata = _metadataProvider.GetEntityMetadata(parsedQuery.EntityName);
+        _sql = _sqlGenerator.Generate(parsedQuery, entityMetadata);
+        
+        _logger?.LogDebug("Generated SQL: {Sql}", _sql);
 
         return _sql;
     }
 
     private object GetBoundParameters()
     {
-        if (_indexedParameters.Count > 0)
-        {
-            return _parameterBinder.BindParametersByIndex(_indexedParameters);
-        }
-
-        return _parameterBinder.BindParameters(_parameters);
+        return _indexedParameters.Count > 0 
+            ? _parameterBinder.BindParametersByIndex(_indexedParameters) 
+            : _parameterBinder.BindParameters(_parameters);
     }
 
     private void LogExecutionDetails(string sql, object boundParameters)
     {
-        if (_logger == null || !_logger.IsEnabled(LogLevel.Debug))
-            return;
+        if (_logger?.IsEnabled(LogLevel.Debug) != true) return;
         
-        _logger.LogDebug("=== Query Execution Details ===");
-        _logger.LogDebug("SQL: {Sql}", sql);
-        
-        // Log parameter values
-        if (boundParameters is IDictionary<string, object?> paramDict)
+        _logger.LogDebug("Executing SQL: {Sql}", sql);
+        if (boundParameters is IDictionary<string, object?> paramDict && paramDict.Count > 0)
         {
-            if (paramDict.Count > 0)
+            foreach (var param in paramDict)
             {
-                _logger.LogDebug("Parameters:");
-                foreach (var param in paramDict)
-                {
-                    var valueDisplay = param.Value switch
-                    {
-                        null => "NULL",
-                        string str => $"'{str}'",
-                        DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-                        _ => param.Value.ToString()
-                    };
-                    _logger.LogDebug("  @{ParamName} = {ParamValue}", param.Key, valueDisplay);
-                }
-            }
-            else
-            {
-                _logger.LogDebug("Parameters: (none)");
+                _logger.LogDebug("  Parameter: @{ParamName} = {ParamValue}", param.Key, param.Value ?? "NULL");
             }
         }
-        
-        _logger.LogDebug("==============================");
     }
 
     private void ThrowIfDisposed()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(Query<T>));
+        if (_disposed) throw new ObjectDisposedException(nameof(Query<T>));
     }
 }

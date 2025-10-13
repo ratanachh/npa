@@ -1,6 +1,6 @@
-using NPA.Core.Annotations;
+﻿using NPA.Core.Annotations;
 
-namespace ConsoleAppSync;
+namespace NPA.Samples.Entities;
 
 /// <summary>
 /// Customer entity for console app demo.
@@ -30,4 +30,3 @@ public class Customer
     [Column("is_active")]
     public bool IsActive { get; set; }
 }
-

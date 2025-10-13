@@ -337,10 +337,18 @@ await command.ExecuteNonQueryAsync();
 
 Console.WriteLine("Database ready!\n");
 
-// Setup NPA
-var metadataProvider = new MetadataProvider();
-var databaseProvider = new PostgreSqlProvider();
-var entityManager = new EntityManager(connection, metadataProvider, databaseProvider, logger);
+// Setup NPA (Recommended: Use DI with provider extensions)
+var services = new ServiceCollection();
+services.AddLogging(builder => builder.AddConsole());
+services.AddPostgreSqlProvider(connectionString); // Includes metadata provider, entity manager, etc.
+
+var provider = services.BuildServiceProvider();
+var entityManager = provider.GetRequiredService<IEntityManager>();
+
+// Alternative manual setup (not recommended):
+// var metadataProvider = new MetadataProvider();
+// var databaseProvider = new PostgreSqlProvider();
+// var entityManager = new EntityManager(connection, metadataProvider, databaseProvider, logger);
 
 // Run query examples
 var examples = new QueryExamples(entityManager);

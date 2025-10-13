@@ -66,24 +66,46 @@ public class SqlGenerator : ISqlGenerator
         return sql;
     }
 
-    private string GenerateFromAst(object ast, ParsedQuery parsedQuery, EntityMetadata entityMetadata)
+    private string GenerateFromAst(object ast, ParsedQuery parsedQuery, EntityMetadata primaryEntityMetadata)
     {
         return ast switch
         {
-            SelectQuery selectQuery => GenerateSelectFromAst(selectQuery, parsedQuery, entityMetadata),
-            UpdateQuery updateQuery => GenerateUpdateFromAst(updateQuery, parsedQuery, entityMetadata),
-            DeleteQuery deleteQuery => GenerateDeleteFromAst(deleteQuery, parsedQuery, entityMetadata),
+            SelectQuery selectQuery => GenerateSelectFromAst(selectQuery, parsedQuery, primaryEntityMetadata),
+            UpdateQuery updateQuery => GenerateUpdateFromAst(updateQuery, parsedQuery, primaryEntityMetadata),
+            DeleteQuery deleteQuery => GenerateDeleteFromAst(deleteQuery, parsedQuery, primaryEntityMetadata),
             _ => throw new NotSupportedException($"AST type {ast.GetType().Name} is not supported")
         };
     }
 
-    private string GenerateSelectFromAst(SelectQuery query, ParsedQuery parsedQuery, EntityMetadata entityMetadata)
+    private string GenerateSelectFromAst(SelectQuery query, ParsedQuery parsedQuery, EntityMetadata primaryEntityMetadata)
     {
         var sql = new StringBuilder();
-        
+        var aliasMetadataMap = new Dictionary<string, EntityMetadata>();
+
+        // 1. Build the alias-to-metadata map
+        if (query.FromClause != null && query.FromClause.Items.Count > 0)
+        {
+            var primaryAlias = query.FromClause.Items[0].Alias ?? query.FromClause.Items[0].EntityName;
+            aliasMetadataMap[primaryAlias] = primaryEntityMetadata;
+
+            foreach (var join in query.FromClause.Joins)
+            {
+                var joinAlias = join.Alias ?? join.EntityName;
+                if (primaryEntityMetadata.Relationships.TryGetValue(join.EntityName, out var relMetadata))
+                {
+                    if (_metadataProvider == null) throw new InvalidOperationException("MetadataProvider is required for relationship joins.");
+                    var targetMetadata = _metadataProvider.GetEntityMetadata(relMetadata.TargetEntityType);
+                    aliasMetadataMap[joinAlias] = targetMetadata;
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Could not find relationship property '{join.EntityName}' on entity '{primaryEntityMetadata.EntityType.Name}'.");
+                }
+            }
+        }
+
         // SELECT clause
         sql.Append("SELECT ");
-        
         if (query.SelectClause?.IsDistinct == true)
         {
             sql.Append("DISTINCT ");
@@ -91,13 +113,14 @@ public class SqlGenerator : ISqlGenerator
 
         if (query.SelectClause == null || query.SelectClause.Items.Count == 0)
         {
-            // Default: SELECT all columns
-            sql.Append(GenerateSelectColumns(entityMetadata, parsedQuery.Alias));
+            // Default: SELECT all columns from all known aliases
+            var allColumns = aliasMetadataMap.Select(kvp => GenerateSelectColumns(kvp.Value, kvp.Key));
+            sql.Append(string.Join(", ", allColumns));
         }
         else
         {
             var selectItems = query.SelectClause.Items.Select(item =>
-                GenerateSelectItem(item, entityMetadata, parsedQuery.Alias));
+                GenerateSelectItem(item, primaryEntityMetadata, parsedQuery.Alias, aliasMetadataMap));
             sql.Append(string.Join(", ", selectItems));
         }
         
@@ -107,12 +130,9 @@ public class SqlGenerator : ISqlGenerator
             sql.Append(" FROM ");
             var fromItems = query.FromClause.Items.Select(item =>
             {
-                var tableName = GetTableName(entityMetadata);
-                if (!string.IsNullOrEmpty(item.Alias))
-                {
-                    return $"{tableName} AS {item.Alias}";
-                }
-                return $"{tableName} {item.EntityName}";
+                var tableName = GetTableName(primaryEntityMetadata);
+                var alias = item.Alias ?? item.EntityName;
+                return $"{tableName} AS {alias}";
             });
             sql.Append(string.Join(", ", fromItems));
             
@@ -121,7 +141,7 @@ public class SqlGenerator : ISqlGenerator
             {
                 foreach (var join in query.FromClause.Joins)
                 {
-                    sql.Append(GenerateJoinClause(join, entityMetadata, parsedQuery.Alias));
+                    sql.Append(GenerateJoinClause(join, primaryEntityMetadata, parsedQuery.Alias));
                 }
             }
         }
@@ -130,7 +150,7 @@ public class SqlGenerator : ISqlGenerator
         if (query.WhereClause != null)
         {
             sql.Append(" WHERE ");
-            sql.Append(GenerateExpression(query.WhereClause.Condition, entityMetadata, parsedQuery.Alias));
+            sql.Append(GenerateExpression(query.WhereClause.Condition, primaryEntityMetadata, parsedQuery.Alias, aliasMetadataMap));
         }
         
         // GROUP BY clause
@@ -138,7 +158,7 @@ public class SqlGenerator : ISqlGenerator
         {
             sql.Append(" GROUP BY ");
             var groupByItems = query.GroupByClause.Items.Select(expr => 
-                GenerateExpression(expr, entityMetadata, parsedQuery.Alias));
+                GenerateExpression(expr, primaryEntityMetadata, parsedQuery.Alias, aliasMetadataMap));
             sql.Append(string.Join(", ", groupByItems));
         }
         
@@ -146,7 +166,7 @@ public class SqlGenerator : ISqlGenerator
         if (query.HavingClause != null)
         {
             sql.Append(" HAVING ");
-            sql.Append(GenerateExpression(query.HavingClause.Condition, entityMetadata, parsedQuery.Alias));
+            sql.Append(GenerateExpression(query.HavingClause.Condition, primaryEntityMetadata, parsedQuery.Alias, aliasMetadataMap));
         }
         
         // ORDER BY clause
@@ -155,7 +175,7 @@ public class SqlGenerator : ISqlGenerator
             sql.Append(" ORDER BY ");
             var orderByItems = query.OrderByClause.Items.Select(item =>
             {
-                var expr = GenerateExpression(item.Expression, entityMetadata, parsedQuery.Alias);
+                var expr = GenerateExpression(item.Expression, primaryEntityMetadata, parsedQuery.Alias, aliasMetadataMap);
                 var direction = item.Direction == OrderDirection.Descending ? " DESC" : " ASC";
                 return expr + direction;
             });
@@ -273,25 +293,23 @@ public class SqlGenerator : ISqlGenerator
         if (query.WhereClause != null)
         {
             sql.Append(" WHERE ");
-            sql.Append(GenerateExpression(query.WhereClause.Condition, entityMetadata, query.Alias));
+            sql.Append(GenerateExpression(query.WhereClause.Condition, entityMetadata, query.Alias, new Dictionary<string, EntityMetadata>()));
         }
         
         return sql.ToString();
     }
 
-    private string GenerateSelectItem(SelectItem item, EntityMetadata entityMetadata, string alias)
+    private string GenerateSelectItem(SelectItem item, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
-        // Special case: If the expression is just the alias itself (e.g., "SELECT c FROM Customer c"),
-        // it means "select all columns", so we should generate the full column list
-        if (item.Expression is PropertyExpression prop && 
-            prop.EntityAlias == null && 
-            prop.PropertyName == alias)
+        if (item.Expression is PropertyExpression prop && prop.EntityAlias == null && aliasMap.ContainsKey(prop.PropertyName))
         {
-            // This is "SELECT c" meaning "SELECT all columns"
+            // This is "SELECT u" or "SELECT o", meaning "select all columns for this alias"
+            var alias = prop.PropertyName;
+            var entityMetadata = aliasMap[alias];
             return GenerateSelectColumns(entityMetadata, alias);
         }
         
-        var expression = GenerateExpression(item.Expression, entityMetadata, alias);
+        var expression = GenerateExpression(item.Expression, primaryEntityMetadata, primaryAlias, aliasMap);
         
         if (!string.IsNullOrEmpty(item.Alias))
         {
@@ -301,56 +319,126 @@ public class SqlGenerator : ISqlGenerator
         return expression;
     }
 
-    private string GenerateJoinClause(CPQL.AST.JoinClause join, EntityMetadata entityMetadata, string primaryAlias)
+    private string GenerateJoinClause(CPQL.AST.JoinClause join, EntityMetadata sourceEntityMetadata, string primaryAlias)
     {
         var sql = new StringBuilder();
-        
-        sql.Append(join.JoinType switch
+
+        var relationshipPropertyName = join.EntityName;
+
+        if (!sourceEntityMetadata.Relationships.TryGetValue(relationshipPropertyName, out var relMetadata))
+        {
+            throw new InvalidOperationException($"Could not find relationship property '{relationshipPropertyName}' on entity '{sourceEntityMetadata.EntityType.Name}'.");
+        }
+
+        if (_metadataProvider == null)
+        {
+            throw new InvalidOperationException("MetadataProvider is required for relationship joins.");
+        }
+        var targetEntityMetadata = _metadataProvider.GetEntityMetadata(relMetadata.TargetEntityType);
+        var joinAlias = join.Alias ?? join.EntityName;
+
+        var joinTypeString = join.JoinType switch
         {
             CPQL.AST.JoinType.Inner => " INNER JOIN ",
             CPQL.AST.JoinType.Left => " LEFT JOIN ",
             CPQL.AST.JoinType.Right => " RIGHT JOIN ",
             CPQL.AST.JoinType.Full => " FULL OUTER JOIN ",
             _ => throw new NotSupportedException($"Join type {join.JoinType} is not supported")
-        });
-        
-        // For now, use the same table (will need entity resolver for multi-table joins)
-        sql.Append(GetTableName(entityMetadata));
-        
-        if (!string.IsNullOrEmpty(join.Alias))
+        };
+
+        if (relMetadata.RelationshipType == RelationshipType.ManyToMany)
         {
-            sql.Append($" AS {join.Alias}");
+            if (relMetadata.JoinTable == null)
+                throw new InvalidOperationException($"JoinTable metadata is missing for ManyToMany relationship '{relMetadata.PropertyName}' on entity '{sourceEntityMetadata.EntityType.Name}'.");
+
+            var joinTableName = relMetadata.JoinTable.Name;
+            var joinTableAlias = $"{primaryAlias}_{joinAlias}_jt"; // A unique alias for the join table
+
+            var sourceKeyColumn = sourceEntityMetadata.Properties[sourceEntityMetadata.PrimaryKeyProperty].ColumnName;
+            var targetKeyColumn = targetEntityMetadata.Properties[targetEntityMetadata.PrimaryKeyProperty].ColumnName;
+
+            var sourceJoinColumn = relMetadata.JoinTable.JoinColumns.FirstOrDefault() ?? sourceEntityMetadata.TableName + "_id";
+            var inverseJoinColumn = relMetadata.JoinTable.InverseJoinColumns.FirstOrDefault() ?? targetEntityMetadata.TableName + "_id";
+
+            // First join: Source Table -> Join Table
+            sql.Append(joinTypeString);
+            sql.Append($"{joinTableName} AS {joinTableAlias}");
+            sql.Append($" ON {primaryAlias}.{sourceKeyColumn} = {joinTableAlias}.{sourceJoinColumn}");
+
+            // Second join: Join Table -> Target Table
+            sql.Append(joinTypeString);
+            sql.Append($"{GetTableName(targetEntityMetadata)} AS {joinAlias}");
+            sql.Append($" ON {joinTableAlias}.{inverseJoinColumn} = {joinAlias}.{targetKeyColumn}");
         }
-        
-        if (join.OnCondition != null)
+        else
         {
-            sql.Append(" ON ");
-            sql.Append(GenerateExpression(join.OnCondition, entityMetadata, primaryAlias));
+            sql.Append(joinTypeString);
+            sql.Append($"{GetTableName(targetEntityMetadata)} AS {joinAlias}");
+
+            if (join.OnCondition != null)
+            {
+                sql.Append(" ON ");
+                sql.Append(GenerateExpression(join.OnCondition, sourceEntityMetadata, primaryAlias, new Dictionary<string, EntityMetadata>()));
+            }
+            else
+            {
+                string sourceColumn, targetColumn;
+                if (relMetadata.RelationshipType == RelationshipType.ManyToOne || (relMetadata.RelationshipType == RelationshipType.OneToOne && relMetadata.IsOwner))
+                {
+                    sourceColumn = $"{primaryAlias}.{relMetadata.JoinColumn!.Name}";
+                    targetColumn = $"{joinAlias}.{targetEntityMetadata.Properties[targetEntityMetadata.PrimaryKeyProperty].ColumnName}";
+                }
+                else // OneToMany or inverse OneToOne
+                {
+                    if (string.IsNullOrEmpty(relMetadata.MappedBy))
+                    {
+                        throw new InvalidOperationException($"The [{relMetadata.RelationshipType}] relationship '{relMetadata.PropertyName}' on '{sourceEntityMetadata.EntityType.Name}' must have the 'MappedBy' property set to define the bidirectional relationship.");
+                    }
+
+                    var inverseProperty = targetEntityMetadata.Relationships.Values
+                        .FirstOrDefault(r => r.PropertyName == relMetadata.MappedBy);
+
+                    if (inverseProperty == null || inverseProperty.JoinColumn == null)
+                    {
+                        throw new InvalidOperationException($"Cannot infer join condition for {relMetadata.RelationshipType} relationship '{relMetadata.PropertyName}'. The target entity '{targetEntityMetadata.EntityType.Name}' must have a corresponding relationship named '{relMetadata.MappedBy}' with a [JoinColumn].");
+                    }
+
+                    sourceColumn = $"{primaryAlias}.{sourceEntityMetadata.Properties[sourceEntityMetadata.PrimaryKeyProperty].ColumnName}";
+                    targetColumn = $"{joinAlias}.{inverseProperty.JoinColumn.Name}";
+                }
+                sql.Append($" ON {sourceColumn} = {targetColumn}");
+            }
         }
-        
+
         return sql.ToString();
     }
 
-    private string GenerateExpression(Expression expression, EntityMetadata entityMetadata, string alias)
+    private string GenerateExpression(Expression expression, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
         return expression switch
         {
-            PropertyExpression prop => GeneratePropertyExpression(prop, entityMetadata, alias),
+            PropertyExpression prop => GeneratePropertyExpression(prop, primaryEntityMetadata, primaryAlias, aliasMap),
             LiteralExpression literal => GenerateLiteralExpression(literal),
             ParameterExpression param => GenerateParameterExpression(param),
-            BinaryExpression binary => GenerateBinaryExpression(binary, entityMetadata, alias),
-            UnaryExpression unary => GenerateUnaryExpression(unary, entityMetadata, alias),
-            FunctionExpression func => GenerateFunctionExpression(func, entityMetadata, alias),
-            AggregateExpression agg => GenerateAggregateExpression(agg, entityMetadata, alias),
-            WildcardExpression wildcard => GenerateWildcardExpression(wildcard, alias),
+            BinaryExpression binary => GenerateBinaryExpression(binary, primaryEntityMetadata, primaryAlias, aliasMap),
+            UnaryExpression unary => GenerateUnaryExpression(unary, primaryEntityMetadata, primaryAlias, aliasMap),
+            FunctionExpression func => GenerateFunctionExpression(func, primaryEntityMetadata, primaryAlias, aliasMap),
+            AggregateExpression agg => GenerateAggregateExpression(agg, primaryEntityMetadata, primaryAlias, aliasMap),
+            WildcardExpression wildcard => GenerateWildcardExpression(wildcard, primaryAlias),
             _ => throw new NotSupportedException($"Expression type {expression.GetType().Name} is not supported")
         };
     }
 
-    private string GeneratePropertyExpression(PropertyExpression prop, EntityMetadata entityMetadata, string alias)
+    private string GeneratePropertyExpression(PropertyExpression prop, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
+        var entityAlias = prop.EntityAlias ?? primaryAlias;
+        
+        if (!aliasMap.TryGetValue(entityAlias, out var entityMetadata))
+        {
+            entityMetadata = primaryEntityMetadata;
+        }
+
         var columnName = GetColumnName(entityMetadata, prop.PropertyName);
-        var entityAlias = prop.EntityAlias ?? alias;
         return $"{entityAlias}.{columnName}";
     }
 
@@ -373,10 +461,10 @@ public class SqlGenerator : ISqlGenerator
         return $"@{param.ParameterName}";
     }
 
-    private string GenerateBinaryExpression(BinaryExpression binary, EntityMetadata entityMetadata, string alias)
+    private string GenerateBinaryExpression(BinaryExpression binary, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
-        var left = GenerateExpression(binary.Left, entityMetadata, alias);
-        var right = GenerateExpression(binary.Right, entityMetadata, alias);
+        var left = GenerateExpression(binary.Left, primaryEntityMetadata, primaryAlias, aliasMap);
+        var right = GenerateExpression(binary.Right, primaryEntityMetadata, primaryAlias, aliasMap);
         
         var op = binary.Operator switch
         {
@@ -403,9 +491,9 @@ public class SqlGenerator : ISqlGenerator
         return $"({left} {op} {right})";
     }
 
-    private string GenerateUnaryExpression(UnaryExpression unary, EntityMetadata entityMetadata, string alias)
+    private string GenerateUnaryExpression(UnaryExpression unary, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
-        var operand = GenerateExpression(unary.Operand, entityMetadata, alias);
+        var operand = GenerateExpression(unary.Operand, primaryEntityMetadata, primaryAlias, aliasMap);
         
         var op = unary.Operator switch
         {
@@ -418,7 +506,7 @@ public class SqlGenerator : ISqlGenerator
         return $"{op} {operand}";
     }
 
-    private string GenerateFunctionExpression(FunctionExpression func, EntityMetadata entityMetadata, string alias)
+    private string GenerateFunctionExpression(FunctionExpression func, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
         var functionRegistry = new FunctionRegistry();
         var sqlFunctionName = functionRegistry.GetSqlFunction(func.FunctionName, _dialect);
@@ -429,27 +517,24 @@ public class SqlGenerator : ISqlGenerator
             return sqlFunctionName;
         }
         
-        var arguments = func.Arguments.Select(arg => GenerateExpression(arg, entityMetadata, alias));
+        var arguments = func.Arguments.Select(arg => GenerateExpression(arg, primaryEntityMetadata, primaryAlias, aliasMap));
         return $"{sqlFunctionName}({string.Join(", ", arguments)})";
     }
 
-    private string GenerateAggregateExpression(AggregateExpression agg, EntityMetadata entityMetadata, string alias)
+    private string GenerateAggregateExpression(AggregateExpression agg, EntityMetadata primaryEntityMetadata, string primaryAlias, IReadOnlyDictionary<string, EntityMetadata> aliasMap)
     {
         var functionName = agg.FunctionName.ToUpperInvariant();
         var distinct = agg.IsDistinct ? "DISTINCT " : "";
         
-        // Special case: If argument is just the alias (e.g., "COUNT(c)"), 
-        // it means count all rows, so use the primary key column
-        if (agg.Argument is PropertyExpression prop && 
-            prop.EntityAlias == null && 
-            prop.PropertyName == alias)
+        if (agg.Argument is PropertyExpression prop && aliasMap.ContainsKey(prop.PropertyName))
         {
-            // COUNT(c) -> COUNT(c.id)
+            var alias = prop.PropertyName;
+            var entityMetadata = aliasMap[alias];
             var primaryKeyColumn = entityMetadata.Properties[entityMetadata.PrimaryKeyProperty].ColumnName;
             return $"{functionName}({distinct}{alias}.{primaryKeyColumn})";
         }
         
-        var argument = GenerateExpression(agg.Argument, entityMetadata, alias);
+        var argument = GenerateExpression(agg.Argument, primaryEntityMetadata, primaryAlias, aliasMap);
         return $"{functionName}({distinct}{argument})";
     }
 

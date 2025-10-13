@@ -1913,14 +1913,18 @@ dotnet build
 // Program.cs or Startup.cs
 var builder = WebApplication.CreateBuilder(args);
 
-// Register NPA services
-builder.Services.AddSingleton<IMetadataProvider, MetadataProvider>();
-builder.Services.AddScoped<IDbConnection>(provider =>
-{
-    var connectionString = "Server=localhost;Database=MyApp;Trusted_Connection=true;";
-    return new SqlConnection(connectionString);
-});
-builder.Services.AddScoped<IEntityManager, EntityManager>();
+// Recommended: Use provider extensions (includes metadata, entity manager, etc.)
+var connectionString = "Server=localhost;Database=MyApp;Trusted_Connection=true;";
+builder.Services.AddSqlServerProvider(connectionString);
+
+// Alternative: Manual setup
+// builder.Services.AddNpaMetadataProvider(); // Smart registration - uses generated provider if available
+// builder.Services.AddScoped<IDbConnection>(provider =>
+// {
+//     var connectionString = "Server=localhost;Database=MyApp;Trusted_Connection=true;";
+//     return new SqlConnection(connectionString);
+// });
+// builder.Services.AddScoped<IEntityManager, EntityManager>();
 ```
 
 ### 3. Define Entities

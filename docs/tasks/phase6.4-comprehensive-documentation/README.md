@@ -208,10 +208,21 @@ public EntityManager(
 
 #### Example
 ```csharp
+// Recommended: Use DI with provider extensions
+var services = new ServiceCollection();
+services.AddSqlServerProvider(connectionString);
+var provider = services.BuildServiceProvider();
+var entityManager = provider.GetRequiredService<IEntityManager>();
+
+// Alternative: Manual setup (not recommended for production)
 var connection = new SqlConnection(connectionString);
-var metadataProvider = new MetadataProvider();
-var changeTracker = new ChangeTracker();
-var entityManager = new EntityManager(connection, metadataProvider, changeTracker);
+var services = new ServiceCollection();
+services.AddNpaMetadataProvider(); // Uses generated provider if available
+services.AddSingleton<IDatabaseProvider, SqlServerProvider>();
+services.AddSingleton<IDbConnection>(connection);
+services.AddScoped<IEntityManager, EntityManager>();
+var provider = services.BuildServiceProvider();
+var entityManager = provider.GetRequiredService<IEntityManager>();
 ```
 
 ## Methods

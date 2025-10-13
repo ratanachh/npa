@@ -54,7 +54,7 @@ public class ParserTests
     {
         // Arrange
         var parser = new QueryParser();
-        var cpql = "SELECT u FROM User u INNER JOIN Order o ON u.Id = o.UserId";
+        var cpql = "SELECT u FROM User u INNER JOIN u.Orders o";
         
         // Act
         var result = parser.Parse(cpql);
@@ -68,7 +68,7 @@ public class ParserTests
         Assert.NotNull(selectQuery!.FromClause);
         Assert.Single(selectQuery.FromClause!.Joins);
         Assert.Equal(JoinType.Inner, selectQuery.FromClause.Joins[0].JoinType);
-        Assert.Equal("Order", selectQuery.FromClause.Joins[0].EntityName);
+        Assert.Equal("Orders", selectQuery.FromClause.Joins[0].EntityName);
     }
     
     [Fact]
@@ -243,7 +243,7 @@ public class ParserTests
     {
         // Arrange
         var parser = new QueryParser();
-        var cpql = "SELECT u FROM User u INNER JOIN Order o ON u.Id = o.UserId LEFT JOIN Payment p ON o.Id = p.OrderId";
+        var cpql = "SELECT u FROM User u INNER JOIN u.Orders o LEFT JOIN o.Product p";
         
         // Act
         var result = parser.Parse(cpql);
@@ -255,10 +255,29 @@ public class ParserTests
         Assert.Equal(2, selectQuery.FromClause!.Joins.Count);
         
         Assert.Equal(JoinType.Inner, selectQuery.FromClause.Joins[0].JoinType);
-        Assert.Equal("Order", selectQuery.FromClause.Joins[0].EntityName);
+        Assert.Equal("Orders", selectQuery.FromClause.Joins[0].EntityName);
         
         Assert.Equal(JoinType.Left, selectQuery.FromClause.Joins[1].JoinType);
-        Assert.Equal("Payment", selectQuery.FromClause.Joins[1].EntityName);
+        Assert.Equal("Product", selectQuery.FromClause.Joins[1].EntityName);
+    }
+
+    [Fact]
+    public void Parse_JoinWithKeywordAsEntityName_ShouldSucceed()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        // "Order" is a keyword (OrderBy), so this tests if the parser can handle it as an identifier.
+        var cpql = "SELECT c FROM Customer c JOIN c.Order o";
+
+        // Act
+        var result = parser.Parse(cpql);
+
+        // Assert
+        var selectQuery = result.Ast as SelectQuery;
+        Assert.NotNull(selectQuery);
+        Assert.NotNull(selectQuery!.FromClause);
+        Assert.Single(selectQuery.FromClause!.Joins);
+        Assert.Equal("Order", selectQuery.FromClause.Joins[0].EntityName);
     }
     
     [Fact]
@@ -272,4 +291,3 @@ public class ParserTests
         Assert.Throws<ArgumentException>(() => parser.Parse(cpql));
     }
 }
-

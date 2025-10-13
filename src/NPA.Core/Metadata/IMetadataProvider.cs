@@ -20,6 +20,13 @@ public interface IMetadataProvider
     EntityMetadata GetEntityMetadata(Type entityType);
 
     /// <summary>
+    /// Gets the metadata for the specified entity name.
+    /// </summary>
+    /// <param name="entityName">The name of the entity.</param>
+    /// <returns>The entity metadata.</returns>
+    EntityMetadata GetEntityMetadata(string entityName);
+
+    /// <summary>
     /// Checks if the specified type is an entity.
     /// </summary>
     /// <param name="type">The type to check.</param>

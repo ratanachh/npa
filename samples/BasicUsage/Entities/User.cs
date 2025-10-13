@@ -1,11 +1,9 @@
 using NPA.Core.Annotations;
+using NPA.Samples.Entities;
+using System.Collections.Generic;
 
-namespace BasicUsage;
+namespace NPA.Samples.Entities;
 
-/// <summary>
-/// Sample User entity for demonstration.
-/// Demonstrates basic entity mapping (Phase 1.1) and relationships (Phase 2.1).
-/// </summary>
 [Entity]
 [Table("users")]
 public class User
@@ -25,9 +23,8 @@ public class User
     public DateTime CreatedAt { get; set; }
 
     [Column("is_active")]
-    public bool IsActive { get; set; } = true;
+    public bool IsActive { get; set; }
 
-    // Phase 2.1: OneToMany relationship - One user can have many orders
-    [OneToMany("User", Cascade = CascadeType.All)]
-    public ICollection<Entities.Order> Orders { get; set; } = new List<Entities.Order>();
+    [OneToMany(MappedBy = "User")]
+    public ICollection<Order> Orders { get; set; } = new List<Order>();
 }

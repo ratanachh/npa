@@ -13,11 +13,15 @@ public class SqlGeneratorTests
 {
     private readonly IMetadataProvider _metadataProvider;
     private readonly EntityMetadata _customerMetadata;
+    private readonly EntityMetadata _orderMetadata;
+    private readonly EntityMetadata _userMetadata;
 
     public SqlGeneratorTests()
     {
         _metadataProvider = new MetadataProvider();
         _customerMetadata = _metadataProvider.GetEntityMetadata<TestCustomer>();
+        _orderMetadata = _metadataProvider.GetEntityMetadata<TestOrder>();
+        _userMetadata = _metadataProvider.GetEntityMetadata<TestUser>();
     }
 
     [Fact]
@@ -303,6 +307,101 @@ public class SqlGeneratorTests
         Assert.DoesNotContain("\"Id\"", sql);
         Assert.DoesNotContain("`Id`", sql);
     }
+
+    // --- NEW TESTS FOR RELATIONSHIPS ---
+
+    [Fact]
+    public void Generate_JoinWithManyToOne_ShouldGenerateCorrectSql()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SqlServer");
+        var cpql = "SELECT o FROM TestOrder o JOIN o.Customer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _orderMetadata);
+        
+        // Assert
+        Assert.Contains("FROM test_orders AS o", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INNER JOIN test_customers AS c ON o.customer_id = c.id", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generate_JoinWithOneToMany_ShouldGenerateCorrectSql()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SqlServer");
+        var cpql = "SELECT c FROM TestCustomer c JOIN c.Orders o";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _customerMetadata);
+        
+        // Assert
+        Assert.Contains("FROM test_customers AS c", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INNER JOIN test_orders AS o ON c.id = o.customer_id", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generate_JoinWithSelectFromBothEntities_ShouldSelectAllColumns()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SqlServer");
+        var cpql = "SELECT o, c FROM TestOrder o JOIN o.Customer c";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _orderMetadata);
+        
+        // Assert
+        // Check for columns from Order
+        Assert.Contains("o.id AS Id", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("o.order_date AS OrderDate", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("o.customer_id AS CustomerId", sql, StringComparison.OrdinalIgnoreCase);
+
+        // Check for columns from Customer
+        Assert.Contains("c.id AS Id", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("c.name AS Name", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("c.email AS Email", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generate_JoinWithOneToOne_OwningSide_ShouldGenerateCorrectSql()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SqlServer");
+        var cpql = "SELECT p FROM TestUserProfile p JOIN p.User u";
+        var userProfileMetadata = _metadataProvider.GetEntityMetadata<TestUserProfile>();
+
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, userProfileMetadata);
+
+        // Assert
+        Assert.Contains("FROM test_user_profiles AS p", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INNER JOIN test_users AS u ON p.user_id = u.id", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generate_JoinWithOneToOne_InverseSide_ShouldGenerateCorrectSql()
+    {
+        // Arrange
+        var parser = new QueryParser();
+        var sqlGenerator = new SqlGenerator(_metadataProvider, "SqlServer");
+        var cpql = "SELECT u FROM TestUser u JOIN u.Profile p";
+        
+        // Act
+        var parsedQuery = parser.Parse(cpql);
+        var sql = sqlGenerator.Generate(parsedQuery, _userMetadata);
+
+        // Assert
+        Assert.Contains("FROM test_users AS u", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INNER JOIN test_user_profiles AS p ON u.id = p.user_id", sql, StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>
@@ -324,5 +423,60 @@ public class TestCustomer
 
     [Column("is_active")]
     public bool IsActive { get; set; }
+
+    [OneToMany(MappedBy = "Customer")]
+    public ICollection<TestOrder> Orders { get; set; } = new List<TestOrder>();
 }
 
+[Entity]
+[Table("test_orders")]
+public class TestOrder
+{
+    [Id]
+    [Column("id")]
+    public long Id { get; set; }
+
+    [Column("order_date")]
+    public DateTime OrderDate { get; set; }
+
+    [Column("customer_id")]
+    public long CustomerId { get; set; }
+
+    [ManyToOne]
+    [JoinColumn("customer_id")]
+    public TestCustomer Customer { get; set; } = null!;
+}
+
+[Entity]
+[Table("test_users")]
+public class TestUser
+{
+    [Id]
+    [Column("id")]
+    public long Id { get; set; }
+
+    [Column("username")]
+    public string Username { get; set; } = string.Empty;
+
+    [OneToOne(MappedBy = "User")]
+    public TestUserProfile Profile { get; set; } = null!;
+}
+
+[Entity]
+[Table("test_user_profiles")]
+public class TestUserProfile
+{
+    [Id]
+    [Column("id")]
+    public long Id { get; set; }
+
+    [Column("bio")]
+    public string Bio { get; set; } = string.Empty;
+
+    [Column("user_id")]
+    public long UserId { get; set; }
+
+    [OneToOne]
+    [JoinColumn("user_id")]
+    public TestUser User { get; set; } = null!;
+}

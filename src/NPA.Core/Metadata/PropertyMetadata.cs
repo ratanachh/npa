@@ -1,4 +1,5 @@
 using NPA.Core.Annotations;
+using System.Reflection;
 
 namespace NPA.Core.Metadata;
 
@@ -7,6 +8,11 @@ namespace NPA.Core.Metadata;
 /// </summary>
 public sealed class PropertyMetadata
 {
+    /// <summary>
+    /// Gets or sets the reflection PropertyInfo for this property.
+    /// </summary>
+    public PropertyInfo PropertyInfo { get; set; } = null!;
+
     /// <summary>
     /// Gets or sets the property name.
     /// </summary>

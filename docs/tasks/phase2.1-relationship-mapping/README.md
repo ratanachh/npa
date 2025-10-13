@@ -18,6 +18,35 @@
 - [x] Unit tests cover all functionality - 27 tests passing ✅
 - [x] Documentation is complete
 
+---
+
+## ⚠️ Post-Implementation Review & Identified Gaps
+
+During a comprehensive code review conducted after the initial completion of phases 1.1 through 2.7, several gaps were identified in the relationship mapping implementation. While the foundational attributes and metadata processing were in place, the SQL generation logic for joins was incomplete and contained critical bugs.
+
+### Identified Issues:
+
+1.  **Missing `OneToOne` Support**: The `[OneToOne]` attribute was never created, and no logic existed in the metadata providers or `SqlGenerator` to handle one-to-one relationships. This was a significant feature gap.
+
+2.  **Incorrect `JOIN` Table Generation**: The `SqlGenerator` was incorrectly using the primary entity's table for all `JOIN` operations instead of resolving the related entity's table. This caused all relationship join queries to fail.
+
+3.  **Flawed `ON` Clause Generation**: The logic for automatically generating the `ON` clause for `OneToMany` and the new `OneToOne` relationships was incorrect, preventing proper bidirectional joins.
+
+4.  **Incomplete `ManyToMany` Joins**: The initial implementation could not generate the necessary two-step `JOIN` through a join table, making `ManyToMany` queries non-functional.
+
+### Resolution:
+
+These issues were formally addressed as part of **[Phase 2.8: One-to-One Relationship Support](../phase2.8-one-to-one-relationship-support/README.md)**. During that phase, the following corrective actions were taken:
+
+- The `OneToOneAttribute` was created.
+- The `MetadataProvider` and `EntityMetadataGenerator` were updated for the new attribute.
+- The `SqlGenerator` and `Parser` were significantly refactored to fix all identified join generation bugs for all relationship types (`OneToOne`, `ManyToOne`, `OneToMany`, and `ManyToMany`).
+- Comprehensive unit tests were added to `SqlGeneratorTests.cs` to validate all relationship join scenarios, ensuring these bugs would not re-occur.
+
+This work has solidified the relationship mapping feature, making it robust and reliable.
+
+---
+
 ## 📝 Detailed Requirements
 
 ### 1. Relationship Attributes

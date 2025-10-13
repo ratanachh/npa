@@ -287,22 +287,25 @@ public class SqliteTypeConverter : ITypeConverter
 ### Usage Examples for SQLite
 
 ```csharp
-// SQLite provider registration (once implemented)
-services.AddSingleton<IMetadataProvider, MetadataProvider>();
-services.AddScoped<IDatabaseProvider, SqliteProvider>();
+// Recommended: Use provider extension (once implemented)
+var connectionString = "Data Source=myapp.db;Version=3;";
+services.AddSqliteProvider(connectionString);
 
-services.AddScoped<IDbConnection>(sp =>
-{
-    var connectionString = "Data Source=myapp.db;Version=3;";
-    var connection = new SqliteConnection(connectionString);
-    connection.Open();
-    return connection;
-});
-
-services.AddScoped<IEntityManager>(sp =>
-{
-    var connection = sp.GetRequiredService<IDbConnection>();
-    var metadata = sp.GetRequiredService<IMetadataProvider>();
+// Alternative: Manual registration
+// services.AddNpaMetadataProvider(); // Smart registration - uses generated provider if available
+// services.AddScoped<IDatabaseProvider, SqliteProvider>();
+// services.AddScoped<IDbConnection>(sp =>
+// {
+//     var connectionString = "Data Source=myapp.db;Version=3;";
+//     var connection = new SqliteConnection(connectionString);
+//     connection.Open();
+//     return connection;
+// });
+//
+// services.AddScoped<IEntityManager>(sp =>
+// {
+//     var connection = sp.GetRequiredService<IDbConnection>();
+//     var metadata = sp.GetRequiredService<IMetadataProvider>();
     var provider = sp.GetRequiredService<IDatabaseProvider>();
     var logger = sp.GetRequiredService<ILogger<EntityManager>>();
     return new EntityManager(connection, metadata, provider, logger);

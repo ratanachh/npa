@@ -189,11 +189,25 @@ public class CrudOperations
 {
     private readonly IEntityManager _entityManager;
 
+    // Recommended: Use DI with provider extensions
+    public CrudOperations(IEntityManager entityManager)
+    {
+        _entityManager = entityManager;
+    }
+    
+    // Alternative: Manual setup (not recommended for production)
     public CrudOperations(IDbConnection connection, ILogger<EntityManager> logger)
     {
-        var metadataProvider = new MetadataProvider();
-        var databaseProvider = new PostgreSqlProvider();
-        _entityManager = new EntityManager(connection, metadataProvider, databaseProvider, logger);
+        // Use smart registration instead of direct instantiation
+        var services = new ServiceCollection();
+        services.AddNpaMetadataProvider(); // Uses generated provider if available
+        services.AddSingleton<IDatabaseProvider, PostgreSqlProvider>();
+        services.AddSingleton(connection);
+        services.AddSingleton(logger);
+        services.AddScoped<IEntityManager, EntityManager>();
+        
+        var provider = services.BuildServiceProvider();
+        _entityManager = provider.GetRequiredService<IEntityManager>();
     }
 
     public async Task RunAllOperations()

@@ -71,7 +71,7 @@ public class MetadataProviderTests
     public void GetEntityMetadata_WithNullType_ShouldThrowException()
     {
         // Act & Assert
-        var action = () => _metadataProvider.GetEntityMetadata(null!);
+        var action = () => _metadataProvider.GetEntityMetadata((Type)null!);
         action.Should().Throw<ArgumentNullException>();
     }
 
