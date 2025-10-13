@@ -195,7 +195,7 @@ public class SqlGenerator : ISqlGenerator
         
         var assignments = query.Assignments.Select(assignment =>
         {
-            var columnName = GetColumnName(entityMetadata, assignment.PropertyName);
+            var columnName = GetColumnName(entityMetadata, assignment.Property.PropertyName);
             // For UPDATE SET clause, don't use alias - just column name
             var value = GenerateExpressionWithoutAlias(assignment.Value, entityMetadata);
             return $"{columnName} = {value}";

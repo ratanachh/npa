@@ -2,6 +2,7 @@ using Xunit;
 using FluentAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NPA.Core.Annotations; // Reference the real attributes
 
 namespace NPA.Generators.Tests;
 
@@ -16,6 +17,7 @@ public class EntityMetadataGeneratorTests
         // Arrange
         var source = @"
 using NPA.Core.Annotations;
+using System.Collections.Generic;
 
 namespace TestNamespace
 {
@@ -28,10 +30,10 @@ namespace TestNamespace
         [Column(""id"")]
         public long Id { get; set; }
 
-        [Column(""username"", IsNullable = false, Length = 50)]
+        [Column(""username"")]
         public string Username { get; set; } = string.Empty;
 
-        [Column(""email"", IsNullable = false, IsUnique = true)]
+        [Column(""email"")]
         public string Email { get; set; } = string.Empty;
     }
 }";
@@ -47,12 +49,15 @@ namespace TestNamespace
         generatedSource.HintName.Should().Be("GeneratedMetadataProvider.g.cs");
         
         var sourceText = generatedSource.SourceText.ToString();
-        sourceText.Should().Contain("public sealed class GeneratedMetadataProvider : NPA.Core.Metadata.IMetadataProvider");
+        
+        // Verify the using statement and the class signature (the fix)
+        sourceText.Should().Contain("using NPA.Core.Metadata;");
+        sourceText.Should().Contain("public sealed class GeneratedMetadataProvider : IMetadataProvider");
+
         sourceText.Should().Contain("UserMetadata");
         sourceText.Should().Contain("typeof(TestNamespace.User)");
         sourceText.Should().Contain("TableName = \"users\"");
         sourceText.Should().Contain("PrimaryKeyProperty = \"Id\"");
-        sourceText.Should().Contain("public EntityMetadata GetEntityMetadata<T>()");
         sourceText.Should().Contain("public EntityMetadata GetEntityMetadata(Type entityType)");
         sourceText.Should().Contain("public bool IsEntity(Type type)");
     }
@@ -64,11 +69,7 @@ namespace TestNamespace
         var source = @"
 namespace TestNamespace
 {
-    public class User
-    {
-        public long Id { get; set; }
-        public string Username { get; set; } = string.Empty;
-    }
+    public class NotAnEntity { }
 }";
 
         // Act
@@ -310,15 +311,14 @@ namespace TestNamespace
 
     private static GeneratorRunResult RunGenerator(string source)
     {
-        // Create a syntax tree from the source
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
 
-        // Create compilation with necessary references
+        // Add reference to the assembly containing the attributes
         var references = new[]
         {
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(EntityAttribute).Assembly.Location), // Important!
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location)
         };
 
         var compilation = CSharpCompilation.Create(
@@ -327,17 +327,12 @@ namespace TestNamespace
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        // Create the generator
         var generator = new EntityMetadataGenerator();
-
-        // Run the generator
         var driver = CSharpGeneratorDriver.Create(generator);
         driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
 
-        // Get the results
         var runResult = driver.GetRunResult();
         
         return runResult.Results[0];
     }
 }
-

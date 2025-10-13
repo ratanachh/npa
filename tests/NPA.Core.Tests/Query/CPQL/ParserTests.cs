@@ -196,7 +196,9 @@ public class ParserTests
         var updateQuery = result.Ast as UpdateQuery;
         Assert.NotNull(updateQuery);
         Assert.Single(updateQuery!.Assignments);
-        Assert.Equal("IsActive", updateQuery.Assignments[0].PropertyName);
+        var assignment = updateQuery.Assignments[0];
+        Assert.Equal("IsActive", assignment.Property.PropertyName);
+        Assert.Equal("u", assignment.Property.EntityAlias);
     }
     
     [Fact]

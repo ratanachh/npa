@@ -116,7 +116,7 @@ public class QueryParser : IQueryParser
         // Store SET clause
         if (updateQuery.Assignments.Count > 0)
         {
-            var assignments = updateQuery.Assignments.Select(a => $"{a.PropertyName} = {a.Value}");
+            var assignments = updateQuery.Assignments.Select(a => $"{a.Property} = {a.Value}");
             parsed.SetClause = string.Join(", ", assignments);
         }
 

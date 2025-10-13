@@ -69,8 +69,8 @@ public sealed class DeleteQuery : QueryNode
 /// </summary>
 public sealed class SetAssignment
 {
-    /// <summary>Gets or sets the property name to update.</summary>
-    public string PropertyName { get; set; } = string.Empty;
+    /// <summary>Gets or sets the property expression to update.</summary>
+    public PropertyExpression Property { get; set; } = null!;
     
     /// <summary>Gets or sets the value expression.</summary>
     public Expression Value { get; set; } = null!;

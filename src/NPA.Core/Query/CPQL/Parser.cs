@@ -69,10 +69,12 @@ public sealed class Parser
         var assignments = new List<SetAssignment>();
         do
         {
-            var propExpr = ParseExpression() as PropertyExpression ?? throw new InvalidOperationException("Expected property in SET clause.");
+            // Parse the property expression (left side of =), not the full expression
+            var expr = ParseRelationalExpression();
+            var propExpr = expr as PropertyExpression ?? throw new InvalidOperationException($"Expected property in SET clause, but got {expr.GetType().Name}.");
             Consume(TokenType.Equal);
             var value = ParseExpression();
-            assignments.Add(new SetAssignment { PropertyName = propExpr.PropertyName, Value = value });
+            assignments.Add(new SetAssignment { Property = propExpr, Value = value });
             if (_currentToken.Type != TokenType.Comma) break;
             Consume(TokenType.Comma);
         } while (true);
@@ -170,7 +172,8 @@ public sealed class Parser
     
     private GroupByClause ParseGroupByClause()
     {
-        Consume(TokenType.GroupBy);
+        Consume(TokenType.GroupBy); // Consumes "GROUP"
+        Consume(TokenType.OrderBy);  // Consumes "BY" (which is tokenized as OrderBy)
         var clause = new GroupByClause();
         do
         {
@@ -189,7 +192,8 @@ public sealed class Parser
     
     private OrderByClause ParseOrderByClause()
     {
-        Consume(TokenType.OrderBy);
+        Consume(TokenType.OrderBy); // Consumes "ORDER"
+        Consume(TokenType.OrderBy);  // Consumes "BY"
         var clause = new OrderByClause();
         do
         {
@@ -295,21 +299,29 @@ public sealed class Parser
     
     private Expression ParsePrimaryExpression()
     {
-        if (_currentToken.Type == TokenType.Identifier || IsKeywordUsableAsIdentifier(_currentToken.Type))
-        {
-            return ParseIdentifierExpression();
-        }
-
         switch (_currentToken.Type)
         {
             case TokenType.StringLiteral or TokenType.NumberLiteral or TokenType.BooleanLiteral or TokenType.Null: return ParseLiteralExpression();
             case TokenType.Parameter: return ParseParameterExpression();
             case TokenType.LeftParenthesis: return ParseParenthesizedExpression();
             case TokenType.Multiply: Consume(TokenType.Multiply); return new WildcardExpression();
-            case TokenType.Count or TokenType.Sum or TokenType.Avg or TokenType.Min or TokenType.Max: return ParseAggregateExpression();
-            case TokenType.Upper or TokenType.Lower or TokenType.Length or TokenType.Substring or TokenType.Trim or TokenType.Concat or TokenType.Year or TokenType.Month or TokenType.Day or TokenType.Hour or TokenType.Minute or TokenType.Second or TokenType.Now: return ParseFunctionExpression();
-            default: throw new InvalidOperationException($"Unexpected token: {_currentToken.Type}");
+            
+            // Check for aggregate functions - these should always be parsed as aggregate expressions
+            case TokenType.Count or TokenType.Sum or TokenType.Avg or TokenType.Min or TokenType.Max: 
+                return ParseAggregateExpression();
+            
+            // Check for string/date functions - these should always be parsed as function expressions
+            case TokenType.Upper or TokenType.Lower or TokenType.Length or TokenType.Substring or TokenType.Trim or TokenType.Concat or TokenType.Year or TokenType.Month or TokenType.Day or TokenType.Hour or TokenType.Minute or TokenType.Second or TokenType.Now: 
+                return ParseFunctionExpression();
         }
+
+        // Handle identifiers and keywords that can be used as identifiers
+        if (_currentToken.Type == TokenType.Identifier || IsKeywordUsableAsIdentifier(_currentToken.Type))
+        {
+            return ParseIdentifierExpression();
+        }
+
+        throw new InvalidOperationException($"Unexpected token: {_currentToken.Type} ('{_currentToken.Lexeme}') at position {_currentToken.Position}");
     }
     
     private Expression ParseIdentifierExpression()
@@ -418,7 +430,9 @@ public sealed class Parser
     
     private bool IsKeywordUsableAsIdentifier(TokenType type)
     {
-        return type is TokenType.OrderBy or TokenType.GroupBy or TokenType.Count or TokenType.Sum or TokenType.Min or TokenType.Max or TokenType.Avg or TokenType.Year or TokenType.Month or TokenType.Day or TokenType.Hour or TokenType.Minute or TokenType.Second or TokenType.Upper or TokenType.Lower or TokenType.Length;
+        // Note: Aggregate functions (Count, Sum, Avg, Min, Max) are NOT included here
+        // because they should always be parsed as aggregate expressions, not identifiers
+        return type is TokenType.OrderBy or TokenType.GroupBy or TokenType.Year or TokenType.Month or TokenType.Day or TokenType.Hour or TokenType.Minute or TokenType.Second or TokenType.Upper or TokenType.Lower or TokenType.Length;
     }
     
     private bool IsJoinToken(TokenType type)

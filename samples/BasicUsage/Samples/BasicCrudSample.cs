@@ -1,9 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NPA.Core.Core;
-using NPA.Core.Extensions;
 using NPA.Providers.PostgreSql.Extensions;
 using NPA.Samples.Core;
+using NPA.Samples.Entities;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
