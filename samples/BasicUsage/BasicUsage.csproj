@@ -25,7 +25,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
-    <ProjectReference Include="..\..\src\NPA.Generators\NPA.Generators.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Generators\NPA.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\NPA.Providers.SqlServer\NPA.Providers.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.MySql\NPA.Providers.MySql.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.PostgreSql\NPA.Providers.PostgreSql.csproj" />

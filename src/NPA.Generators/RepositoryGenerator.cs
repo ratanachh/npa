@@ -56,9 +56,9 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (!hasRepositoryAttribute)
             return null;
 
-        // Extract entity type from generic parameter or attribute
-        var entityType = ExtractEntityType(interfaceSymbol);
-        if (entityType == null)
+        // Extract entity and key types from IRepository<TEntity, TKey> inheritance
+        var (entityType, keyType) = ExtractRepositoryTypes(interfaceSymbol);
+        if (entityType == null || keyType == null)
             return null;
 
         var methods = interfaceSymbol.GetMembers()
@@ -78,21 +78,28 @@ public class RepositoryGenerator : IIncrementalGenerator
         return new RepositoryInfo
         {
             InterfaceName = interfaceSymbol.Name,
+            FullInterfaceName = interfaceSymbol.ToDisplayString(),
             Namespace = interfaceSymbol.ContainingNamespace.ToDisplayString(),
             EntityType = entityType,
+            KeyType = keyType,
             Methods = methods
         };
     }
 
-    private static string? ExtractEntityType(INamedTypeSymbol interfaceSymbol)
+    private static (string? entityType, string? keyType) ExtractRepositoryTypes(INamedTypeSymbol interfaceSymbol)
     {
-        // Try to extract from generic parameter IRepository<TEntity>
-        if (interfaceSymbol.IsGenericType && interfaceSymbol.TypeArguments.Length > 0)
+        // Look for IRepository<TEntity, TKey> in the interface hierarchy
+        foreach (var baseInterface in interfaceSymbol.AllInterfaces)
         {
-            return interfaceSymbol.TypeArguments[0].ToDisplayString();
+            if (baseInterface.Name == "IRepository" && baseInterface.TypeArguments.Length >= 2)
+            {
+                var entityType = baseInterface.TypeArguments[0].ToDisplayString();
+                var keyType = baseInterface.TypeArguments[1].ToDisplayString();
+                return (entityType, keyType);
+            }
         }
 
-        // Try to extract from attribute parameter
+        // Try to extract from attribute parameter (fallback)
         var repositoryAttr = interfaceSymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "RepositoryAttribute");
 
@@ -101,7 +108,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             var entityTypeArg = repositoryAttr.ConstructorArguments[0];
             if (entityTypeArg.Value is INamedTypeSymbol entityTypeSymbol)
             {
-                return entityTypeSymbol.ToDisplayString();
+                return (entityTypeSymbol.ToDisplayString(), "object"); // Default key type
             }
         }
 
@@ -109,10 +116,11 @@ public class RepositoryGenerator : IIncrementalGenerator
         var interfaceName = interfaceSymbol.Name;
         if (interfaceName.StartsWith("I") && interfaceName.EndsWith("Repository"))
         {
-            return interfaceName.Substring(1, interfaceName.Length - 11); // Remove I prefix and Repository suffix
+            var entityType = interfaceName.Substring(1, interfaceName.Length - 11); // Remove I prefix and Repository suffix
+            return (entityType, "object"); // Default key type
         }
 
-        return null;
+        return (null, null);
     }
 
     private static void GenerateRepository(SourceProductionContext context, RepositoryInfo info)
@@ -141,6 +149,8 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("using System.Threading.Tasks;");
         sb.AppendLine("using Dapper;");
         sb.AppendLine("using NPA.Core.Core;");
+        sb.AppendLine("using NPA.Core.Repositories;");
+        sb.AppendLine("using NPA.Core.Metadata;");
         sb.AppendLine();
 
         sb.AppendLine($"namespace {info.Namespace}");
@@ -148,25 +158,21 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"    /// <summary>");
         sb.AppendLine($"    /// Generated implementation of {info.InterfaceName}.");
         sb.AppendLine($"    /// </summary>");
-        sb.AppendLine($"    public partial class {GetImplementationName(info.InterfaceName)} : {info.InterfaceName}");
+        sb.AppendLine($"    public partial class {GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {info.FullInterfaceName}");
         sb.AppendLine("    {");
-        sb.AppendLine("        private readonly IEntityManager _entityManager;");
-        sb.AppendLine("        private readonly IDbConnection _connection;");
-        sb.AppendLine();
         sb.AppendLine($"        /// <summary>");
         sb.AppendLine($"        /// Initializes a new instance of the {GetImplementationName(info.InterfaceName)} class.");
         sb.AppendLine($"        /// </summary>");
-        sb.AppendLine("        public " + GetImplementationName(info.InterfaceName) + "(IEntityManager entityManager)");
+        sb.AppendLine("        public " + GetImplementationName(info.InterfaceName) + "(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)");
+        sb.AppendLine("            : base(connection, entityManager, metadataProvider)");
         sb.AppendLine("        {");
-        sb.AppendLine("            _entityManager = entityManager ?? throw new ArgumentNullException(nameof(entityManager));");
-        sb.AppendLine("            _connection = (IDbConnection)typeof(IEntityManager).GetProperty(\"Connection\", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(entityManager) ?? throw new InvalidOperationException(\"Cannot access connection from EntityManager\");");
         sb.AppendLine("        }");
         sb.AppendLine();
 
         // Generate method implementations
         foreach (var method in info.Methods)
         {
-            sb.AppendLine(GenerateMethodImplementation(method, info.EntityType));
+            sb.AppendLine(GenerateMethodImplementation(method, info.EntityType, info.KeyType));
             sb.AppendLine();
         }
 
@@ -185,7 +191,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         return interfaceName + "Implementation";
     }
 
-    private static string GenerateMethodImplementation(MethodInfo method, string entityType)
+    private static string GenerateMethodImplementation(MethodInfo method, string entityType, string keyType)
     {
         var sb = new StringBuilder();
 
@@ -295,8 +301,10 @@ public class RepositoryGenerator : IIncrementalGenerator
 internal class RepositoryInfo
 {
     public string InterfaceName { get; set; } = string.Empty;
+    public string FullInterfaceName { get; set; } = string.Empty;
     public string Namespace { get; set; } = string.Empty;
     public string EntityType { get; set; } = string.Empty;
+    public string KeyType { get; set; } = string.Empty;
     public List<MethodInfo> Methods { get; set; } = new();
 }
 

@@ -19,10 +19,17 @@ public class SourceGeneratorSample : ISample
         Console.WriteLine("\n--- 1. Repository Generator ---");
         Console.WriteLine("The Repository Generator creates concrete implementations of your repository interfaces.");
         Console.WriteLine("For example, if you define this interface:");
-        Console.WriteLine("\n  [Repository(typeof(User))]\n  public interface IUserRepository { ... }\n");
-        Console.WriteLine("The generator automatically writes this class for you during compilation:");
-        Console.WriteLine("  public class UserRepository : IUserRepository { ... }\n");
-        Console.WriteLine("This saves you from writing boilerplate data access code for every entity.");
+        Console.WriteLine("\n  [Repository]");
+        Console.WriteLine("  public interface IUserRepository : IRepository<User, long>");
+        Console.WriteLine("  {");
+        Console.WriteLine("      Task<User> FindByEmailAsync(string email);");
+        Console.WriteLine("  }");
+        Console.WriteLine("\nThe generator automatically writes this class for you during compilation:");
+        Console.WriteLine("  public class UserRepository : BaseRepository<User, long>, IUserRepository");
+        Console.WriteLine("  {");
+        Console.WriteLine("      public async Task<User> FindByEmailAsync(string email) { /* generated code */ }");
+        Console.WriteLine("  }");
+        Console.WriteLine("\nThis saves you from writing boilerplate data access code for every entity.");
 
         Console.WriteLine("\n--- 2. Metadata Generator ---");
         Console.WriteLine("The Metadata Generator creates a high-performance metadata provider at compile time.");
@@ -44,6 +51,6 @@ public class SourceGeneratorSample : ISample
     [Repository]
     public interface IUserRepository : IRepository<User, long>
     {
-        Task<User> FindById(long id);
+        Task<IEnumerable<User>> FindByEmailAndId(string email, long id);
     }
 }
