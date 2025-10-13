@@ -168,15 +168,19 @@ public sealed class EntityManager : IEntityManager
                 return null;
             }
 
-            // Manually map to entity to handle PostgreSQL boolean values
+            // Manually map to entity to handle PostgreSQL boolean values and case differences
             var entity = Activator.CreateInstance<T>();
             var rawDict = (IDictionary<string, object>)rawEntity;
-            
+            // Build a case-insensitive view of the row to handle PostgreSQL folding of unquoted aliases
+            var ciDict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in rawDict)
+                ciDict[kv.Key] = kv.Value;
+
             foreach (var prop in metadata.Properties.Values)
             {
                 var entityProp = typeof(T).GetProperty(prop.PropertyName);
-                // Use PropertyName as key since we now alias columns in SELECT (e.g., column_name AS PropertyName)
-                if (entityProp != null && entityProp.CanWrite && rawDict.TryGetValue(prop.PropertyName, out var rawValue))
+                // Use PropertyName as key since we alias columns as PropertyName; match case-insensitively for providers like PostgreSQL
+                if (entityProp != null && entityProp.CanWrite && ciDict.TryGetValue(prop.PropertyName, out var rawValue))
                 {
                     // Handle PostgreSQL boolean string mapping
                     if ((prop.PropertyType == typeof(bool) || prop.PropertyType == typeof(bool?)) && rawValue is string boolStr)
@@ -186,7 +190,15 @@ public sealed class EntityManager : IEntityManager
                     }
                     else
                     {
-                        entityProp.SetValue(entity, rawValue);
+                        // Convert numeric types when needed (e.g., decimal -> long)
+                        if (entityProp.PropertyType == typeof(long) && rawValue is decimal dec)
+                        {
+                            entityProp.SetValue(entity, Convert.ToInt64(dec));
+                        }
+                        else
+                        {
+                            entityProp.SetValue(entity, rawValue);
+                        }
                     }
                 }
             }
@@ -1054,18 +1066,11 @@ public sealed class EntityManager : IEntityManager
 
     private bool HasGeneratedId(EntityMetadata metadata)
     {
-        // For composite keys, check if ANY of the keys is auto-generated
+        // For composite keys, do NOT treat as having a generated ID.
+        // Even if one part is generated, we can't handle composite identity retrieval here.
+        // We always take the explicit insert path and include provided key values.
         if (metadata.HasCompositeKey)
-        {
-            foreach (var keyProperty in metadata.CompositeKeyMetadata!.KeyProperties)
-            {
-                if (keyProperty.GenerationType != null && keyProperty.GenerationType != GenerationType.None)
-                {
-                    return true; // At least one key is auto-generated
-                }
-            }
-            return false; // No keys are auto-generated
-        }
+            return false;
         
         // For single keys, check the primary key property
         var idProperty = metadata.Properties[metadata.PrimaryKeyProperty];

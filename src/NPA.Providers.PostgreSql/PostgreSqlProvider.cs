@@ -117,7 +117,7 @@ public class PostgreSqlProvider : IDatabaseProvider
 
         var tableName = ResolveTableName(metadata);
         var columns = metadata.Properties.Values
-            .Select(p => $"{ResolveColumnName(p)} AS {_dialect.EscapeIdentifier(p.PropertyName)}")
+            .Select(p => $"{ResolveColumnName(p)} AS {p.PropertyName}")
             .ToList();
 
         var columnList = string.Join(", ", columns);
@@ -136,7 +136,7 @@ public class PostgreSqlProvider : IDatabaseProvider
             ?? throw new InvalidOperationException($"No primary key found for entity {metadata.EntityType.Name}");
 
         var columns = metadata.Properties.Values
-            .Select(p => $"{ResolveColumnName(p)} AS {_dialect.EscapeIdentifier(p.PropertyName)}")
+            .Select(p => $"{ResolveColumnName(p)} AS {p.PropertyName}")
             .ToList();
 
         var columnList = string.Join(", ", columns);

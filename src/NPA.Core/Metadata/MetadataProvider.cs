@@ -127,7 +127,7 @@ public sealed class MetadataProvider : IMetadataProvider
             }
             else
             {
-                // Default to Identity for primary keys
+                // Default to None for primary keys when no [GeneratedValue] is specified
                 metadata.GenerationType = GenerationType.None;
             }
         }
