@@ -449,11 +449,25 @@ public class SqlGenerator : ISqlGenerator
         
         return literal.Value switch
         {
-            string str => $"'{str.Replace("'", "''")}'",
+            string str => $"'{EscapeSqlString(str)}'",
             DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
             bool b => b ? "1" : "0",
             _ => literal.Value.ToString() ?? "NULL"
         };
+    }
+
+    private static string EscapeSqlString(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        // Comprehensive SQL injection prevention
+        return input.Replace("'", "''")           // Escape single quotes
+                   .Replace("\\", "\\\\")         // Escape backslashes
+                   .Replace("\0", "\\0")          // Escape null characters
+                   .Replace("\n", "\\n")          // Escape newlines
+                   .Replace("\r", "\\r")          // Escape carriage returns
+                   .Replace("\x1a", "\\Z");       // Escape Ctrl+Z
     }
 
     private string GenerateParameterExpression(ParameterExpression param)

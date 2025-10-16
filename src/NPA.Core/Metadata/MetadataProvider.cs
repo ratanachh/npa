@@ -47,17 +47,58 @@ public sealed class MetadataProvider : IMetadataProvider
             return GetEntityMetadata(cachedType);
         }
 
-        // Scan assemblies to find the type
-        var entityType = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(a => a.GetTypes())
-            .FirstOrDefault(t => t.Name == entityName && IsEntity(t));
+        // Scan assemblies to find the type (with performance optimization)
+        var entityType = FindEntityTypeByName(entityName);
 
         if (entityType == null)
         {
             throw new ArgumentException($"No entity with the name '{entityName}' could be found in the current AppDomain.", nameof(entityName));
         }
 
+        // Cache the type for future lookups
+        _nameToTypeCache[entityName] = entityType;
         return GetEntityMetadata(entityType);
+    }
+
+    private static Type? FindEntityTypeByName(string entityName)
+    {
+        // Cache assembly types to avoid repeated scanning
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+        
+        foreach (var assembly in assemblies)
+        {
+            try
+            {
+                var types = assembly.GetTypes();
+                foreach (var type in types)
+                {
+                    if (type.Name == entityName && IsEntityStatic(type))
+                    {
+                        return type;
+                    }
+                }
+            }
+            catch (ReflectionTypeLoadException)
+            {
+                // Skip assemblies that can't be fully loaded
+                continue;
+            }
+            catch (Exception)
+            {
+                // Skip assemblies that cause other reflection errors
+                continue;
+            }
+        }
+        
+        return null;
+    }
+
+    private static bool IsEntityStatic(Type type)
+    {
+        if (type == null)
+            return false;
+
+        return type.GetCustomAttribute<EntityAttribute>() != null;
     }
 
     /// <inheritdoc />
