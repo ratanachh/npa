@@ -197,9 +197,9 @@ public class QueryParser : IQueryParser
             
             case SelectQuery select:
                 if (select.WhereClause != null)
-                    ExtractParametersRecursive(select.WhereClause, parameters);
+                    ExtractParametersRecursive(select.WhereClause.Condition, parameters);
                 if (select.HavingClause != null)
-                    ExtractParametersRecursive(select.HavingClause, parameters);
+                    ExtractParametersRecursive(select.HavingClause.Condition, parameters);
                 if (select.SelectClause != null)
                 {
                     foreach (var item in select.SelectClause.Items)
@@ -214,22 +214,14 @@ public class QueryParser : IQueryParser
             
             case UpdateQuery update:
                 if (update.WhereClause != null)
-                    ExtractParametersRecursive(update.WhereClause, parameters);
+                    ExtractParametersRecursive(update.WhereClause.Condition, parameters);
                 foreach (var assignment in update.Assignments)
                     ExtractParametersRecursive(assignment.Value, parameters);
                 break;
             
             case DeleteQuery delete:
                 if (delete.WhereClause != null)
-                    ExtractParametersRecursive(delete.WhereClause, parameters);
-                break;
-            
-            case WhereClause where:
-                ExtractParametersRecursive(where.Condition, parameters);
-                break;
-            
-            case HavingClause having:
-                ExtractParametersRecursive(having.Condition, parameters);
+                    ExtractParametersRecursive(delete.WhereClause.Condition, parameters);
                 break;
         }
     }

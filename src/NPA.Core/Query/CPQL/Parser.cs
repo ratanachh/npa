@@ -69,8 +69,7 @@ public sealed class Parser
         var assignments = new List<SetAssignment>();
         do
         {
-            // Parse the property expression (left side of =), not the full expression
-            var expr = ParseRelationalExpression();
+            var expr = ParseIdentifierExpression();
             var propExpr = expr as PropertyExpression ?? throw new InvalidOperationException($"Expected property in SET clause, but got {expr.GetType().Name}.");
             Consume(TokenType.Equal);
             var value = ParseExpression();
@@ -201,6 +200,20 @@ public sealed class Parser
             var direction = OrderDirection.Ascending;
             if (_currentToken.Type == TokenType.Asc) { Consume(TokenType.Asc); direction = OrderDirection.Ascending; }
             else if (_currentToken.Type == TokenType.Desc) { Consume(TokenType.Desc); direction = OrderDirection.Descending; }
+            else if (_currentToken.Type == TokenType.Identifier)
+            {
+                var lexeme = _currentToken.Lexeme.ToUpperInvariant();
+                if (lexeme == "DESC")
+                {
+                    ConsumeIdentifier();
+                    direction = OrderDirection.Descending;
+                }
+                else if (lexeme == "ASC")
+                {
+                    ConsumeIdentifier();
+                    direction = OrderDirection.Ascending;
+                }
+            }
             clause.Items.Add(new OrderByItem { Expression = expression, Direction = direction });
             if (_currentToken.Type != TokenType.Comma) break;
             Consume(TokenType.Comma);
@@ -400,6 +413,17 @@ public sealed class Parser
     private Expression ParseFunctionCall(string functionName)
     {
         Consume(TokenType.LeftParenthesis);
+
+        var upperFunctionName = functionName.ToUpperInvariant();
+        if (upperFunctionName is "COUNT" or "SUM" or "AVG" or "MIN" or "MAX")
+        {
+            var isDistinct = false;
+            if (_currentToken.Type == TokenType.Distinct) { isDistinct = true; Consume(TokenType.Distinct); }
+            var argument = ParseExpression();
+            Consume(TokenType.RightParenthesis);
+            return new AggregateExpression { FunctionName = upperFunctionName, Argument = argument, IsDistinct = isDistinct };
+        }
+
         var arguments = new List<Expression>();
         if (_currentToken.Type != TokenType.RightParenthesis)
         {
