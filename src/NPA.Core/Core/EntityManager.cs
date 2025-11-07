@@ -801,4 +801,136 @@ public sealed class EntityManager : IEntityManager
 
     /// <inheritdoc />
     public bool HasActiveTransaction => _currentTransaction?.IsActive == true;
+
+    /// <inheritdoc />
+    public async Task<int> BulkInsertAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default) where T : class
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+        
+        if (entities == null) throw new ArgumentNullException(nameof(entities));
+        
+        var entityList = entities.ToList();
+        if (entityList.Count == 0) return 0;
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+
+        _logger?.LogInformation("Bulk inserting {Count} {EntityType} entities", entityList.Count, typeof(T).Name);
+
+        var affectedRows = await _databaseProvider.BulkInsertAsync(_connection, entityList, metadata, cancellationToken);
+
+        _logger?.LogInformation("Bulk insert completed. {AffectedRows} rows affected", affectedRows);
+
+        return affectedRows;
+    }
+
+    /// <inheritdoc />
+    public int BulkInsert<T>(IEnumerable<T> entities) where T : class
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+        
+        if (entities == null) throw new ArgumentNullException(nameof(entities));
+        
+        var entityList = entities.ToList();
+        if (entityList.Count == 0) return 0;
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+
+        _logger?.LogInformation("Bulk inserting {Count} {EntityType} entities", entityList.Count, typeof(T).Name);
+
+        var affectedRows = _databaseProvider.BulkInsert(_connection, entityList, metadata);
+
+        _logger?.LogInformation("Bulk insert completed. {AffectedRows} rows affected", affectedRows);
+
+        return affectedRows;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> BulkUpdateAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default) where T : class
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+        
+        if (entities == null) throw new ArgumentNullException(nameof(entities));
+        
+        var entityList = entities.ToList();
+        if (entityList.Count == 0) return 0;
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+
+        _logger?.LogInformation("Bulk updating {Count} {EntityType} entities", entityList.Count, typeof(T).Name);
+
+        var affectedRows = await _databaseProvider.BulkUpdateAsync(_connection, entityList, metadata, cancellationToken);
+
+        _logger?.LogInformation("Bulk update completed. {AffectedRows} rows affected", affectedRows);
+
+        return affectedRows;
+    }
+
+    /// <inheritdoc />
+    public int BulkUpdate<T>(IEnumerable<T> entities) where T : class
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+        
+        if (entities == null) throw new ArgumentNullException(nameof(entities));
+        
+        var entityList = entities.ToList();
+        if (entityList.Count == 0) return 0;
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+
+        _logger?.LogInformation("Bulk updating {Count} {EntityType} entities", entityList.Count, typeof(T).Name);
+
+        var affectedRows = _databaseProvider.BulkUpdate(_connection, entityList, metadata);
+
+        _logger?.LogInformation("Bulk update completed. {AffectedRows} rows affected", affectedRows);
+
+        return affectedRows;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> BulkDeleteAsync<T>(IEnumerable<object> ids, CancellationToken cancellationToken = default) where T : class
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+        
+        if (ids == null) throw new ArgumentNullException(nameof(ids));
+        
+        var idList = ids.ToList();
+        if (idList.Count == 0) return 0;
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+
+        _logger?.LogInformation("Bulk deleting {Count} {EntityType} entities", idList.Count, typeof(T).Name);
+
+        var affectedRows = await _databaseProvider.BulkDeleteAsync(_connection, idList, metadata, cancellationToken);
+
+        _logger?.LogInformation("Bulk delete completed. {AffectedRows} rows affected", affectedRows);
+
+        return affectedRows;
+    }
+
+    /// <inheritdoc />
+    public int BulkDelete<T>(IEnumerable<object> ids) where T : class
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+        
+        if (ids == null) throw new ArgumentNullException(nameof(ids));
+        
+        var idList = ids.ToList();
+        if (idList.Count == 0) return 0;
+
+        var metadata = _metadataProvider.GetEntityMetadata<T>();
+
+        _logger?.LogInformation("Bulk deleting {Count} {EntityType} entities", idList.Count, typeof(T).Name);
+
+        var affectedRows = _databaseProvider.BulkDelete(_connection, idList, metadata);
+
+        _logger?.LogInformation("Bulk delete completed. {AffectedRows} rows affected", affectedRows);
+
+        return affectedRows;
+    }
 }

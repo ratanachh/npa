@@ -548,6 +548,12 @@ public class CascadeOperationsTests
         public Task<ITransaction> BeginTransactionAsync(System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted) => Task.FromResult<ITransaction>(null!);
         public ITransaction BeginTransaction(System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted) => null!;
         public ITransaction? GetCurrentTransaction() => null;
+        public Task<int> BulkInsertAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default) where T : class => Task.FromResult(0);
+        public int BulkInsert<T>(IEnumerable<T> entities) where T : class => 0;
+        public Task<int> BulkUpdateAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default) where T : class => Task.FromResult(0);
+        public int BulkUpdate<T>(IEnumerable<T> entities) where T : class => 0;
+        public Task<int> BulkDeleteAsync<T>(IEnumerable<object> ids, CancellationToken cancellationToken = default) where T : class => Task.FromResult(0);
+        public int BulkDelete<T>(IEnumerable<object> ids) where T : class => 0;
         public void Dispose() { }
     }
 

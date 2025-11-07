@@ -218,4 +218,73 @@ public interface IEntityManager : IDisposable
     /// <c>true</c> if there is an active transaction; otherwise, <c>false</c>.
     /// </value>
     bool HasActiveTransaction { get; }
+
+    /// <summary>
+    /// Performs bulk insert operation for the specified entities asynchronously.
+    /// This is significantly faster than calling PersistAsync multiple times.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="entities">The entities to insert.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation. The task result contains the number of affected rows.</returns>
+    /// <remarks>
+    /// Uses provider-specific bulk insert implementations (e.g., PostgreSQL COPY, SQL Server BulkCopy)
+    /// for optimal performance. Entities are inserted in batches based on provider capabilities.
+    /// </remarks>
+    Task<int> BulkInsertAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Performs bulk insert operation for the specified entities synchronously.
+    /// This is significantly faster than calling Persist multiple times.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="entities">The entities to insert.</param>
+    /// <returns>The number of affected rows.</returns>
+    int BulkInsert<T>(IEnumerable<T> entities) where T : class;
+
+    /// <summary>
+    /// Performs bulk update operation for the specified entities asynchronously.
+    /// This is significantly faster than calling MergeAsync multiple times.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="entities">The entities to update.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation. The task result contains the number of affected rows.</returns>
+    /// <remarks>
+    /// Uses provider-specific bulk update implementations for optimal performance.
+    /// All entities must have their primary key values set.
+    /// </remarks>
+    Task<int> BulkUpdateAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Performs bulk update operation for the specified entities synchronously.
+    /// This is significantly faster than calling Merge multiple times.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="entities">The entities to update.</param>
+    /// <returns>The number of affected rows.</returns>
+    int BulkUpdate<T>(IEnumerable<T> entities) where T : class;
+
+    /// <summary>
+    /// Performs bulk delete operation for the specified entity IDs asynchronously.
+    /// This is significantly faster than calling RemoveAsync multiple times.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="ids">The entity IDs to delete.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation. The task result contains the number of affected rows.</returns>
+    /// <remarks>
+    /// Uses provider-specific bulk delete implementations for optimal performance.
+    /// Entities are deleted in batches based on provider capabilities.
+    /// </remarks>
+    Task<int> BulkDeleteAsync<T>(IEnumerable<object> ids, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Performs bulk delete operation for the specified entity IDs synchronously.
+    /// This is significantly faster than calling Remove multiple times.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="ids">The entity IDs to delete.</param>
+    /// <returns>The number of affected rows.</returns>
+    int BulkDelete<T>(IEnumerable<object> ids) where T : class;
 }
