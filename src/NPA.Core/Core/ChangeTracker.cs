@@ -10,6 +10,7 @@ public sealed class ChangeTracker : IChangeTracker
 {
     private readonly Dictionary<object, EntityState> _trackedEntities = new();
     private readonly Dictionary<object, object> _originalValues = new();
+    private readonly Queue<QueuedOperation> _operationQueue = new();
 
     /// <inheritdoc />
     public void Track<T>(T entity, EntityState state) where T : class
@@ -103,6 +104,7 @@ public sealed class ChangeTracker : IChangeTracker
     {
         _trackedEntities.Clear();
         _originalValues.Clear();
+        _operationQueue.Clear();
     }
 
     /// <inheritdoc />
@@ -295,5 +297,57 @@ public sealed class ChangeTracker : IChangeTracker
                 property.SetValue(target, value);
             }
         }
+    }
+
+    /// <inheritdoc />
+    public void QueueOperation(object entity, EntityState state, Func<string> sqlGenerator, object parameters)
+    {
+        if (entity == null)
+            throw new ArgumentNullException(nameof(entity));
+        if (sqlGenerator == null)
+            throw new ArgumentNullException(nameof(sqlGenerator));
+        if (parameters == null)
+            throw new ArgumentNullException(nameof(parameters));
+
+        var priority = GetOperationPriority(state);
+
+        _operationQueue.Enqueue(new QueuedOperation
+        {
+            Entity = entity,
+            State = state,
+            SqlGenerator = sqlGenerator,
+            Parameters = parameters,
+            Priority = priority
+        });
+    }
+
+    /// <inheritdoc />
+    public IEnumerable<QueuedOperation> GetQueuedOperations()
+    {
+        // Return operations ordered by priority (INSERT → UPDATE → DELETE)
+        return _operationQueue.OrderBy(op => op.Priority);
+    }
+
+    /// <inheritdoc />
+    public void ClearQueue()
+    {
+        _operationQueue.Clear();
+    }
+
+    /// <inheritdoc />
+    public int GetQueuedOperationCount()
+    {
+        return _operationQueue.Count;
+    }
+
+    private static int GetOperationPriority(EntityState state)
+    {
+        return state switch
+        {
+            EntityState.Added => 1,      // INSERT first
+            EntityState.Modified => 2,   // UPDATE second
+            EntityState.Deleted => 3,    // DELETE last
+            _ => 0
+        };
     }
 }

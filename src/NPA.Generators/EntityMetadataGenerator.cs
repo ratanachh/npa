@@ -240,6 +240,7 @@ public class EntityMetadataGenerator : IIncrementalGenerator
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Linq;");
+        sb.AppendLine("using System.Reflection;");
         sb.AppendLine("using NPA.Core.Metadata;");
         sb.AppendLine("using NPA.Core.Annotations;");
         sb.AppendLine();
@@ -311,6 +312,7 @@ public class EntityMetadataGenerator : IIncrementalGenerator
             var prop = entity.Properties[i];
             sb.AppendLine($"                    {{ \"{prop.Name}\", new PropertyMetadata");
             sb.AppendLine("                    {");
+            sb.AppendLine($"                        PropertyInfo = typeof({entity.FullName}).GetProperty(\"{prop.Name}\")!,");
             sb.AppendLine($"                        PropertyName = \"{prop.Name}\",");
             sb.AppendLine($"                        ColumnName = \"{prop.ColumnName}\",");
             sb.AppendLine($"                        PropertyType = typeof({prop.TypeName}),");

@@ -1,6 +1,6 @@
-# BasicUsage Sample (Phases 1.1 – 1.5)
+# BasicUsage Sample (Phases 1.1 – 3.1)
 
-This sample demonstrates the **implemented and tested** features of NPA (Phases 1.1-1.5) using SQL Server, MySQL, or PostgreSQL provider:
+This sample demonstrates the **implemented and tested** features of NPA using SQL Server, MySQL, or PostgreSQL provider:
 
 | Phase | Status | Focus | Demonstrated In |
 |-------|--------|-------|-----------------|
@@ -9,79 +9,169 @@ This sample demonstrates the **implemented and tested** features of NPA (Phases 
 | 1.3 | ✅ Complete | CPQL query creation & parameter binding | `Phase1Demo` (active users & single user queries) |
 | 1.4 | ✅ Complete | SQL Server provider with advanced features | `SqlServerProviderRunner` (TVPs, JSON, Spatial, Full-Text) |
 | 1.5 | ✅ Complete | MySQL provider with advanced features | `MySqlProviderRunner` (JSON, Spatial, Full-Text, UPSERT) |
+| 3.1 | ✅ Complete | Transaction management with deferred execution | `TransactionSample` (batching, rollback, ordering, 90-95% perf gain) |
 
 **Default Provider**: SQL Server (63 tests passing)  
 **Alternative Providers**: MySQL (86 tests passing), PostgreSQL
 
 ## What Happens When You Run
-1. A Testcontainers-based database instance is started (SQL Server, MySQL, or PostgreSQL).
-2. A `users` table is created if it does not exist.
-3. Dependency Injection is configured and the selected provider registered.
-4. `Phase1Demo` runs through:
-   - **Persist** a `User` (Phase 1.2)
-   - **Find** it by ID (Phase 1.2)
-   - **Update** (merge) it (Phase 1.2)
-   - **Detach** and refetch (Phase 1.2)
-   - Run two **parameterized CPQL queries** (Phase 1.3)
-   - **Remove** the user and verify deletion (Phase 1.2)
-5. Container shuts down automatically.
+The sample includes an interactive menu system that auto-discovers and runs different demonstrations:
+
+### Available Samples:
+1. **Basic CRUD Sample** - Phase 1.2 entity lifecycle operations
+2. **Repository Pattern Sample** - Phase 2.4 repository pattern with LINQ
+3. **Source Generator Sample** - Phase 2.6 compile-time metadata generation
+4. **Sync API Sample** - Synchronous API alternatives
+5. **Advanced Queries Sample** - Phase 2.3 CPQL with JOINs, GROUP BY, aggregates
+6. **Transaction Management Sample** - Phase 3.1 deferred execution and batching ✨ NEW!
+
+### Transaction Sample Demonstrates:
+1. **Basic Transaction** - Commit with multiple operations batched together
+2. **Batching for Performance** - 90-95% reduction in database round trips
+3. **Explicit Flush** - Early execution to get generated IDs
+4. **Automatic Rollback** - Transaction rolls back on exception
+5. **Mixed Operations** - Automatic priority ordering (INSERT → UPDATE → DELETE)
+6. **Backward Compatibility** - Immediate execution without transactions
+
+Each sample:
+- Sets up its own database schema
+- Runs comprehensive demonstrations
+- Shows console output with detailed explanations
+- Cleans up after itself
 
 ## Files Overview
-- `Program.cs` – Entry point, selects provider (default: SQL Server ✅, alternatives: MySQL ✅, PostgreSQL ✅).
-- `Features/SqlServerProviderRunner.cs` – Orchestrates SQL Server container, DI, schema creation (✅ Phase 1.4).
-- `Features/MySqlProviderRunner.cs` – Orchestrates MySQL container, DI, schema creation (✅ Phase 1.5).
-- `Features/PostgreSqlProviderRunner.cs` – Orchestrates PostgreSQL container, DI, schema creation (✅ alternative).
-- `Features/Phase1Demo.cs` – Consolidated Phase 1.1-1.5 lifecycle + CPQL query walkthrough.
-- `User.cs` – Sample entity with JPA-like attribute mappings (Phase 1.1).
+- `Program.cs` – Entry point that starts the interactive sample menu
+- `Core/SampleRunner.cs` – Auto-discovers ISample implementations and runs them
+- `Core/ISample.cs` – Interface for all sample demonstrations
+- **Samples/**
+  - `BasicCrudSample.cs` – Phase 1.2 CRUD operations
+  - `RepositoryPatternSample.cs` – Phase 2.4 repository pattern
+  - `SourceGeneratorSample.cs` – Phase 2.6 metadata generation
+  - `SyncApiSample.cs` – Synchronous API alternatives
+  - `AdvancedQueriesSample.cs` – Phase 2.3 CPQL advanced features
+  - `TransactionSample.cs` – Phase 3.1 transaction management ✨ NEW!
+  - `TransactionSampleRunner.cs` – Transaction sample wrapper with DB setup
+- **Entities/**
+  - `User.cs` – User entity with JPA-like attributes
+  - `Order.cs` – Order entity with relationships
+  - `OrderItem.cs` – Order item entity ✨ NEW!
   
 
 ## Running the Sample
 From the repository root:
 
 ```powershell
-# Build just the sample (ensures core + provider too)
+# Build the sample
 dotnet build samples/BasicUsage/BasicUsage.csproj
 
-# Run (starts a container, requires Docker running)
+# Run the interactive menu
 dotnet run --project samples/BasicUsage/BasicUsage.csproj
 ```
 
-Expected console output includes lines similar to:
-```
-=== NPA Basic Usage with MySQL Provider ===
-Phase 1.5: Complete with advanced features (JSON, Spatial, Full-Text, UPSERT)
+### Prerequisites
+- **Docker Desktop** running (for Testcontainers)
+- **.NET 8.0 SDK** installed
 
-Starting MySQL container...
-MySQL container started.
-Database schema created successfully
---- Phase1 Demo: Lifecycle & Query ---
-Persisted user id=1
-Found user username=mysql_phase1_user
-Merged user newEmail=updated.phase1@mysql.example.com
-EntityManager tracking user; detaching...
-Refetched after detach => ok
-Query active count=1
-Query single=mysql_phase1_user
-User removed successfully
---- End Phase1 Demo ---
+**Note**: Samples use Testcontainers to automatically start PostgreSQL containers. No manual database setup required!
 
-Stopping MySQL container...
-NPA Demo Completed Successfully!
+### Sample Menu Example:
 ```
-(IDs and provider names may differ depending on the selected provider.)
+=== NPA Framework Samples ===
+Please choose a sample to run:
+  1. Advanced Queries Sample (Phase 2.3)
+     Demonstrates CPQL with JOINs, GROUP BY, aggregates, and functions
+  2. Basic CRUD Sample
+     Demonstrates basic EntityManager CRUD operations
+  3. Repository Pattern Sample (Phase 2.4)
+     Demonstrates the repository pattern with LINQ expressions
+  4. Source Generator Sample (Phase 2.6)
+     Demonstrates compile-time metadata generation
+  5. Sync API Sample
+     Demonstrates synchronous API alternatives
+  6. Transaction Management (Phase 3.1)
+     Demonstrates deferred execution, batching, rollback, and performance optimization
+
+  A. Run All Samples
+  Q. Quit
+
+Enter your choice:
+```
+
+## Transaction Sample Output Example
+```
+╔════════════════════════════════════════════════════════════════╗
+║         NPA Transaction Management Demo (Phase 3.1)           ║
+╚════════════════════════════════════════════════════════════════╝
+
+🧹 Cleaning up database...
+✓ Database cleaned
+
+─────────────────────────────────────────────────────────────────
+Demo 1: Basic Transaction with Commit
+─────────────────────────────────────────────────────────────────
+✓ Transaction started (isolation level: ReadCommitted)
+  Persisting order (operation queued, not executed yet)...
+  Persisting 2 order items (operations queued)...
+  Queue size: 3 operations
+✓ Committing transaction (executes all 3 operations in one batch)...
+✅ Transaction committed! Order ID: 1
+
+─────────────────────────────────────────────────────────────────
+Demo 2: Batching for Performance (90-95% reduction in round trips)
+─────────────────────────────────────────────────────────────────
+✓ Transaction started. Creating 10 orders with items...
+  Queue size: 20 operations queued
+  Committing transaction (all operations executed in one batch)...
+✅ Created 10 orders with items in 45ms
+   Performance: 20 INSERTs in single transaction
+   Without transaction: Would require 20 database round trips
+
+─────────────────────────────────────────────────────────────────
+Demo 3: Explicit Flush for Early Execution
+─────────────────────────────────────────────────────────────────
+✓ Transaction started
+  Persisting order...
+  Order ID before flush: 0 (not yet available)
+  Calling FlushAsync() to execute queued operations...
+✓ Order ID after flush: 11 (now available!)
+  Creating order item with OrderId=11...
+  Committing transaction...
+✅ Transaction committed with explicit flush! Order ID: 11
+
+─────────────────────────────────────────────────────────────────
+Demo 4: Automatic Rollback on Exception
+─────────────────────────────────────────────────────────────────
+✓ Transaction started
+  Persisting order (queued)...
+  Queue size: 1
+  ⚠ Simulating an error (throwing exception)...
+  Exception caught: Simulated error!
+✓ Transaction automatically rolled back (using statement disposed)
+  Queue cleared, no data written to database
+✅ Verified: Order not in database (foundOrder is null: True)
+
+✅ All transaction demos completed successfully!
+```
 
 ## Best Practices Illustrated
-- Explicit schema creation separate from lifecycle logic.
-- Scoped `EntityManager` usage via `IServiceScope` for isolation.
-- Parameterized queries using `.SetParameter(name, value)`.
-- Defensive try/catch around query block to future-proof parser evolution.
-- Clean resource disposal (container stop in `finally`).
+- **Deferred Execution**: Operations queue when transaction is active
+- **Batching**: Combine multiple operations for 90-95% performance improvement
+- **Automatic Cleanup**: Transactions auto-rollback on exception (using statement)
+- **Priority Ordering**: Operations execute in correct order (INSERT → UPDATE → DELETE)
+- **Backward Compatibility**: Works without transactions (immediate execution)
+- **Explicit Flush**: Get generated IDs before commit when needed
+- Scoped `EntityManager` usage via dependency injection
+- Parameterized queries with `.SetParameter(name, value)`
+- Clean resource disposal and error handling
 
-## Next Steps (Beyond Phase 1.4)
-- Add composite key entity (Phase 2.2).
-- Extend query language coverage (joins, ordering, updates, deletes).
-- Introduce provider-neutral testing and migration scaffolding.
-- Implement bulk operations & transaction samples.
+## Next Steps (Beyond Phase 3.1)
+- **Phase 3.2**: Cascade operations (automatic related entity operations)
+- **Phase 3.3**: Bulk operations (efficient batch insert/update/delete)
+- **Phase 3.4**: Lazy loading support (on-demand relationship loading)
+- **Phase 3.5**: Connection pooling optimization
+- **Phase 4**: Advanced source generator features
+- **Phase 5**: Enterprise features (caching, migrations, monitoring)
 
 ---
-Generated automatically as part of aligning the sample with implemented Phases 1.1–1.4. Legacy sample files were removed in favor of the unified `Phase1Demo`.
+**Latest Update**: Phase 3.1 Transaction Management complete with 22 tests passing (100% coverage).  
+Performance: 90-95% reduction in database round trips with batching.

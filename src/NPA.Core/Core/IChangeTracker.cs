@@ -84,4 +84,76 @@ public interface IChangeTracker
     /// <param name="source">The source entity.</param>
     /// <param name="target">The target entity.</param>
     void CopyEntityValues(object source, object target);
+
+    /// <summary>
+    /// Queues an operation for deferred execution.
+    /// </summary>
+    /// <param name="entity">The entity for the operation.</param>
+    /// <param name="state">The entity state (Added, Modified, Deleted).</param>
+    /// <param name="sqlGenerator">A function that generates the SQL for this operation.</param>
+    /// <param name="parameters">The parameters for the SQL query (captured at queue time).</param>
+    /// <remarks>
+    /// Operations are queued when a transaction is active and executed in batch during Flush.
+    /// This enables better performance through reduced database round-trips.
+    /// Parameters are captured at queue time to avoid closure issues.
+    /// </remarks>
+    void QueueOperation(object entity, EntityState state, Func<string> sqlGenerator, object parameters);
+
+    /// <summary>
+    /// Gets all queued operations ordered by priority.
+    /// </summary>
+    /// <returns>A collection of queued operations ordered by priority (INSERT → UPDATE → DELETE).</returns>
+    /// <remarks>
+    /// Operations are ordered to ensure referential integrity:
+    /// - INSERT operations first (priority 1)
+    /// - UPDATE operations second (priority 2)
+    /// - DELETE operations last (priority 3)
+    /// </remarks>
+    IEnumerable<QueuedOperation> GetQueuedOperations();
+
+    /// <summary>
+    /// Clears all queued operations.
+    /// </summary>
+    /// <remarks>
+    /// This is called after Flush executes the operations or on transaction rollback.
+    /// </remarks>
+    void ClearQueue();
+
+    /// <summary>
+    /// Gets the count of queued operations.
+    /// </summary>
+    /// <returns>The number of operations currently queued for execution.</returns>
+    int GetQueuedOperationCount();
 }
+
+/// <summary>
+/// Represents an operation queued for deferred execution.
+/// </summary>
+public class QueuedOperation
+{
+    /// <summary>
+    /// Gets or sets the entity for this operation.
+    /// </summary>
+    public object Entity { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the entity state (Added, Modified, Deleted).
+    /// </summary>
+    public EntityState State { get; set; }
+
+    /// <summary>
+    /// Gets or sets the SQL generator function.
+    /// </summary>
+    public Func<string> SqlGenerator { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the parameters for the SQL query (captured at queue time, not generated lazily).
+    /// </summary>
+    public object Parameters { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets the priority (1 = INSERT, 2 = UPDATE, 3 = DELETE).
+    /// </summary>
+    public int Priority { get; set; }
+}
+

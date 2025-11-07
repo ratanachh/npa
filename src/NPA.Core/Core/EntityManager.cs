@@ -19,7 +19,9 @@ public sealed class EntityManager : IEntityManager
     private readonly IMetadataProvider _metadataProvider;
     private readonly IDatabaseProvider _databaseProvider;
     private readonly IChangeTracker _changeTracker;
+    private readonly ICascadeService _cascadeService;
     private readonly ILogger<EntityManager>? _logger;
+    private ITransaction? _currentTransaction;
     private bool _disposed;
 
     /// <inheritdoc />
@@ -29,6 +31,7 @@ public sealed class EntityManager : IEntityManager
         _metadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
         _databaseProvider = databaseProvider ?? throw new ArgumentNullException(nameof(databaseProvider));
         _changeTracker = new ChangeTracker();
+        _cascadeService = new CascadeService();
         _logger = logger;
     }
 
@@ -54,9 +57,28 @@ public sealed class EntityManager : IEntityManager
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
         
+        // Process cascade persist operations BEFORE persisting the entity
+        var visited = new HashSet<object>();
+        await _cascadeService.CascadePersistAsync(entity, metadata, this, visited);
+        
         if (IsTransient(entity, metadata))
         {
-            await InsertEntityAsync(entity, metadata);
+            if (HasActiveTransaction)
+            {
+                // Queue for deferred execution - capture parameters now
+                var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: HasGeneratedId(metadata));
+                _changeTracker.QueueOperation(
+                    entity,
+                    EntityState.Added,
+                    () => _databaseProvider.GenerateInsertSql(metadata),
+                    parameters
+                );
+                _changeTracker.Track(entity, EntityState.Added);
+            }
+            else
+            {
+                await InsertEntityAsync(entity, metadata);
+            }
         }
         else
         {
@@ -67,7 +89,21 @@ public sealed class EntityManager : IEntityManager
             }
             else
             {
-                await InsertEntityAsync(entity, metadata);
+                if (HasActiveTransaction)
+                {
+                    var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: HasGeneratedId(metadata));
+                    _changeTracker.QueueOperation(
+                        entity,
+                        EntityState.Added,
+                        () => _databaseProvider.GenerateInsertSql(metadata),
+                        parameters
+                    );
+                    _changeTracker.Track(entity, EntityState.Added);
+                }
+                else
+                {
+                    await InsertEntityAsync(entity, metadata);
+                }
             }
         }
     }
@@ -131,20 +167,41 @@ public sealed class EntityManager : IEntityManager
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = _databaseProvider.GenerateUpdateSql(metadata);
-        var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false);
 
-        using var transaction = _connection.BeginTransaction();
-        try
+        // Process cascade merge operations BEFORE merging the entity
+        var visited = new HashSet<object>();
+        await _cascadeService.CascadeMergeAsync(entity, metadata, this, visited);
+
+        if (HasActiveTransaction)
         {
-            await _connection.ExecuteAsync(sql, parameters, transaction);
-            transaction.Commit();
+            // Queue for deferred execution - capture parameters now
+            var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false);
+            _changeTracker.QueueOperation(
+                entity,
+                EntityState.Modified,
+                () => _databaseProvider.GenerateUpdateSql(metadata),
+                parameters
+            );
             _changeTracker.SetState(entity, EntityState.Modified);
         }
-        catch
+        else
         {
-            transaction.Rollback();
-            throw;
+            // Immediate execution with internal transaction
+            var sql = _databaseProvider.GenerateUpdateSql(metadata);
+            var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false);
+
+            using var transaction = _connection.BeginTransaction();
+            try
+            {
+                await _connection.ExecuteAsync(sql, parameters, transaction);
+                transaction.Commit();
+                _changeTracker.SetState(entity, EntityState.Modified);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
     }
 
@@ -156,10 +213,31 @@ public sealed class EntityManager : IEntityManager
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = _databaseProvider.GenerateDeleteSql(metadata);
-        var parameters = ExtractIdParameters(entity, metadata);
-        await _connection.ExecuteAsync(sql, parameters);
-        _changeTracker.SetState(entity, EntityState.Deleted);
+
+        // Process cascade remove operations BEFORE removing the entity (depth-first)
+        var visited = new HashSet<object>();
+        await _cascadeService.CascadeRemoveAsync(entity, metadata, this, visited);
+
+        if (HasActiveTransaction)
+        {
+            // Queue for deferred execution - capture parameters now
+            var parameters = ExtractIdParameters(entity, metadata);
+            _changeTracker.QueueOperation(
+                entity,
+                EntityState.Deleted,
+                () => _databaseProvider.GenerateDeleteSql(metadata),
+                parameters
+            );
+            _changeTracker.SetState(entity, EntityState.Deleted);
+        }
+        else
+        {
+            // Immediate execution
+            var sql = _databaseProvider.GenerateDeleteSql(metadata);
+            var parameters = ExtractIdParameters(entity, metadata);
+            await _connection.ExecuteAsync(sql, parameters);
+            _changeTracker.SetState(entity, EntityState.Deleted);
+        }
     }
 
     /// <inheritdoc />
@@ -192,6 +270,45 @@ public sealed class EntityManager : IEntityManager
     {
         ThrowIfDisposed();
         EnsureConnectionOpen();
+
+        // Execute queued operations if in a transaction
+        if (HasActiveTransaction && _changeTracker.GetQueuedOperationCount() > 0)
+        {
+            var operations = _changeTracker.GetQueuedOperations();
+            var transaction = _currentTransaction!.DbTransaction;
+
+            foreach (var operation in operations)
+            {
+                var sql = operation.SqlGenerator();
+                var parameters = operation.Parameters;
+
+                if (operation.State == EntityState.Added && HasGeneratedIdForEntity(operation.Entity))
+                {
+                    // For INSERT with identity, retrieve generated ID
+                    var id = await _connection.QuerySingleAsync<object>(sql, parameters, transaction);
+                    SetEntityIdForEntity(operation.Entity, id);
+                }
+                else
+                {
+                    await _connection.ExecuteAsync(sql, parameters, transaction);
+                }
+
+                // Update entity state after execution
+                if (operation.State == EntityState.Deleted)
+                {
+                    _changeTracker.Untrack(operation.Entity);
+                }
+                else
+                {
+                    _changeTracker.SetState(operation.Entity, EntityState.Unchanged);
+                }
+            }
+
+            _changeTracker.ClearQueue();
+            return;
+        }
+
+        // Fallback: Execute pending changes from change tracker (backward compatibility)
         var pendingChanges = _changeTracker.GetPendingChanges();
         foreach (var kvp in pendingChanges)
         {
@@ -208,7 +325,8 @@ public sealed class EntityManager : IEntityManager
     public Task ClearAsync()
     {
         ThrowIfDisposed();
-        _changeTracker.Clear();
+    _changeTracker.Clear();
+    _changeTracker.ClearQueue();
         return Task.CompletedTask;
     }
 
@@ -223,7 +341,22 @@ public sealed class EntityManager : IEntityManager
 
         if (IsTransient(entity, metadata))
         {
-            InsertEntity(entity, metadata);
+            if (HasActiveTransaction)
+            {
+                // Queue for deferred execution - capture parameters now
+                var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: HasGeneratedId(metadata));
+                _changeTracker.QueueOperation(
+                    entity,
+                    EntityState.Added,
+                    () => _databaseProvider.GenerateInsertSql(metadata),
+                    parameters
+                );
+                _changeTracker.Track(entity, EntityState.Added);
+            }
+            else
+            {
+                InsertEntity(entity, metadata);
+            }
         }
         else
         {
@@ -234,7 +367,21 @@ public sealed class EntityManager : IEntityManager
             }
             else
             {
-                InsertEntity(entity, metadata);
+                if (HasActiveTransaction)
+                {
+                    var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: HasGeneratedId(metadata));
+                    _changeTracker.QueueOperation(
+                        entity,
+                        EntityState.Added,
+                        () => _databaseProvider.GenerateInsertSql(metadata),
+                        parameters
+                    );
+                    _changeTracker.Track(entity, EntityState.Added);
+                }
+                else
+                {
+                    InsertEntity(entity, metadata);
+                }
             }
         }
     }
@@ -298,20 +445,37 @@ public sealed class EntityManager : IEntityManager
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = _databaseProvider.GenerateUpdateSql(metadata);
-        var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false);
 
-        using var transaction = _connection.BeginTransaction();
-        try
+        if (HasActiveTransaction)
         {
-            _connection.Execute(sql, parameters, transaction);
-            transaction.Commit();
+            // Queue for deferred execution - capture parameters now
+            var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false);
+            _changeTracker.QueueOperation(
+                entity,
+                EntityState.Modified,
+                () => _databaseProvider.GenerateUpdateSql(metadata),
+                parameters
+            );
             _changeTracker.SetState(entity, EntityState.Modified);
         }
-        catch
+        else
         {
-            transaction.Rollback();
-            throw;
+            // Immediate execution with internal transaction
+            var sql = _databaseProvider.GenerateUpdateSql(metadata);
+            var parameters = ExtractParameters(entity, metadata, skipIdentityKeys: false);
+
+            using var transaction = _connection.BeginTransaction();
+            try
+            {
+                _connection.Execute(sql, parameters, transaction);
+                transaction.Commit();
+                _changeTracker.SetState(entity, EntityState.Modified);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
     }
 
@@ -323,10 +487,27 @@ public sealed class EntityManager : IEntityManager
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
-        var sql = _databaseProvider.GenerateDeleteSql(metadata);
-        var parameters = ExtractIdParameters(entity, metadata);
-        _connection.Execute(sql, parameters);
-        _changeTracker.SetState(entity, EntityState.Deleted);
+
+        if (HasActiveTransaction)
+        {
+            // Queue for deferred execution - capture parameters now
+            var parameters = ExtractIdParameters(entity, metadata);
+            _changeTracker.QueueOperation(
+                entity,
+                EntityState.Deleted,
+                () => _databaseProvider.GenerateDeleteSql(metadata),
+                parameters
+            );
+            _changeTracker.SetState(entity, EntityState.Deleted);
+        }
+        else
+        {
+            // Immediate execution
+            var sql = _databaseProvider.GenerateDeleteSql(metadata);
+            var parameters = ExtractIdParameters(entity, metadata);
+            _connection.Execute(sql, parameters);
+            _changeTracker.SetState(entity, EntityState.Deleted);
+        }
     }
 
     /// <inheritdoc />
@@ -359,6 +540,45 @@ public sealed class EntityManager : IEntityManager
     {
         ThrowIfDisposed();
         EnsureConnectionOpen();
+
+        // Execute queued operations if in a transaction
+        if (HasActiveTransaction && _changeTracker.GetQueuedOperationCount() > 0)
+        {
+            var operations = _changeTracker.GetQueuedOperations();
+            var transaction = _currentTransaction!.DbTransaction;
+
+            foreach (var operation in operations)
+            {
+                var sql = operation.SqlGenerator();
+                var parameters = operation.Parameters;
+
+                if (operation.State == EntityState.Added && HasGeneratedIdForEntity(operation.Entity))
+                {
+                    // For INSERT with identity, retrieve generated ID
+                    var id = _connection.QuerySingle<object>(sql, parameters, transaction);
+                    SetEntityIdForEntity(operation.Entity, id);
+                }
+                else
+                {
+                    _connection.Execute(sql, parameters, transaction);
+                }
+
+                // Update entity state after execution
+                if (operation.State == EntityState.Deleted)
+                {
+                    _changeTracker.Untrack(operation.Entity);
+                }
+                else
+                {
+                    _changeTracker.SetState(operation.Entity, EntityState.Unchanged);
+                }
+            }
+
+            _changeTracker.ClearQueue();
+            return;
+        }
+
+        // Fallback: Execute pending changes from change tracker (backward compatibility)
         var pendingChanges = _changeTracker.GetPendingChanges();
         foreach (var kvp in pendingChanges)
         {
@@ -375,7 +595,8 @@ public sealed class EntityManager : IEntityManager
     public void Clear()
     {
         ThrowIfDisposed();
-        _changeTracker.Clear();
+    _changeTracker.Clear();
+    _changeTracker.ClearQueue();
     }
 
     /// <inheritdoc />
@@ -439,8 +660,21 @@ public sealed class EntityManager : IEntityManager
 
     private object? GetEntityId(object entity, EntityMetadata metadata)
     {
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata), "Entity metadata cannot be null");
+        
         if (metadata.HasCompositeKey) return null;
-        return metadata.Properties.TryGetValue(metadata.PrimaryKeyProperty, out var prop) ? prop.PropertyInfo.GetValue(entity) : null;
+        
+        if (string.IsNullOrEmpty(metadata.PrimaryKeyProperty))
+            throw new InvalidOperationException($"Entity {metadata.EntityType?.Name ?? "Unknown"} has no primary key property defined");
+        
+        if (!metadata.Properties.TryGetValue(metadata.PrimaryKeyProperty, out var prop))
+        {
+            var availableProps = string.Join(", ", metadata.Properties.Keys);
+            throw new InvalidOperationException($"Primary key property '{metadata.PrimaryKeyProperty}' not found in metadata for entity {metadata.EntityType?.Name ?? "Unknown"}. Available properties: {availableProps}");
+        }
+        
+        return prop.PropertyInfo.GetValue(entity);
     }
 
     private void SetEntityId(object entity, object id, EntityMetadata metadata)
@@ -485,6 +719,18 @@ public sealed class EntityManager : IEntityManager
         return idValue.Equals(defaultValue);
     }
 
+    private bool HasGeneratedIdForEntity(object entity)
+    {
+        var metadata = _metadataProvider.GetEntityMetadata(entity.GetType());
+        return HasGeneratedId(metadata);
+    }
+
+    private void SetEntityIdForEntity(object entity, object id)
+    {
+        var metadata = _metadataProvider.GetEntityMetadata(entity.GetType());
+        SetEntityId(entity, id, metadata);
+    }
+
     private async Task CallGenericMethodAsync(string methodName, object entity)
     {
         var method = GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { entity.GetType(), typeof(EntityMetadata) }, null);
@@ -515,4 +761,44 @@ public sealed class EntityManager : IEntityManager
 
         return new Query<T>(_connection, parser, sqlGenerator, parameterBinder, _metadataProvider, cpql, _logger as ILogger<Query<T>>);
     }
+
+    /// <inheritdoc />
+    public Task<ITransaction> BeginTransactionAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+
+        if (_currentTransaction != null && _currentTransaction.IsActive)
+        {
+            throw new InvalidOperationException("A transaction is already active. Commit or rollback the current transaction before starting a new one.");
+        }
+
+        _currentTransaction = new Transaction(_connection, this, isolationLevel);
+        return Task.FromResult<ITransaction>(_currentTransaction);
+    }
+
+    /// <inheritdoc />
+    public ITransaction BeginTransaction(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
+    {
+        ThrowIfDisposed();
+        EnsureConnectionOpen();
+
+        if (_currentTransaction != null && _currentTransaction.IsActive)
+        {
+            throw new InvalidOperationException("A transaction is already active. Commit or rollback the current transaction before starting a new one.");
+        }
+
+        _currentTransaction = new Transaction(_connection, this, isolationLevel);
+        return _currentTransaction;
+    }
+
+    /// <inheritdoc />
+    public ITransaction? GetCurrentTransaction()
+    {
+        ThrowIfDisposed();
+        return _currentTransaction?.IsActive == true ? _currentTransaction : null;
+    }
+
+    /// <inheritdoc />
+    public bool HasActiveTransaction => _currentTransaction?.IsActive == true;
 }

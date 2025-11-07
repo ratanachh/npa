@@ -1,5 +1,6 @@
 using NPA.Core.Metadata;
 using NPA.Core.Query;
+using System.Data;
 
 namespace NPA.Core.Core;
 
@@ -181,4 +182,40 @@ public interface IEntityManager : IDisposable
     /// </list>
     /// </remarks>
     IQuery<T> CreateQuery<T>(string cpql) where T : class;
+
+    /// <summary>
+    /// Begins a new database transaction asynchronously.
+    /// </summary>
+    /// <param name="isolationLevel">The transaction isolation level.</param>
+    /// <returns>A task representing the asynchronous operation. The task result contains the transaction instance.</returns>
+    /// <remarks>
+    /// When a transaction is active, all Persist/Merge/Remove operations are queued
+    /// and executed in batch during Flush or Commit for better performance.
+    /// </remarks>
+    Task<ITransaction> BeginTransactionAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted);
+
+    /// <summary>
+    /// Begins a new database transaction synchronously.
+    /// </summary>
+    /// <param name="isolationLevel">The transaction isolation level.</param>
+    /// <returns>The transaction instance.</returns>
+    /// <remarks>
+    /// When a transaction is active, all Persist/Merge/Remove operations are queued
+    /// and executed in batch during Flush or Commit for better performance.
+    /// </remarks>
+    ITransaction BeginTransaction(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted);
+
+    /// <summary>
+    /// Gets the current active transaction, if any.
+    /// </summary>
+    /// <returns>The current transaction, or null if no transaction is active.</returns>
+    ITransaction? GetCurrentTransaction();
+
+    /// <summary>
+    /// Gets a value indicating whether there is an active transaction.
+    /// </summary>
+    /// <value>
+    /// <c>true</c> if there is an active transaction; otherwise, <c>false</c>.
+    /// </value>
+    bool HasActiveTransaction { get; }
 }
