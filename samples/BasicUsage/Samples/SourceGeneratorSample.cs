@@ -51,6 +51,6 @@ public class SourceGeneratorSample : ISample
     [Repository]
     public interface IUserRepository : IRepository<User, long>
     {
-        Task<IEnumerable<User>> FindByEmailAndId(string email, long id);
+        Task<IEnumerable<User>> FindByEmail(string email, long id);
     }
 }
