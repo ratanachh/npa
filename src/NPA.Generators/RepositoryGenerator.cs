@@ -330,6 +330,155 @@ public class RepositoryGenerator : IIncrementalGenerator
                 info.UseTransaction = useTransaction ?? true;
                 info.CommandTimeout = GetNamedArgument<int?>(attr, "CommandTimeout");
             }
+            else if (attrName == "GeneratedMethodAttribute")
+            {
+                info.HasGeneratedMethod = true;
+                info.IncludeNullCheck = GetNamedArgument<bool?>(attr, "IncludeNullCheck") ?? true;
+                info.GenerateAsync = GetNamedArgument<bool?>(attr, "GenerateAsync") ?? false;
+                info.GenerateSync = GetNamedArgument<bool?>(attr, "GenerateSync") ?? false;
+                info.CustomSql = GetNamedArgument<string>(attr, "CustomSql");
+                info.IncludeLogging = GetNamedArgument<bool?>(attr, "IncludeLogging") ?? false;
+                info.IncludeErrorHandling = GetNamedArgument<bool?>(attr, "IncludeErrorHandling") ?? false;
+                info.MethodDescription = GetNamedArgument<string>(attr, "Description");
+            }
+            else if (attrName == "IgnoreInGenerationAttribute")
+            {
+                info.IgnoreInGeneration = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.IgnoreReason = attr.ConstructorArguments[0].Value?.ToString();
+                }
+                else
+                {
+                    info.IgnoreReason = GetNamedArgument<string>(attr, "Reason");
+                }
+            }
+            else if (attrName == "CustomImplementationAttribute")
+            {
+                info.HasCustomImplementation = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.ImplementationHint = attr.ConstructorArguments[0].Value?.ToString();
+                }
+                info.GeneratePartialStub = GetNamedArgument<bool?>(attr, "GeneratePartialStub") ?? true;
+                info.ImplementationHint = info.ImplementationHint ?? GetNamedArgument<string>(attr, "ImplementationHint");
+                info.CustomImplementationRequired = GetNamedArgument<bool?>(attr, "Required") ?? true;
+            }
+            else if (attrName == "CacheResultAttribute")
+            {
+                info.HasCacheResult = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.CacheDuration = (int)(attr.ConstructorArguments[0].Value ?? 300);
+                }
+                else
+                {
+                    info.CacheDuration = GetNamedArgument<int?>(attr, "Duration") ?? 300;
+                }
+                info.CacheKeyPattern = GetNamedArgument<string>(attr, "KeyPattern");
+                info.CacheRegion = GetNamedArgument<string>(attr, "Region");
+                info.CacheNulls = GetNamedArgument<bool?>(attr, "CacheNulls") ?? false;
+                info.CachePriority = GetNamedArgument<int?>(attr, "Priority") ?? 0;
+                info.CacheSlidingExpiration = GetNamedArgument<bool?>(attr, "SlidingExpiration") ?? false;
+            }
+            else if (attrName == "ValidateParametersAttribute")
+            {
+                info.HasValidateParameters = true;
+                info.ThrowOnNull = GetNamedArgument<bool?>(attr, "ThrowOnNull") ?? true;
+                info.ValidateStringsNotEmpty = GetNamedArgument<bool?>(attr, "ValidateStringsNotEmpty") ?? false;
+                info.ValidateCollectionsNotEmpty = GetNamedArgument<bool?>(attr, "ValidateCollectionsNotEmpty") ?? false;
+                info.ValidatePositive = GetNamedArgument<bool?>(attr, "ValidatePositive") ?? false;
+                info.ValidationErrorMessage = GetNamedArgument<string>(attr, "ErrorMessage");
+            }
+            else if (attrName == "RetryOnFailureAttribute")
+            {
+                info.HasRetryOnFailure = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.MaxRetryAttempts = (int)(attr.ConstructorArguments[0].Value ?? 3);
+                }
+                else
+                {
+                    info.MaxRetryAttempts = GetNamedArgument<int?>(attr, "MaxAttempts") ?? 3;
+                }
+                info.RetryDelayMilliseconds = GetNamedArgument<int?>(attr, "DelayMilliseconds") ?? 100;
+                info.RetryExponentialBackoff = GetNamedArgument<bool?>(attr, "ExponentialBackoff") ?? true;
+                info.RetryMaxDelayMilliseconds = GetNamedArgument<int?>(attr, "MaxDelayMilliseconds") ?? 30000;
+                info.LogRetries = GetNamedArgument<bool?>(attr, "LogRetries") ?? true;
+            }
+            else if (attrName == "TransactionScopeAttribute")
+            {
+                info.HasTransactionScope = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    // IsolationLevel enum value
+                    var isolationLevel = attr.ConstructorArguments[0].Value;
+                    info.TransactionIsolationLevel = isolationLevel?.ToString() ?? "ReadCommitted";
+                }
+                info.TransactionRequired = GetNamedArgument<bool?>(attr, "Required") ?? true;
+                var isolationFromNamed = GetNamedArgument<int?>(attr, "IsolationLevel");
+                if (isolationFromNamed.HasValue)
+                {
+                    info.TransactionIsolationLevel = ((System.Data.IsolationLevel)isolationFromNamed.Value).ToString();
+                }
+                info.TransactionTimeoutSeconds = GetNamedArgument<int?>(attr, "TimeoutSeconds") ?? 30;
+                info.TransactionAutoRollback = GetNamedArgument<bool?>(attr, "AutoRollbackOnError") ?? true;
+                info.TransactionJoinAmbient = GetNamedArgument<bool?>(attr, "JoinAmbientTransaction") ?? true;
+            }
+            else if (attrName == "PerformanceMonitorAttribute")
+            {
+                info.HasPerformanceMonitor = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.WarnThresholdMs = (int)(attr.ConstructorArguments[0].Value ?? 0);
+                }
+                else
+                {
+                    info.WarnThresholdMs = GetNamedArgument<int?>(attr, "WarnThresholdMs") ?? 0;
+                }
+                info.IncludeParameters = GetNamedArgument<bool?>(attr, "IncludeParameters") ?? false;
+                info.MetricCategory = GetNamedArgument<string>(attr, "Category");
+                info.TrackMemory = GetNamedArgument<bool?>(attr, "TrackMemory") ?? false;
+                info.TrackQueryCount = GetNamedArgument<bool?>(attr, "TrackQueryCount") ?? false;
+                info.MetricName = GetNamedArgument<string>(attr, "MetricName");
+            }
+            else if (attrName == "AuditAttribute")
+            {
+                info.HasAudit = true;
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.AuditCategory = attr.ConstructorArguments[0].Value?.ToString() ?? "Data";
+                }
+                else
+                {
+                    info.AuditCategory = GetNamedArgument<string>(attr, "Category") ?? "Data";
+                }
+                info.AuditIncludeOldValue = GetNamedArgument<bool?>(attr, "IncludeOldValue") ?? false;
+                info.AuditIncludeNewValue = GetNamedArgument<bool?>(attr, "IncludeNewValue") ?? true;
+                
+                // Handle AuditSeverity enum
+                var severityValue = GetNamedArgument<int?>(attr, "Severity");
+                if (severityValue.HasValue)
+                {
+                    info.AuditSeverity = severityValue.Value switch
+                    {
+                        0 => "Low",
+                        1 => "Normal",
+                        2 => "High",
+                        3 => "Critical",
+                        _ => "Normal"
+                    };
+                }
+                else
+                {
+                    info.AuditSeverity = "Normal";
+                }
+                
+                info.AuditIncludeParameters = GetNamedArgument<bool?>(attr, "IncludeParameters") ?? true;
+                info.AuditCaptureUser = GetNamedArgument<bool?>(attr, "CaptureUser") ?? true;
+                info.AuditDescription = GetNamedArgument<string>(attr, "Description");
+                info.AuditCaptureIpAddress = GetNamedArgument<bool?>(attr, "CaptureIpAddress") ?? false;
+            }
         }
 
         return info;
@@ -1256,6 +1405,73 @@ internal class MethodAttributeInfo
     
     public int? CommandTimeout { get; set; }
     public bool Buffered { get; set; } = true;
+
+    // New custom generator attributes
+    public bool HasGeneratedMethod { get; set; }
+    public bool IncludeNullCheck { get; set; } = true;
+    public bool GenerateAsync { get; set; }
+    public bool GenerateSync { get; set; }
+    public string? CustomSql { get; set; }
+    public bool IncludeLogging { get; set; }
+    public bool IncludeErrorHandling { get; set; }
+    public string? MethodDescription { get; set; }
+
+    public bool IgnoreInGeneration { get; set; }
+    public string? IgnoreReason { get; set; }
+
+    public bool HasCustomImplementation { get; set; }
+    public bool GeneratePartialStub { get; set; } = true;
+    public string? ImplementationHint { get; set; }
+    public bool CustomImplementationRequired { get; set; } = true;
+
+    public bool HasCacheResult { get; set; }
+    public int CacheDuration { get; set; } = 300;
+    public string? CacheKeyPattern { get; set; }
+    public string? CacheRegion { get; set; }
+    public bool CacheNulls { get; set; }
+    public int CachePriority { get; set; }
+    public bool CacheSlidingExpiration { get; set; }
+
+    public bool HasValidateParameters { get; set; }
+    public bool ThrowOnNull { get; set; } = true;
+    public bool ValidateStringsNotEmpty { get; set; }
+    public bool ValidateCollectionsNotEmpty { get; set; }
+    public bool ValidatePositive { get; set; }
+    public string? ValidationErrorMessage { get; set; }
+
+    public bool HasRetryOnFailure { get; set; }
+    public int MaxRetryAttempts { get; set; } = 3;
+    public int RetryDelayMilliseconds { get; set; } = 100;
+    public bool RetryExponentialBackoff { get; set; } = true;
+    public int RetryMaxDelayMilliseconds { get; set; } = 30000;
+    public bool LogRetries { get; set; } = true;
+
+    public bool HasTransactionScope { get; set; }
+    public bool TransactionRequired { get; set; } = true;
+    public string? TransactionIsolationLevel { get; set; } = "ReadCommitted";
+    public int TransactionTimeoutSeconds { get; set; } = 30;
+    public bool TransactionAutoRollback { get; set; } = true;
+    public bool TransactionJoinAmbient { get; set; } = true;
+
+    // PerformanceMonitor attribute
+    public bool HasPerformanceMonitor { get; set; }
+    public bool IncludeParameters { get; set; }
+    public int WarnThresholdMs { get; set; }
+    public string? MetricCategory { get; set; }
+    public bool TrackMemory { get; set; }
+    public bool TrackQueryCount { get; set; }
+    public string? MetricName { get; set; }
+
+    // Audit attribute
+    public bool HasAudit { get; set; }
+    public bool AuditIncludeOldValue { get; set; }
+    public bool AuditIncludeNewValue { get; set; } = true;
+    public string AuditCategory { get; set; } = "Data";
+    public string AuditSeverity { get; set; } = "Normal";
+    public bool AuditIncludeParameters { get; set; } = true;
+    public bool AuditCaptureUser { get; set; } = true;
+    public string? AuditDescription { get; set; }
+    public bool AuditCaptureIpAddress { get; set; }
 }
 
 /// <summary>
