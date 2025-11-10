@@ -17,7 +17,7 @@ public interface IReviewRepository : IRepository<Review, long>
     Task<IEnumerable<Review>> FindByStudentIdAsync(long studentId);
 
     [Query("SELECT r FROM Review r WHERE r.CourseId = :courseId AND r.StudentId = :studentId")]
-    Task<Review?> FindByStudentAndCourseAsync(long studentId, long courseId);
+    Task<Review?> FindByStudentIdAndCourseIdAsync(long studentId, long courseId);
 
     [Query("SELECT AVG(r.Rating) FROM Review r WHERE r.CourseId = :courseId")]
     Task<decimal> GetAverageRatingByCourseAsync(long courseId);

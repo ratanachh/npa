@@ -28,14 +28,14 @@ public class ReviewService
     public async Task<Review> CreateReviewAsync(Review review)
     {
         // Check if student is enrolled
-        var enrollment = await _enrollmentRepository.FindByStudentAndCourseAsync(review.StudentId, review.CourseId);
+        var enrollment = await _enrollmentRepository.FindByStudentIdAndCourseIdAsync(review.StudentId, review.CourseId);
         if (enrollment == null)
         {
             throw new InvalidOperationException("Student must be enrolled to review the course");
         }
 
         // Check if already reviewed
-        var existing = await _reviewRepository.FindByStudentAndCourseAsync(review.StudentId, review.CourseId);
+        var existing = await _reviewRepository.FindByStudentIdAndCourseIdAsync(review.StudentId, review.CourseId);
         if (existing != null)
         {
             throw new InvalidOperationException("Student has already reviewed this course");

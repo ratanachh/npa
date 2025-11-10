@@ -120,14 +120,98 @@ public static class MethodConventionAnalyzer
             propertyPart = afterPrefix;
         }
         
-        // Parse property names (could be "Email", "EmailAndName", etc.)
+        // Parse property names with Spring Data JPA keywords
         if (!string.IsNullOrEmpty(propertyPart))
         {
-            var parts = propertyPart.Split(new[] { "And", "Or" }, StringSplitOptions.None);
-            properties.AddRange(parts);
+            properties = ParsePropertyExpressions(propertyPart);
         }
         
         return (properties, ordering);
+    }
+    
+    /// <summary>
+    /// Parses property expressions with Spring Data JPA keywords like LessThan, GreaterThan, Between, Like, etc.
+    /// Supports: And, Or, LessThan, GreaterThan, Between, Like, NotLike, StartingWith, EndingWith, Containing,
+    /// In, NotIn, IsNull, IsNotNull, True, False, Before, After, IgnoreCase
+    /// </summary>
+    private static List<string> ParsePropertyExpressions(string propertyPart)
+    {
+        var properties = new List<string>();
+        
+        // Spring Data JPA operator keywords (NOT including And/Or which are separators)
+        var operatorKeywords = new[]
+        {
+            "GreaterThanEqual", "LessThanEqual", "GreaterThan", "LessThan",
+            "StartingWith", "EndingWith", "NotContaining", "Containing", "NotLike", "Like",
+            "IsNotNull", "IsNull", "NotIn", "In", "Between",
+            "IgnoreCase", "AllIgnoreCase", "True", "False", "Before", "After"
+        };
+        
+        // Separator keywords
+        var separatorKeywords = new[] { "And", "Or" };
+        
+        var remaining = propertyPart;
+        var currentProperty = new System.Text.StringBuilder();
+        
+        while (remaining.Length > 0)
+        {
+            var foundOperator = false;
+            var foundSeparator = false;
+            
+            // Check for operator keywords first
+            foreach (var keyword in operatorKeywords)
+            {
+                if (remaining.StartsWith(keyword))
+                {
+                    // Append keyword to current property
+                    if (currentProperty.Length > 0)
+                    {
+                        properties.Add(currentProperty.ToString() + ":" + keyword);
+                        currentProperty.Clear();
+                    }
+                    
+                    remaining = remaining.Substring(keyword.Length);
+                    foundOperator = true;
+                    break;
+                }
+            }
+            
+            if (foundOperator)
+                continue;
+            
+            // Check for separator keywords (And/Or)
+            foreach (var separator in separatorKeywords)
+            {
+                if (remaining.StartsWith(separator))
+                {
+                    // Save current property if any
+                    if (currentProperty.Length > 0)
+                    {
+                        properties.Add(currentProperty.ToString());
+                        currentProperty.Clear();
+                    }
+                    
+                    remaining = remaining.Substring(separator.Length);
+                    foundSeparator = true;
+                    break;
+                }
+            }
+            
+            if (foundSeparator)
+                continue;
+            
+            // No keyword found, consume one character
+            currentProperty.Append(remaining[0]);
+            remaining = remaining.Substring(1);
+        }
+        
+        // Add final property if any
+        if (currentProperty.Length > 0)
+        {
+            properties.Add(currentProperty.ToString());
+        }
+        
+        return properties;
     }
     
     /// <summary>

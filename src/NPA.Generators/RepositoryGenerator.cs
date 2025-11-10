@@ -60,6 +60,10 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (interfaceSymbol == null)
             return null;
 
+        // Skip nested types (for demonstration/sample code)
+        if (interfaceSymbol.ContainingType != null)
+            return null;
+
         // Check if it has the Repository attribute
         var repositoryAttribute = interfaceSymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "RepositoryAttribute");
@@ -1316,6 +1320,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
         var orderByClause = BuildOrderByClause(convention.OrderByProperties);
         var paramObj = GenerateParameterObject(convention.Parameters);
+        var hasParameters = !string.IsNullOrEmpty(paramObj) && paramObj != "null";
 
         // Build the full SQL query
         var sqlBuilder = new StringBuilder($"SELECT * FROM {tableName}");
@@ -1333,7 +1338,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var fullSql = sqlBuilder.ToString();
         sb.AppendLine($"            var sql = \"{fullSql}\";");
 
-        if (string.IsNullOrEmpty(whereClause))
+        if (!hasParameters)
         {
             // No parameters
             if (convention.ReturnsCollection)
@@ -1523,15 +1528,163 @@ public class RepositoryGenerator : IIncrementalGenerator
 
     private static string BuildWhereClause(List<string> propertyNames, List<ParameterInfo> parameters)
     {
-        if (propertyNames.Count == 0 || parameters.Count == 0)
+        if (propertyNames.Count == 0)
             return string.Empty;
 
         var clauses = new List<string>();
-        for (int i = 0; i < Math.Min(propertyNames.Count, parameters.Count); i++)
+        var paramIndex = 0;
+        
+        for (int i = 0; i < propertyNames.Count; i++)
         {
-            var columnName = MethodConventionAnalyzer.ToSnakeCase(propertyNames[i]);
-            var paramName = parameters[i].Name;
-            clauses.Add($"{columnName} = @{paramName}");
+            var propExpression = propertyNames[i];
+            
+            // Check if property has a keyword (format: "Property:Keyword")
+            if (propExpression.Contains(":"))
+            {
+                var parts = propExpression.Split(':');
+                var propertyName = parts[0];
+                var keyword = parts[1];
+                var columnName = MethodConventionAnalyzer.ToSnakeCase(propertyName);
+                
+                switch (keyword)
+                {
+                    case "GreaterThan":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} > @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "GreaterThanEqual":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} >= @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "LessThan":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} < @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "LessThanEqual":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} <= @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "Between":
+                        if (paramIndex + 1 < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} BETWEEN @{parameters[paramIndex].Name} AND @{parameters[paramIndex + 1].Name}");
+                            paramIndex += 2;
+                        }
+                        break;
+                    case "Like":
+                    case "Containing":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} LIKE CONCAT('%', @{parameters[paramIndex].Name}, '%')");
+                            paramIndex++;
+                        }
+                        break;
+                    case "NotLike":
+                    case "NotContaining":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} NOT LIKE CONCAT('%', @{parameters[paramIndex].Name}, '%')");
+                            paramIndex++;
+                        }
+                        break;
+                    case "StartingWith":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} LIKE CONCAT(@{parameters[paramIndex].Name}, '%')");
+                            paramIndex++;
+                        }
+                        break;
+                    case "EndingWith":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} LIKE CONCAT('%', @{parameters[paramIndex].Name})");
+                            paramIndex++;
+                        }
+                        break;
+                    case "In":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} IN @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "NotIn":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} NOT IN @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "IsNull":
+                        clauses.Add($"{columnName} IS NULL");
+                        // No parameter consumed
+                        break;
+                    case "IsNotNull":
+                        clauses.Add($"{columnName} IS NOT NULL");
+                        // No parameter consumed
+                        break;
+                    case "True":
+                        clauses.Add($"{columnName} = TRUE");
+                        // No parameter consumed
+                        break;
+                    case "False":
+                        clauses.Add($"{columnName} = FALSE");
+                        // No parameter consumed
+                        break;
+                    case "Before":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} < @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "After":
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} > @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "IgnoreCase":
+                        // Apply to the previous clause if exists
+                        if (clauses.Count > 0 && paramIndex > 0)
+                        {
+                            var lastClause = clauses[clauses.Count - 1];
+                            clauses[clauses.Count - 1] = $"LOWER({columnName}) = LOWER(@{parameters[paramIndex - 1].Name})";
+                        }
+                        break;
+                    default:
+                        // Default to equality
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} = @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                }
+            }
+            else
+            {
+                // Simple property without keyword - use equality
+                var columnName = MethodConventionAnalyzer.ToSnakeCase(propExpression);
+                if (paramIndex < parameters.Count)
+                {
+                    clauses.Add($"{columnName} = @{parameters[paramIndex].Name}");
+                    paramIndex++;
+                }
+            }
         }
 
         return string.Join(" AND ", clauses);

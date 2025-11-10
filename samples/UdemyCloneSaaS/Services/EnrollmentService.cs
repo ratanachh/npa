@@ -28,7 +28,7 @@ public class EnrollmentService
     public async Task<Enrollment> EnrollStudentAsync(long studentId, long courseId, Payment? payment = null)
     {
         // Check if already enrolled
-        var existing = await _enrollmentRepository.FindByStudentAndCourseAsync(studentId, courseId);
+        var existing = await _enrollmentRepository.FindByStudentIdAndCourseIdAsync(studentId, courseId);
         if (existing != null)
         {
             throw new InvalidOperationException("Student already enrolled in this course");

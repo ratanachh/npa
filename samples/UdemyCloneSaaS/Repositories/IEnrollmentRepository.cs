@@ -10,14 +10,14 @@ namespace UdemyCloneSaaS.Repositories;
 [Repository]
 public interface IEnrollmentRepository : IRepository<Enrollment, long>
 {
-    [Query("SELECT e FROM Enrollment e WHERE e.StudentId = :studentId")]
+    // Convention-based: Generates SELECT * FROM enrollments WHERE student_id = @studentId
     Task<IEnumerable<Enrollment>> FindByStudentIdAsync(long studentId);
 
-    [Query("SELECT e FROM Enrollment e WHERE e.CourseId = :courseId")]
+    // Convention-based: Generates SELECT * FROM enrollments WHERE course_id = @courseId
     Task<IEnumerable<Enrollment>> FindByCourseIdAsync(long courseId);
 
-    [Query("SELECT e FROM Enrollment e WHERE e.StudentId = :studentId AND e.CourseId = :courseId")]
-    Task<Enrollment?> FindByStudentAndCourseAsync(long studentId, long courseId);
+    // Convention-based: Generates SELECT * FROM enrollments WHERE student_id = @studentId AND course_id = @courseId
+    Task<Enrollment?> FindByStudentIdAndCourseIdAsync(long studentId, long courseId);
 
     [Query("SELECT e FROM Enrollment e WHERE e.StudentId = :studentId AND e.IsCompleted = true")]
     Task<IEnumerable<Enrollment>> GetCompletedEnrollmentsByStudentAsync(long studentId);
