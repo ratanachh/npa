@@ -89,6 +89,9 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Detect many-to-many relationships
         var manyToManyRelationships = DetectManyToManyRelationships(semanticModel.Compilation, entityType);
 
+        // Detect multi-tenancy
+        var multiTenantInfo = DetectMultiTenancy(semanticModel.Compilation, entityType);
+
         return new RepositoryInfo
         {
             InterfaceName = interfaceSymbol.Name,
@@ -99,7 +102,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             Methods = methods,
             HasCompositeKey = hasCompositeKey,
             CompositeKeyProperties = compositeKeyProps,
-            ManyToManyRelationships = manyToManyRelationships
+            ManyToManyRelationships = manyToManyRelationships,
+            MultiTenantInfo = multiTenantInfo
         };
     }
 
@@ -243,6 +247,69 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         return relationships;
+    }
+
+    private static MultiTenantInfo? DetectMultiTenancy(Compilation compilation, string entityTypeName)
+    {
+        // Find the entity type symbol
+        var entityType = compilation.GetTypeByMetadataName(entityTypeName);
+        if (entityType == null)
+        {
+            // Try to find it without full namespace
+            entityType = compilation.GetSymbolsWithName(entityTypeName.Split('.').Last(), SymbolFilter.Type)
+                .OfType<INamedTypeSymbol>()
+                .FirstOrDefault();
+        }
+
+        if (entityType == null)
+            return null;
+
+        // Find [MultiTenant] attribute
+        var multiTenantAttr = entityType.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "MultiTenantAttribute");
+
+        if (multiTenantAttr == null)
+            return null;
+
+        // Extract attribute properties with defaults
+        var tenantIdProperty = "TenantId";
+        var enforceTenantIsolation = true;
+        var allowCrossTenantQueries = false;
+
+        foreach (var namedArg in multiTenantAttr.NamedArguments)
+        {
+            switch (namedArg.Key)
+            {
+                case "TenantIdProperty":
+                case "tenantIdProperty":
+                    if (namedArg.Value.Value is string prop)
+                        tenantIdProperty = prop;
+                    break;
+                case "EnforceTenantIsolation":
+                    if (namedArg.Value.Value is bool enforce)
+                        enforceTenantIsolation = enforce;
+                    break;
+                case "AllowCrossTenantQueries":
+                    if (namedArg.Value.Value is bool allow)
+                        allowCrossTenantQueries = allow;
+                    break;
+            }
+        }
+
+        // Check constructor arguments as well (for tenantIdProperty)
+        if (multiTenantAttr.ConstructorArguments.Length > 0 && 
+            multiTenantAttr.ConstructorArguments[0].Value is string constructorProp)
+        {
+            tenantIdProperty = constructorProp;
+        }
+
+        return new MultiTenantInfo
+        {
+            IsMultiTenant = true,
+            TenantIdProperty = tenantIdProperty,
+            EnforceTenantIsolation = enforceTenantIsolation,
+            AllowCrossTenantQueries = allowCrossTenantQueries
+        };
     }
 
     private static (string? entityType, string? keyType) ExtractRepositoryTypes(INamedTypeSymbol interfaceSymbol)
@@ -522,20 +589,57 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("using NPA.Core.Core;");
         sb.AppendLine("using NPA.Core.Repositories;");
         sb.AppendLine("using NPA.Core.Metadata;");
+        
+        // Add multi-tenancy using if needed
+        if (info.MultiTenantInfo?.IsMultiTenant == true)
+        {
+            sb.AppendLine("using NPA.Core.MultiTenancy;");
+        }
+        
         sb.AppendLine();
 
         sb.AppendLine($"namespace {info.Namespace}");
         sb.AppendLine("{");
         sb.AppendLine($"    /// <summary>");
         sb.AppendLine($"    /// Generated implementation of {info.InterfaceName}.");
+        
+        // Add multi-tenant documentation if applicable
+        if (info.MultiTenantInfo?.IsMultiTenant == true)
+        {
+            sb.AppendLine($"    /// This repository supports multi-tenancy with automatic tenant filtering.");
+            sb.AppendLine($"    /// Tenant property: {info.MultiTenantInfo.TenantIdProperty}");
+            if (info.MultiTenantInfo.AllowCrossTenantQueries)
+            {
+                sb.AppendLine($"    /// Cross-tenant queries: Allowed (use WithoutTenantFilterAsync for admin operations)");
+            }
+            else
+            {
+                sb.AppendLine($"    /// Cross-tenant queries: Not allowed");
+            }
+        }
+        
         sb.AppendLine($"    /// </summary>");
         sb.AppendLine($"    public partial class {GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {info.FullInterfaceName}");
         sb.AppendLine("    {");
+        
+        // Generate constructor
         sb.AppendLine($"        /// <summary>");
         sb.AppendLine($"        /// Initializes a new instance of the {GetImplementationName(info.InterfaceName)} class.");
         sb.AppendLine($"        /// </summary>");
-        sb.AppendLine("        public " + GetImplementationName(info.InterfaceName) + "(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)");
-        sb.AppendLine("            : base(connection, entityManager, metadataProvider)");
+        
+        if (info.MultiTenantInfo?.IsMultiTenant == true)
+        {
+            // Constructor with ITenantProvider
+            sb.AppendLine("        public " + GetImplementationName(info.InterfaceName) + "(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider, ITenantProvider? tenantProvider = null)");
+            sb.AppendLine("            : base(connection, entityManager, metadataProvider, tenantProvider)");
+        }
+        else
+        {
+            // Constructor without ITenantProvider
+            sb.AppendLine("        public " + GetImplementationName(info.InterfaceName) + "(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)");
+            sb.AppendLine("            : base(connection, entityManager, metadataProvider)");
+        }
+        
         sb.AppendLine("        {");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -1347,6 +1451,15 @@ internal class RepositoryInfo
     public bool HasCompositeKey { get; set; }
     public List<string> CompositeKeyProperties { get; set; } = new();
     public List<ManyToManyRelationshipInfo> ManyToManyRelationships { get; set; } = new();
+    public MultiTenantInfo? MultiTenantInfo { get; set; }
+}
+
+internal class MultiTenantInfo
+{
+    public bool IsMultiTenant { get; set; }
+    public string TenantIdProperty { get; set; } = "TenantId";
+    public bool EnforceTenantIsolation { get; set; } = true;
+    public bool AllowCrossTenantQueries { get; set; } = false;
 }
 
 internal class ManyToManyRelationshipInfo
@@ -1518,6 +1631,10 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
                 return false;
         }
 
+        // Compare multi-tenancy information
+        if (!MultiTenantInfoEquals(x.MultiTenantInfo, y.MultiTenantInfo))
+            return false;
+
         return true;
     }
 
@@ -1543,6 +1660,9 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
 
             foreach (var rel in obj.ManyToManyRelationships)
                 hash = hash * 31 + GetManyToManyHashCode(rel);
+
+            if (obj.MultiTenantInfo != null)
+                hash = hash * 31 + GetMultiTenantHashCode(obj.MultiTenantInfo);
 
             return hash;
         }
@@ -1595,6 +1715,17 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
                x.MappedBy == y.MappedBy;
     }
 
+    private bool MultiTenantInfoEquals(MultiTenantInfo? x, MultiTenantInfo? y)
+    {
+        if (x is null && y is null) return true;
+        if (x is null || y is null) return false;
+        
+        return x.IsMultiTenant == y.IsMultiTenant &&
+               x.TenantIdProperty == y.TenantIdProperty &&
+               x.EnforceTenantIsolation == y.EnforceTenantIsolation &&
+               x.AllowCrossTenantQueries == y.AllowCrossTenantQueries;
+    }
+
     private int GetMethodInfoHashCode(MethodInfo method)
     {
         unchecked
@@ -1619,6 +1750,19 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
             hash = hash * 31 + (rel.PropertyName?.GetHashCode() ?? 0);
             hash = hash * 31 + (rel.CollectionElementType?.GetHashCode() ?? 0);
             hash = hash * 31 + (rel.JoinTableName?.GetHashCode() ?? 0);
+            return hash;
+        }
+    }
+
+    private int GetMultiTenantHashCode(MultiTenantInfo info)
+    {
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + info.IsMultiTenant.GetHashCode();
+            hash = hash * 31 + (info.TenantIdProperty?.GetHashCode() ?? 0);
+            hash = hash * 31 + info.EnforceTenantIsolation.GetHashCode();
+            hash = hash * 31 + info.AllowCrossTenantQueries.GetHashCode();
             return hash;
         }
     }

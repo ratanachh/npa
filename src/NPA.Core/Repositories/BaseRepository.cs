@@ -1,9 +1,12 @@
 using System.Data;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
 using Dapper;
+using NPA.Core.Annotations;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Core.MultiTenancy;
 
 namespace NPA.Core.Repositories;
 
@@ -30,9 +33,24 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
     protected readonly IMetadataProvider _metadataProvider;
     
     /// <summary>
+    /// The tenant provider (optional, for multi-tenant support).
+    /// </summary>
+    protected readonly ITenantProvider? _tenantProvider;
+    
+    /// <summary>
     /// The entity metadata.
     /// </summary>
     protected readonly EntityMetadata _metadata;
+    
+    /// <summary>
+    /// The multi-tenant attribute if entity is multi-tenant.
+    /// </summary>
+    protected readonly MultiTenantAttribute? _multiTenantAttribute;
+    
+    /// <summary>
+    /// Flag to temporarily bypass tenant filtering.
+    /// </summary>
+    private bool _bypassTenantFilter = false;
     
     /// <summary>
     /// Initializes a new instance of the <see cref="BaseRepository{T, TKey}"/> class.
@@ -40,12 +58,19 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
     /// <param name="connection">The database connection.</param>
     /// <param name="entityManager">The entity manager.</param>
     /// <param name="metadataProvider">The metadata provider.</param>
-    public BaseRepository(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)
+    /// <param name="tenantProvider">The tenant provider (optional).</param>
+    public BaseRepository(
+        IDbConnection connection, 
+        IEntityManager entityManager, 
+        IMetadataProvider metadataProvider,
+        ITenantProvider? tenantProvider = null)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _entityManager = entityManager ?? throw new ArgumentNullException(nameof(entityManager));
         _metadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
+        _tenantProvider = tenantProvider;
         _metadata = _metadataProvider.GetEntityMetadata<T>();
+        _multiTenantAttribute = typeof(T).GetCustomAttribute<MultiTenantAttribute>();
     }
     
     /// <inheritdoc />
@@ -60,7 +85,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
     public virtual async Task<IEnumerable<T>> GetAllAsync()
     {
         var sql = GenerateSelectAllSql();
-        return await _connection.QueryAsync<T>(sql);
+        sql = ApplyTenantFilter(sql);
+        
+        var tenantParams = GetTenantFilterParameters();
+        return await _connection.QueryAsync<T>(sql, tenantParams);
     }
     
     /// <inheritdoc />
@@ -109,7 +137,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
     public virtual async Task<int> CountAsync()
     {
         var sql = GenerateCountSql();
-        return await _connection.QuerySingleAsync<int>(sql);
+        sql = ApplyTenantFilter(sql);
+        
+        var tenantParams = GetTenantFilterParameters();
+        return await _connection.QuerySingleAsync<int>(sql, tenantParams);
     }
     
     /// <inheritdoc />
@@ -118,7 +149,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
         if (predicate == null) throw new ArgumentNullException(nameof(predicate));
         
         var (sql, parameters) = BuildQuery(predicate);
-        return await _connection.QueryAsync<T>(sql, parameters);
+        sql = ApplyTenantFilter(sql);
+        
+        var mergedParams = MergeParameters(parameters, GetTenantFilterParameters());
+        return await _connection.QueryAsync<T>(sql, mergedParams);
     }
     
     /// <inheritdoc />
@@ -127,7 +161,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
         if (predicate == null) throw new ArgumentNullException(nameof(predicate));
         
         var (sql, parameters) = BuildQuery(predicate);
-        return await _connection.QueryFirstOrDefaultAsync<T>(sql, parameters);
+        sql = ApplyTenantFilter(sql);
+        
+        var mergedParams = MergeParameters(parameters, GetTenantFilterParameters());
+        return await _connection.QueryFirstOrDefaultAsync<T>(sql, mergedParams);
     }
     
     /// <inheritdoc />
@@ -137,7 +174,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
         if (orderBy == null) throw new ArgumentNullException(nameof(orderBy));
         
         var (sql, parameters) = BuildQuery(predicate, orderBy, descending);
-        return await _connection.QueryAsync<T>(sql, parameters);
+        sql = ApplyTenantFilter(sql);
+        
+        var mergedParams = MergeParameters(parameters, GetTenantFilterParameters());
+        return await _connection.QueryAsync<T>(sql, mergedParams);
     }
     
     /// <inheritdoc />
@@ -148,7 +188,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
         if (take <= 0) throw new ArgumentException("Take must be positive", nameof(take));
         
         var (sql, parameters) = BuildQuery(predicate, null, false, skip, take);
-        return await _connection.QueryAsync<T>(sql, parameters);
+        sql = ApplyTenantFilter(sql);
+        
+        var mergedParams = MergeParameters(parameters, GetTenantFilterParameters());
+        return await _connection.QueryAsync<T>(sql, mergedParams);
     }
     
     /// <inheritdoc />
@@ -160,7 +203,10 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
         if (take <= 0) throw new ArgumentException("Take must be positive", nameof(take));
         
         var (sql, parameters) = BuildQuery(predicate, orderBy, descending, skip, take);
-        return await _connection.QueryAsync<T>(sql, parameters);
+        sql = ApplyTenantFilter(sql);
+        
+        var mergedParams = MergeParameters(parameters, GetTenantFilterParameters());
+        return await _connection.QueryAsync<T>(sql, mergedParams);
     }
     
     /// <summary>
@@ -265,6 +311,114 @@ public class BaseRepository<T, TKey> : IRepository<T, TKey> where T : class
         
         return property.ColumnName;
     }
+    
+    /// <summary>
+    /// Executes a repository operation without tenant filtering.
+    /// Use this for administrative operations that need to query across tenants.
+    /// </summary>
+    /// <param name="action">The action to execute without tenant filtering.</param>
+    /// <returns>The result of the action.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when cross-tenant queries are not allowed.</exception>
+    public virtual async Task<TResult> WithoutTenantFilterAsync<TResult>(Func<Task<TResult>> action)
+    {
+        if (_multiTenantAttribute != null && !_multiTenantAttribute.AllowCrossTenantQueries)
+        {
+            throw new InvalidOperationException(
+                $"Cross-tenant queries are not allowed for entity type {typeof(T).Name}. " +
+                "Set AllowCrossTenantQueries = true on the [MultiTenant] attribute to enable.");
+        }
+        
+        _bypassTenantFilter = true;
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            _bypassTenantFilter = false;
+        }
+    }
+    
+    /// <summary>
+    /// Gets the current tenant ID if multi-tenancy is enabled.
+    /// </summary>
+    /// <returns>The current tenant ID or null.</returns>
+    protected virtual string? GetCurrentTenantId()
+    {
+        return _tenantProvider?.GetCurrentTenantId();
+    }
+    
+    /// <summary>
+    /// Checks if tenant filtering should be applied.
+    /// </summary>
+    /// <returns>True if tenant filtering should be applied.</returns>
+    protected virtual bool ShouldApplyTenantFilter()
+    {
+        return _multiTenantAttribute != null
+            && _multiTenantAttribute.EnforceTenantIsolation
+            && !_bypassTenantFilter
+            && _tenantProvider != null
+            && GetCurrentTenantId() != null;
+    }
+    
+    /// <summary>
+    /// Applies tenant filter to SQL query.
+    /// </summary>
+    /// <param name="sql">The base SQL query.</param>
+    /// <param name="parameters">The query parameters.</param>
+    /// <returns>The modified SQL with tenant filter.</returns>
+    protected virtual string ApplyTenantFilter(string sql, object? parameters = null)
+    {
+        if (!ShouldApplyTenantFilter() || _multiTenantAttribute == null)
+            return sql;
+        
+        var tenantId = GetCurrentTenantId();
+        var tenantColumn = _multiTenantAttribute.TenantIdProperty;
+        
+        // Check if WHERE clause already exists
+        if (sql.Contains("WHERE", StringComparison.OrdinalIgnoreCase))
+        {
+            sql += $" AND {tenantColumn} = @__TenantId";
+        }
+        else
+        {
+            sql += $" WHERE {tenantColumn} = @__TenantId";
+        }
+        
+        return sql;
+    }
+    
+    /// <summary>
+    /// Gets tenant filter parameters to merge with existing parameters.
+    /// </summary>
+    /// <returns>Tenant filter parameters.</returns>
+    protected virtual object? GetTenantFilterParameters()
+    {
+        if (!ShouldApplyTenantFilter())
+            return null;
+        
+        return new { __TenantId = GetCurrentTenantId() };
+    }
+    
+    /// <summary>
+    /// Merges two parameter objects into a single DynamicParameters object.
+    /// </summary>
+    /// <param name="parameters1">First parameters object.</param>
+    /// <param name="parameters2">Second parameters object.</param>
+    /// <returns>Merged parameters.</returns>
+    protected virtual object? MergeParameters(object? parameters1, object? parameters2)
+    {
+        if (parameters1 == null && parameters2 == null)
+            return null;
+        if (parameters1 == null)
+            return parameters2;
+        if (parameters2 == null)
+            return parameters1;
+        
+        var dynamicParams = new DynamicParameters(parameters1);
+        dynamicParams.AddDynamicParams(parameters2);
+        return dynamicParams;
+    }
 }
 
 /// <summary>
@@ -279,8 +433,13 @@ public class BaseRepository<T> : BaseRepository<T, object> where T : class
     /// <param name="connection">The database connection.</param>
     /// <param name="entityManager">The entity manager.</param>
     /// <param name="metadataProvider">The metadata provider.</param>
-    public BaseRepository(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)
-        : base(connection, entityManager, metadataProvider)
+    /// <param name="tenantProvider">The tenant provider (optional).</param>
+    public BaseRepository(
+        IDbConnection connection, 
+        IEntityManager entityManager, 
+        IMetadataProvider metadataProvider,
+        ITenantProvider? tenantProvider = null)
+        : base(connection, entityManager, metadataProvider, tenantProvider)
     {
     }
 }

@@ -367,6 +367,84 @@ var enterpriseTenant = await tenantManager.CreateTenantAsync(
 | Configuration | Code-based in OnModelCreating | Attribute-based |
 | Isolation Enforcement | Manual with query filters | Automatic with validation |
 
+## Sample Implementation
+
+A comprehensive multi-tenancy sample is available in `samples/BasicUsage/Samples/`:
+
+**Files**:
+- `MultiTenancySample.cs` - 7 demo scenarios showcasing all features
+- `MultiTenancySampleRunner.cs` - ISample implementation with database setup
+- `Entities/Product.cs` - Product entity with `[MultiTenant]` attribute
+- `Entities/Category.cs` - Category entity with hierarchical multi-tenant data
+
+**Sample Demonstrates**:
+1. **Basic Tenant Isolation** - Automatic filtering by tenant
+2. **Auto TenantId Population** - EntityManager auto-populates TenantId on persist
+3. **Tenant Context Switching** - Change tenant and see different data
+4. **Cross-Tenant Validation** - System prevents modifying other tenant's data
+5. **Query Filtering** - Tenant filter works with WHERE, JOINs, aggregates
+6. **Multi-Tenant Transactions** - Batching with automatic tenant isolation
+7. **Tenant Statistics** - Aggregate queries auto-filtered by tenant
+
+**Running the Sample**:
+```bash
+dotnet run --project samples/BasicUsage/BasicUsage.csproj
+# Select: Multi-Tenancy Support (Phase 5.5)
+```
+
+**Sample Output**:
+```
+╔════════════════════════════════════════════════════════════════╗
+║      NPA Multi-Tenancy Support Demo (Phase 5.5)              ║
+╚════════════════════════════════════════════════════════════════╝
+
+Demo 1: Basic Tenant Isolation
+─────────────────────────────────────────────────────────────────
+✓ Switched to tenant: acme-corp
+  ✓ Created product for acme-corp: Acme Widget Pro
+✓ Querying as acme-corp: Found 1 product(s)
+  └─ Product[1] Acme Widget Pro - $299.99 [Tenant: acme-corp]
+
+✅ Tenant isolation working correctly!
+   SQL: SELECT * FROM products WHERE tenant_id = 'acme-corp'
+```
+
+## Alternative Strategies Code Samples
+
+Alternative multi-tenancy strategy implementations are available as code samples in:
+
+**`samples/BasicUsage/Samples/`**:
+
+1. **MultiTenancySample.cs** (437 lines) - Discriminator Column strategy (✅ LIVE DEMO)
+   - Uses `[MultiTenant]` attribute
+   - Automatic tenant filtering
+   - 7 comprehensive demos
+   - Runnable with `dotnet run`
+
+2. **DatabasePerTenantSample.cs** (220 lines) - Database Per Tenant strategy
+   - NO `[MultiTenant]` attribute
+   - Connection factory implementation
+   - Tenant-to-database mapping
+   - Database-level isolation
+
+3. **SchemaPerTenantSample.cs** (280 lines) - Schema Per Tenant strategy
+   - NO `[MultiTenant]` attribute
+   - Schema-aware database provider
+   - Schema creation and management
+   - Schema-level isolation
+
+**Strategy Comparison**:
+
+| Strategy | [MultiTenant] Attribute | TenantId Property | TenantId Column | Isolation Method | Sample File |
+|----------|------------------------|-------------------|-----------------|------------------|-------------|
+| **Discriminator** | ✅ **YES** | ✅ **YES** | ✅ **YES** | Row-level filtering | `MultiTenancySample.cs` (runnable) |
+| **Database Per Tenant** | ❌ **NO** | ❌ **NO** | ❌ **NO** | Database-level | `DatabasePerTenantSample.cs` (pattern) |
+| **Schema Per Tenant** | ❌ **NO** | ❌ **NO** | ❌ **NO** | Schema-level | `SchemaPerTenantSample.cs` (pattern) |
+
+**Key Principle**: 
+- ✅ Use `[MultiTenant]` attribute ONLY for Discriminator Column strategy
+- ❌ DO NOT use `[MultiTenant]` attribute for Database Per Tenant or Schema Per Tenant
+
 ## Conclusion
 
 Phase 5.5 delivers enterprise-grade multi-tenancy support that is:

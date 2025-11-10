@@ -30,11 +30,13 @@ This application acts as a host for all feature demonstrations, from basic CRUD 
          Demonstrates advanced CPQL features like JOINs, GROUP BY, aggregates, and functions.
       2. Basic CRUD Operations
          Demonstrates basic entity mapping, EntityManager CRUD operations, and simple CPQL queries using the PostgreSQL provider.
-      3. Repository Pattern
+      3. Multi-Tenancy Support
+         Demonstrates the Discriminator Column strategy with automatic tenant filtering, isolation validation, and transaction management.
+      4. Repository Pattern
          Demonstrates base repositories, custom repositories, and the repository factory.
-      4. Source Generators
+      5. Source Generators
          Explains the benefits of the Repository and Metadata source generators.
-      5. Synchronous API Usage
+      6. Synchronous API Usage
          Demonstrates the use of synchronous (blocking) API methods, ideal for console applications.
 
       A. Run All Samples

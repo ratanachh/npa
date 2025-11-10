@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.Extensions.DependencyInjection;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Core.MultiTenancy;
 
 namespace NPA.Core.Repositories;
 
@@ -57,8 +58,9 @@ public class RepositoryFactory : IRepositoryFactory
         var connection = _serviceProvider.GetRequiredService<IDbConnection>();
         var entityManager = _serviceProvider.GetRequiredService<IEntityManager>();
         var metadataProvider = _serviceProvider.GetRequiredService<IMetadataProvider>();
+        var tenantProvider = _serviceProvider.GetService<ITenantProvider>(); // Optional
         
-        return new BaseRepository<TEntity, TKey>(connection, entityManager, metadataProvider);
+        return new BaseRepository<TEntity, TKey>(connection, entityManager, metadataProvider, tenantProvider);
     }
     
     /// <inheritdoc />

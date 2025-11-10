@@ -20,6 +20,7 @@
     <PackageReference Include="Moq" Version="4.20.69" />
     <PackageReference Include="FluentAssertions" Version="6.12.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.6.0" />
     <PackageReference Include="Testcontainers" Version="3.6.0" />
@@ -29,6 +30,7 @@
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.PostgreSql\NPA.Providers.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.SqlServer\NPA.Providers.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Providers.Sqlite\NPA.Providers.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

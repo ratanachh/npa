@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.Extensions.Logging;
 using NPA.Core.Annotations;
 using NPA.Core.Metadata;
+using NPA.Core.MultiTenancy;
 using NPA.Core.Providers;
 using NPA.Core.Query;
 using NPA.Core.Query.CPQL;
@@ -20,12 +21,18 @@ public sealed class EntityManager : IEntityManager
     private readonly IDatabaseProvider _databaseProvider;
     private readonly IChangeTracker _changeTracker;
     private readonly ICascadeService _cascadeService;
+    private readonly ITenantProvider? _tenantProvider;
     private readonly ILogger<EntityManager>? _logger;
     private ITransaction? _currentTransaction;
     private bool _disposed;
 
     /// <inheritdoc />
-    public EntityManager(IDbConnection connection, IMetadataProvider metadataProvider, IDatabaseProvider databaseProvider, ILogger<EntityManager>? logger = null)
+    public EntityManager(
+        IDbConnection connection, 
+        IMetadataProvider metadataProvider, 
+        IDatabaseProvider databaseProvider, 
+        ILogger<EntityManager>? logger = null,
+        ITenantProvider? tenantProvider = null)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _metadataProvider = metadataProvider ?? throw new ArgumentNullException(nameof(metadataProvider));
@@ -33,6 +40,7 @@ public sealed class EntityManager : IEntityManager
         _changeTracker = new ChangeTracker();
         _cascadeService = new CascadeService();
         _logger = logger;
+        _tenantProvider = tenantProvider;
     }
 
     /// <inheritdoc />
@@ -56,6 +64,9 @@ public sealed class EntityManager : IEntityManager
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
+        
+        // Auto-populate TenantId for multi-tenant entities
+        AutoPopulateTenantId(entity);
         
         // Process cascade persist operations BEFORE persisting the entity
         var visited = new HashSet<object>();
@@ -167,6 +178,9 @@ public sealed class EntityManager : IEntityManager
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
         var metadata = _metadataProvider.GetEntityMetadata<T>();
+        
+        // Validate TenantId for multi-tenant entities
+        ValidateTenantId(entity);
 
         // Process cascade merge operations BEFORE merging the entity
         var visited = new HashSet<object>();
@@ -932,5 +946,96 @@ public sealed class EntityManager : IEntityManager
         _logger?.LogInformation("Bulk delete completed. {AffectedRows} rows affected", affectedRows);
 
         return affectedRows;
+    }
+    
+    /// <summary>
+    /// Auto-populates the TenantId property if the entity is multi-tenant.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="entity">The entity instance.</param>
+    private void AutoPopulateTenantId<T>(T entity) where T : class
+    {
+        var multiTenantAttr = typeof(T).GetCustomAttribute<MultiTenantAttribute>();
+        if (multiTenantAttr == null || !multiTenantAttr.AutoPopulateTenantId)
+            return;
+        
+        if (_tenantProvider == null)
+            return;
+        
+        var currentTenantId = _tenantProvider.GetCurrentTenantId();
+        if (string.IsNullOrEmpty(currentTenantId))
+        {
+            if (multiTenantAttr.ValidateTenantOnWrite)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot persist multi-tenant entity {typeof(T).Name} without a current tenant context. " +
+                    "Set a tenant using ITenantProvider.SetCurrentTenant() before persisting.");
+            }
+            return;
+        }
+        
+        // Find and set the TenantId property
+        var tenantProperty = typeof(T).GetProperty(multiTenantAttr.TenantIdProperty);
+        if (tenantProperty == null)
+        {
+            throw new InvalidOperationException(
+                $"Property '{multiTenantAttr.TenantIdProperty}' not found on entity type {typeof(T).Name}. " +
+                "Ensure the property exists or update the [MultiTenant] attribute.");
+        }
+        
+        var currentValue = tenantProperty.GetValue(entity) as string;
+        if (string.IsNullOrEmpty(currentValue))
+        {
+            tenantProperty.SetValue(entity, currentTenantId);
+            _logger?.LogDebug("Auto-populated TenantId '{TenantId}' for entity {EntityType}", currentTenantId, typeof(T).Name);
+        }
+    }
+    
+    /// <summary>
+    /// Validates the TenantId property if the entity is multi-tenant.
+    /// </summary>
+    /// <typeparam name="T">The entity type.</typeparam>
+    /// <param name="entity">The entity instance.</param>
+    /// <exception cref="InvalidOperationException">Thrown when tenant validation fails.</exception>
+    private void ValidateTenantId<T>(T entity) where T : class
+    {
+        var multiTenantAttr = typeof(T).GetCustomAttribute<MultiTenantAttribute>();
+        if (multiTenantAttr == null || !multiTenantAttr.ValidateTenantOnWrite)
+            return;
+        
+        if (_tenantProvider == null)
+            return;
+        
+        var currentTenantId = _tenantProvider.GetCurrentTenantId();
+        if (string.IsNullOrEmpty(currentTenantId))
+        {
+            throw new InvalidOperationException(
+                $"Cannot update multi-tenant entity {typeof(T).Name} without a current tenant context. " +
+                "Set a tenant using ITenantProvider.SetCurrentTenant() before updating.");
+        }
+        
+        // Find and validate the TenantId property
+        var tenantProperty = typeof(T).GetProperty(multiTenantAttr.TenantIdProperty);
+        if (tenantProperty == null)
+        {
+            throw new InvalidOperationException(
+                $"Property '{multiTenantAttr.TenantIdProperty}' not found on entity type {typeof(T).Name}. " +
+                "Ensure the property exists or update the [MultiTenant] attribute.");
+        }
+        
+        var entityTenantId = tenantProperty.GetValue(entity) as string;
+        if (string.IsNullOrEmpty(entityTenantId))
+        {
+            throw new InvalidOperationException(
+                $"TenantId property '{multiTenantAttr.TenantIdProperty}' is not set on entity {typeof(T).Name}. " +
+                "Ensure the entity has a valid tenant before updating.");
+        }
+        
+        if (!entityTenantId.Equals(currentTenantId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Cross-tenant update detected! Entity {typeof(T).Name} belongs to tenant '{entityTenantId}' " +
+                $"but current tenant context is '{currentTenantId}'. Cross-tenant modifications are not allowed.");
+        }
     }
 }

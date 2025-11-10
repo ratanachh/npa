@@ -10,6 +10,7 @@ This sample demonstrates the **implemented and tested** features of NPA using SQ
 | 1.4 | ✅ Complete | SQL Server provider with advanced features | `SqlServerProviderRunner` (TVPs, JSON, Spatial, Full-Text) |
 | 1.5 | ✅ Complete | MySQL provider with advanced features | `MySqlProviderRunner` (JSON, Spatial, Full-Text, UPSERT) |
 | 3.1 | ✅ Complete | Transaction management with deferred execution | `TransactionSample` (batching, rollback, ordering, 90-95% perf gain) |
+| 5.5 | ✅ Complete | Multi-tenancy support with automatic tenant isolation | `MultiTenancySample` (row-level security, tenant context, validation) |
 
 **Default Provider**: SQL Server (63 tests passing)  
 **Alternative Providers**: MySQL (86 tests passing), PostgreSQL
@@ -23,7 +24,8 @@ The sample includes an interactive menu system that auto-discovers and runs diff
 3. **Source Generator Sample** - Phase 2.6 compile-time metadata generation
 4. **Sync API Sample** - Synchronous API alternatives
 5. **Advanced Queries Sample** - Phase 2.3 CPQL with JOINs, GROUP BY, aggregates
-6. **Transaction Management Sample** - Phase 3.1 deferred execution and batching ✨ NEW!
+6. **Transaction Management Sample** - Phase 3.1 deferred execution and batching
+7. **Multi-Tenancy Sample** - Phase 5.5 automatic tenant isolation and row-level security ✨ NEW!
 
 ### Transaction Sample Demonstrates:
 1. **Basic Transaction** - Commit with multiple operations batched together
@@ -32,6 +34,15 @@ The sample includes an interactive menu system that auto-discovers and runs diff
 4. **Automatic Rollback** - Transaction rolls back on exception
 5. **Mixed Operations** - Automatic priority ordering (INSERT → UPDATE → DELETE)
 6. **Backward Compatibility** - Immediate execution without transactions
+
+### Multi-Tenancy Sample Demonstrates:
+1. **Basic Tenant Isolation** - Automatic filtering by tenant
+2. **Auto TenantId Population** - EntityManager auto-populates TenantId
+3. **Tenant Context Switching** - Change tenant and see different data
+4. **Cross-Tenant Validation** - Prevents modifying other tenant's data
+5. **Query Filtering** - Tenant filter works with WHERE, JOINs, aggregates
+6. **Multi-Tenant Transactions** - Batching with tenant isolation
+7. **Tenant Statistics** - Aggregate queries auto-filtered by tenant
 
 Each sample:
 - Sets up its own database schema
@@ -49,12 +60,16 @@ Each sample:
   - `SourceGeneratorSample.cs` – Phase 2.6 metadata generation
   - `SyncApiSample.cs` – Synchronous API alternatives
   - `AdvancedQueriesSample.cs` – Phase 2.3 CPQL advanced features
-  - `TransactionSample.cs` – Phase 3.1 transaction management ✨ NEW!
+  - `TransactionSample.cs` – Phase 3.1 transaction management
   - `TransactionSampleRunner.cs` – Transaction sample wrapper with DB setup
+  - `MultiTenancySample.cs` – Phase 5.5 multi-tenancy support ✨ NEW!
+  - `MultiTenancySampleRunner.cs` – Multi-tenancy sample wrapper with DB setup ✨ NEW!
 - **Entities/**
   - `User.cs` – User entity with JPA-like attributes
   - `Order.cs` – Order entity with relationships
-  - `OrderItem.cs` – Order item entity ✨ NEW!
+  - `OrderItem.cs` – Order item entity
+  - `Product.cs` – Product entity with [MultiTenant] attribute ✨ UPDATED!
+  - `Category.cs` – Category entity with [MultiTenant] attribute ✨ NEW!
   
 
 ## Running the Sample
@@ -88,7 +103,9 @@ Please choose a sample to run:
      Demonstrates compile-time metadata generation
   5. Sync API Sample
      Demonstrates synchronous API alternatives
-  6. Transaction Management (Phase 3.1)
+  6. Multi-Tenancy Support (Phase 5.5)
+     Demonstrates automatic tenant isolation, row-level security, and tenant context management
+  7. Transaction Management (Phase 3.1)
      Demonstrates deferred execution, batching, rollback, and performance optimization
 
   A. Run All Samples
@@ -153,6 +170,57 @@ Demo 4: Automatic Rollback on Exception
 ✅ All transaction demos completed successfully!
 ```
 
+### Multi-Tenancy Sample Output Example
+```
+╔════════════════════════════════════════════════════════════════╗
+║      NPA Multi-Tenancy Support Demo (Phase 5.5)              ║
+╚════════════════════════════════════════════════════════════════╝
+
+🧹 Cleaning up database...
+✓ Database cleaned
+
+─────────────────────────────────────────────────────────────────
+Demo 1: Basic Tenant Isolation
+─────────────────────────────────────────────────────────────────
+✓ Switched to tenant: acme-corp
+  ✓ Created product for acme-corp: Acme Widget Pro
+✓ Switched to tenant: contoso-ltd
+  ✓ Created product for contoso-ltd: Contoso Premium Tool
+
+✓ Querying as acme-corp: Found 1 product(s)
+  └─ Product[1] Acme Widget Pro - $299.99 (Stock: 100) [Tenant: acme-corp]
+
+✓ Querying as contoso-ltd: Found 1 product(s)
+  └─ Product[2] Contoso Premium Tool - $499.99 (Stock: 50) [Tenant: contoso-ltd]
+
+✅ Tenant isolation working correctly!
+   SQL: SELECT * FROM products WHERE tenant_id = 'acme-corp'
+
+─────────────────────────────────────────────────────────────────
+Demo 2: Automatic TenantId Population
+─────────────────────────────────────────────────────────────────
+✓ Current tenant: fabrikam-inc
+  Before persist: TenantId = '' (empty)
+  After persist:  TenantId = 'fabrikam-inc' (auto-populated!)
+
+✅ TenantId automatically set by EntityManager!
+   Category[1] now belongs to tenant: fabrikam-inc
+
+─────────────────────────────────────────────────────────────────
+Demo 4: Cross-Tenant Access Validation
+─────────────────────────────────────────────────────────────────
+✓ Created product as tenant-security: Product[12] Secure Product
+✓ Switched to tenant-hacker (attempting cross-tenant access)
+  ✓ Cross-tenant update blocked: Entity belongs to different tenant
+
+✅ Data integrity verified!
+   Original price: $149.99
+   Current price:  $149.99
+   Cross-tenant modification was prevented!
+
+✅ All multi-tenancy demos completed successfully!
+```
+
 ## Best Practices Illustrated
 - **Deferred Execution**: Operations queue when transaction is active
 - **Batching**: Combine multiple operations for 90-95% performance improvement
@@ -160,6 +228,10 @@ Demo 4: Automatic Rollback on Exception
 - **Priority Ordering**: Operations execute in correct order (INSERT → UPDATE → DELETE)
 - **Backward Compatibility**: Works without transactions (immediate execution)
 - **Explicit Flush**: Get generated IDs before commit when needed
+- **Tenant Isolation**: Automatic row-level filtering with `[MultiTenant]` attribute
+- **Tenant Context**: Thread-safe tenant management with `ITenantProvider`
+- **Data Security**: Auto-validation prevents cross-tenant data access
+- **Performance**: Indexed tenant_id columns for fast filtering
 - Scoped `EntityManager` usage via dependency injection
 - Parameterized queries with `.SetParameter(name, value)`
 - Clean resource disposal and error handling
@@ -173,5 +245,11 @@ Demo 4: Automatic Rollback on Exception
 - **Phase 5**: Enterprise features (caching, migrations, monitoring)
 
 ---
-**Latest Update**: Phase 3.1 Transaction Management complete with 22 tests passing (100% coverage).  
-Performance: 90-95% reduction in database round trips with batching.
+**Latest Updates**:  
+- **Phase 5.5 Multi-Tenancy**: Complete with 32 tests passing (100% coverage). Automatic tenant isolation with row-level security.  
+- **Phase 3.1 Transactions**: Complete with 22 tests passing. 90-95% reduction in database round trips with batching.
+
+**Multi-Tenancy Strategies**: See `samples/MultiTenancy/` for alternative approaches:
+- Discriminator Column (current implementation) - Row-level filtering
+- Database Per Tenant - Separate database per tenant
+- Schema Per Tenant - Separate schema per tenant

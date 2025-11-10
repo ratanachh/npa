@@ -2,6 +2,7 @@ using System.Data;
 using Dapper;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
+using NPA.Core.MultiTenancy;
 
 namespace NPA.Core.Repositories;
 
@@ -18,8 +19,13 @@ public abstract class CustomRepositoryBase<T, TKey> : BaseRepository<T, TKey> wh
     /// <param name="connection">The database connection.</param>
     /// <param name="entityManager">The entity manager.</param>
     /// <param name="metadataProvider">The metadata provider.</param>
-    protected CustomRepositoryBase(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)
-        : base(connection, entityManager, metadataProvider)
+    /// <param name="tenantProvider">The tenant provider (optional).</param>
+    protected CustomRepositoryBase(
+        IDbConnection connection, 
+        IEntityManager entityManager, 
+        IMetadataProvider metadataProvider,
+        ITenantProvider? tenantProvider = null)
+        : base(connection, entityManager, metadataProvider, tenantProvider)
     {
     }
     
@@ -81,8 +87,13 @@ public abstract class CustomRepositoryBase<T> : CustomRepositoryBase<T, object> 
     /// <param name="connection">The database connection.</param>
     /// <param name="entityManager">The entity manager.</param>
     /// <param name="metadataProvider">The metadata provider.</param>
-    protected CustomRepositoryBase(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)
-        : base(connection, entityManager, metadataProvider)
+    /// <param name="tenantProvider">The tenant provider (optional).</param>
+    protected CustomRepositoryBase(
+        IDbConnection connection, 
+        IEntityManager entityManager, 
+        IMetadataProvider metadataProvider,
+        ITenantProvider? tenantProvider = null)
+        : base(connection, entityManager, metadataProvider, tenantProvider)
     {
     }
 }
