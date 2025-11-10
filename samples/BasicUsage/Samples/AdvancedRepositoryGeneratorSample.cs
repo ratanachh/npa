@@ -56,9 +56,14 @@ public class AdvancedRepositoryGeneratorSample : ISample
         Console.WriteLine("6. MULTI-MAPPING (Advanced)");
         Console.WriteLine("   Map complex relationships with [MultiMapping]:");
         Console.WriteLine("   ");
-        Console.WriteLine("   [MultiMapping(\"id\", SplitOn = \"address_id\")]");
-        Console.WriteLine("   [Query(\"SELECT u.*, a.* FROM users u LEFT JOIN addresses a ON u.id = a.user_id\")]");
-        Console.WriteLine("   Task<User> GetUserWithAddressAsync(long id);");
+        Console.WriteLine("   [MultiMapping(\"Id\", SplitOn = \"AddressId\")]");
+        Console.WriteLine("   [Query(\"SELECT u.*, a.* FROM users u LEFT JOIN addresses a ON u.id = a.user_id WHERE u.id = @id\")]");
+        Console.WriteLine("   Task<UserWithAddress> GetUserWithAddressAsync(long id);");
+        Console.WriteLine();
+        Console.WriteLine("   This generates Dapper multi-mapping code:");
+        Console.WriteLine("   - Maps multiple tables to related objects");
+        Console.WriteLine("   - Uses dictionary to group by key property");
+        Console.WriteLine("   - Splits columns at specified points");
         Console.WriteLine();
 
         Console.WriteLine("SUPPORTED METHOD NAME PREFIXES:");
@@ -129,3 +134,67 @@ public interface IAdvancedUserRepository : IRepository<User, long>
     [Query("SELECT * FROM users WHERE email = @email")]
     Task<User?> GetByEmailAsync(string email);
 }
+
+// Example entities for multi-mapping demonstration
+public class UserWithAddress
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public Address? Address { get; set; }
+}
+
+public class Address
+{
+    public long AddressId { get; set; }
+    public long UserId { get; set; }
+    public string Street { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
+}
+
+public class UserWithOrders
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public List<UserOrder> Orders { get; set; } = new();
+}
+
+public class UserOrder
+{
+    public long OrderId { get; set; }
+    public long UserId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public DateTime OrderDate { get; set; }
+}
+
+// Example repository using multi-mapping
+[Repository]
+public interface IUserWithRelationsRepository : IRepository<UserWithAddress, long>
+{
+    // Multi-mapping with single related table
+    [MultiMapping("Id", SplitOn = "AddressId")]
+    [Query(@"SELECT u.id, u.name, u.email, a.address_id AS AddressId, a.user_id AS UserId, a.street, a.city, a.country 
+            FROM users u LEFT JOIN addresses a ON u.id = a.user_id 
+            WHERE u.id = @id")]
+    Task<UserWithAddress?> GetUserWithAddressAsync(long id);
+
+    // Multi-mapping with collection result
+    [MultiMapping("Id", SplitOn = "AddressId")]
+    [Query(@"SELECT u.id, u.name, u.email, a.address_id AS AddressId, a.user_id AS UserId, a.street, a.city, a.country 
+                FROM users u LEFT JOIN addresses a ON u.id = a.user_id")]
+    Task<IEnumerable<UserWithAddress>> GetAllUsersWithAddressesAsync();
+
+    // Multi-mapping with multiple related tables
+    [MultiMapping("Id", SplitOn = "AddressId,OrderId")]
+    [Query(@"SELECT u.id, u.name, u.email, 
+             a.address_id AS AddressId, a.street, a.city, 
+             o.order_id AS OrderId, o.product_name, o.amount, o.order_date 
+             FROM users u 
+             LEFT JOIN addresses a ON u.id = a.user_id 
+             LEFT JOIN orders o ON u.id = o.user_id 
+             WHERE u.id = @id")]
+    Task<UserWithAddress?> GetUserWithAllRelationsAsync(long id);
+}
+

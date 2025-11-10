@@ -672,4 +672,91 @@ namespace TestNamespace
     }
 
     #endregion
+
+    #region Multi-Mapping Tests
+
+    [Fact]
+    public void MultiMappingAttribute_ShouldExistInNPACore()
+    {
+        // Verify the MultiMappingAttribute is available
+        var attributeType = typeof(NPA.Core.Annotations.MultiMappingAttribute);
+        
+        attributeType.Should().NotBeNull("MultiMappingAttribute should exist in NPA.Core.Annotations");
+        attributeType.Should().BeAssignableTo<Attribute>("MultiMappingAttribute should be an Attribute");
+    }
+
+    [Fact]
+    public void MultiMappingAttribute_ShouldTargetMethods()
+    {
+        // Arrange
+        var attributeType = typeof(NPA.Core.Annotations.MultiMappingAttribute);
+        var attributeUsage = (AttributeUsageAttribute?)Attribute.GetCustomAttribute(attributeType, typeof(AttributeUsageAttribute));
+
+        // Assert
+        attributeUsage.Should().NotBeNull("MultiMappingAttribute should have AttributeUsage");
+        attributeUsage!.ValidOn.Should().HaveFlag(AttributeTargets.Method, "MultiMappingAttribute should target methods");
+    }
+
+    [Fact]
+    public void MultiMappingAttribute_ShouldHaveKeyPropertyParameter()
+    {
+        // Arrange
+        var attributeType = typeof(NPA.Core.Annotations.MultiMappingAttribute);
+
+        // Act
+        var constructor = attributeType.GetConstructor(new[] { typeof(string) });
+
+        // Assert
+        constructor.Should().NotBeNull("MultiMappingAttribute should have a constructor accepting keyProperty string");
+    }
+
+    [Fact]
+    public void MultiMappingAttribute_ShouldHaveSplitOnProperty()
+    {
+        // Arrange
+        var attributeType = typeof(NPA.Core.Annotations.MultiMappingAttribute);
+
+        // Act
+        var property = attributeType.GetProperty("SplitOn");
+
+        // Assert
+        property.Should().NotBeNull("MultiMappingAttribute should have SplitOn property");
+        property!.PropertyType.Should().Be(typeof(string), "SplitOn should be of type string");
+        property.CanWrite.Should().BeTrue("SplitOn should be settable");
+    }
+
+    [Fact]
+    public void MultiMappingAttribute_ShouldHaveMapTypesProperty()
+    {
+        // Arrange
+        var attributeType = typeof(NPA.Core.Annotations.MultiMappingAttribute);
+
+        // Act
+        var property = attributeType.GetProperty("MapTypes");
+
+        // Assert
+        property.Should().NotBeNull("MultiMappingAttribute should have MapTypes property");
+        property!.PropertyType.Should().Be(typeof(Type[]), "MapTypes should be of type Type[]");
+        property.CanWrite.Should().BeTrue("MapTypes should be settable");
+    }
+
+    [Theory]
+    [InlineData("Id", "AddressId")]
+    [InlineData("UserId", "AddressId,OrderId")]
+    [InlineData("StudentId", "Id")]
+    public void MultiMappingAttribute_ShouldStoreKeyAndSplitOnProperties(string keyProperty, string splitOn)
+    {
+        // Arrange & Act
+        var attr = new NPA.Core.Annotations.MultiMappingAttribute(keyProperty)
+        {
+            SplitOn = splitOn
+        };
+
+        // Assert
+        attr.KeyProperty.Should().Be(keyProperty);
+        attr.SplitOn.Should().Be(splitOn);
+    }
+
+    #endregion
 }
+

@@ -909,11 +909,106 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         if (attrs.HasMultiMapping)
         {
-            // Multi-mapping query
+            // Multi-mapping query using Dapper
+            var innerType = GetInnerType(method.ReturnType);
+            var isCollection = method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("List") || 
+                             method.ReturnType.Contains("ICollection") || method.ReturnType.Contains("[]");
+            
             sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
-            sb.AppendLine($"            var splitOn = \"{attrs.SplitOn ?? "id"}\";");
-            sb.AppendLine($"            // TODO: Implement multi-mapping logic");
-            sb.AppendLine($"            throw new NotImplementedException(\"Multi-mapping support requires additional implementation\");");
+            sb.AppendLine($"            var splitOn = \"{attrs.SplitOn ?? "Id"}\";");
+            sb.AppendLine();
+            
+            if (isCollection)
+            {
+                // Collection result with multi-mapping
+                sb.AppendLine($"            var lookup = new Dictionary<object, {innerType}>();");
+                sb.AppendLine();
+                
+                if (isAsync)
+                {
+                    sb.AppendLine($"            await _connection.QueryAsync<{innerType}, dynamic, {innerType}>(");
+                    sb.AppendLine($"                sql,");
+                    sb.AppendLine($"                (main, related) => {{");
+                    sb.AppendLine($"                    var key = main.{attrs.KeyProperty ?? "Id"};");
+                    sb.AppendLine($"                    if (!lookup.TryGetValue(key, out var existing))");
+                    sb.AppendLine($"                    {{");
+                    sb.AppendLine($"                        lookup[key] = main;");
+                    sb.AppendLine($"                    }}");
+                    sb.AppendLine($"                    // Note: Relationship population should be customized based on your entities");
+                    sb.AppendLine($"                    return main;");
+                    sb.AppendLine($"                }},");
+                    sb.AppendLine($"                {paramObj},");
+                    sb.AppendLine($"                splitOn: splitOn);");
+                    sb.AppendLine();
+                    
+                    var conversion = GetCollectionConversion(method.ReturnType);
+                    if (!string.IsNullOrEmpty(conversion))
+                    {
+                        sb.AppendLine($"            return lookup.Values.{conversion};");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"            return lookup.Values;");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine($"            _connection.Query<{innerType}, dynamic, {innerType}>(");
+                    sb.AppendLine($"                sql,");
+                    sb.AppendLine($"                (main, related) => {{");
+                    sb.AppendLine($"                    var key = main.{attrs.KeyProperty ?? "Id"};");
+                    sb.AppendLine($"                    if (!lookup.TryGetValue(key, out var existing))");
+                    sb.AppendLine($"                    {{");
+                    sb.AppendLine($"                        lookup[key] = main;");
+                    sb.AppendLine($"                    }}");
+                    sb.AppendLine($"                    // Note: Relationship population should be customized based on your entities");
+                    sb.AppendLine($"                    return main;");
+                    sb.AppendLine($"                }},");
+                    sb.AppendLine($"                {paramObj},");
+                    sb.AppendLine($"                splitOn: splitOn);");
+                    sb.AppendLine();
+                    
+                    var conversion = GetCollectionConversion(method.ReturnType);
+                    if (!string.IsNullOrEmpty(conversion))
+                    {
+                        sb.AppendLine($"            return lookup.Values.{conversion};");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"            return lookup.Values;");
+                    }
+                }
+            }
+            else
+            {
+                // Single result with multi-mapping
+                if (isAsync)
+                {
+                    sb.AppendLine($"            var result = await _connection.QueryAsync<{innerType}, dynamic, {innerType}>(");
+                    sb.AppendLine($"                sql,");
+                    sb.AppendLine($"                (main, related) => {{");
+                    sb.AppendLine($"                    // Note: Relationship population should be customized based on your entities");
+                    sb.AppendLine($"                    return main;");
+                    sb.AppendLine($"                }},");
+                    sb.AppendLine($"                {paramObj},");
+                    sb.AppendLine($"                splitOn: splitOn);");
+                    sb.AppendLine();
+                    sb.AppendLine($"            return result.FirstOrDefault();");
+                }
+                else
+                {
+                    sb.AppendLine($"            var result = _connection.Query<{innerType}, dynamic, {innerType}>(");
+                    sb.AppendLine($"                sql,");
+                    sb.AppendLine($"                (main, related) => {{");
+                    sb.AppendLine($"                    // Note: Relationship population should be customized based on your entities");
+                    sb.AppendLine($"                    return main;");
+                    sb.AppendLine($"                }},");
+                    sb.AppendLine($"                {paramObj},");
+                    sb.AppendLine($"                splitOn: splitOn);");
+                    sb.AppendLine();
+                    sb.AppendLine($"            return result.FirstOrDefault();");
+                }
+            }
         }
         else if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
                  method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
