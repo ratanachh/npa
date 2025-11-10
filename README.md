@@ -832,10 +832,10 @@ public interface IUserRepository : IRepository<User, long>
     Task<IEnumerable<User>> FindActiveUsersAsync();
 }
 
-// Generated implementation (created at compile time)
-public partial class UserRepository : RepositoryBase<User, long>, IUserRepository
+// Generated implementation (created at compile time in separate file)
+public class UserRepositoryImpl : BaseRepository<User, long>, IUserRepository
 {
-    public UserRepository(IDbConnection connection) : base(connection) { }
+    public UserRepositoryImpl(IDbConnection connection) : base(connection) { }
     
     public async Task<User> FindByUsernameAsync(string username)
     {
@@ -1180,9 +1180,10 @@ public interface IUserRepository : IRepository<User, long>
 }
 
 // Generated implementation (created at compile time)
-public partial class UserRepository : RepositoryBase<User, long>, IUserRepository
+// Note: Class name has Implementation suffix (IUserRepository -> UserRepositoryImplementation)
+public class UserRepositoryImplementation : RepositoryBase<User, long>, IUserRepository
 {
-    public UserRepository(IDbConnection connection) : base(connection) { }
+    public UserRepositoryImplementation(IDbConnection connection) : base(connection) { }
     
     public async Task<User> FindByUsernameAsync(string username)
     {

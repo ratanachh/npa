@@ -145,7 +145,7 @@ public class RegionPerTenantSample
     /// Demo 3: Latency optimization
     /// Shows: Regional databases reduce network latency for users
     /// </summary>
-    private async Task Demo3_LatencyOptimizationAsync()
+    private Task Demo3_LatencyOptimizationAsync()
     {
         Console.WriteLine("─────────────────────────────────────────────────────────────────");
         Console.WriteLine("Demo 3: Latency Optimization");
@@ -194,13 +194,14 @@ public class RegionPerTenantSample
         Console.WriteLine("   EU users: 15ms vs 140ms (9x faster)");
         Console.WriteLine("   APAC users: 20ms vs 250ms (12x faster)");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// Demo 4: Regional failover
     /// Shows: Disaster recovery and failover within regions
     /// </summary>
-    private async Task Demo4_RegionalFailoverAsync()
+    private Task Demo4_RegionalFailoverAsync()
     {
         Console.WriteLine("─────────────────────────────────────────────────────────────────");
         Console.WriteLine("Demo 4: Regional Failover & Disaster Recovery");
@@ -225,13 +226,14 @@ public class RegionPerTenantSample
         Console.WriteLine("   Data never crosses regional boundaries during DR");
         Console.WriteLine("   Maintains compliance during outages");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// Demo 5: Multi-region deployment
     /// Shows: Managing a global SaaS with regional databases
     /// </summary>
-    private async Task Demo5_MultiRegionDeploymentAsync()
+    private Task Demo5_MultiRegionDeploymentAsync()
     {
         Console.WriteLine("─────────────────────────────────────────────────────────────────");
         Console.WriteLine("Demo 5: Multi-Region Deployment Architecture");
@@ -261,6 +263,7 @@ public class RegionPerTenantSample
         Console.WriteLine("   Global tenant directory routes to correct region");
         Console.WriteLine("   Scales horizontally by adding regions");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -318,7 +321,7 @@ public class RegionPerTenantSample
     /// Demo 7: Regional scaling
     /// Shows: Different regions can scale independently
     /// </summary>
-    private async Task Demo7_RegionalScalingAsync()
+    private Task Demo7_RegionalScalingAsync()
     {
         Console.WriteLine("─────────────────────────────────────────────────────────────────");
         Console.WriteLine("Demo 7: Independent Regional Scaling");
@@ -349,6 +352,7 @@ public class RegionPerTenantSample
         Console.WriteLine("   EU-West: Business tier for stable operations");
         Console.WriteLine("   APAC: Standard tier scaling with growth");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     // Helper methods

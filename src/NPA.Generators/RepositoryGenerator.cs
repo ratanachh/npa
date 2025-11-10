@@ -56,10 +56,10 @@ public class RepositoryGenerator : IIncrementalGenerator
             return null;
 
         // Check if it has the Repository attribute
-        var hasRepositoryAttribute = interfaceSymbol.GetAttributes()
-            .Any(a => a.AttributeClass?.Name == "RepositoryAttribute");
+        var repositoryAttribute = interfaceSymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "RepositoryAttribute");
 
-        if (!hasRepositoryAttribute)
+        if (repositoryAttribute == null)
             return null;
 
         // Extract entity and key types from IRepository<TEntity, TKey> inheritance
@@ -325,20 +325,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             }
         }
 
-        // Try to extract from attribute parameter (fallback)
-        var repositoryAttr = interfaceSymbol.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "RepositoryAttribute");
-
-        if (repositoryAttr != null && repositoryAttr.ConstructorArguments.Length > 0)
-        {
-            var entityTypeArg = repositoryAttr.ConstructorArguments[0];
-            if (entityTypeArg.Value is INamedTypeSymbol entityTypeSymbol)
-            {
-                return (entityTypeSymbol.ToDisplayString(), "object"); // Default key type
-            }
-        }
-
-        // Default: try to infer from interface name (IUserRepository -> User)
+        // If no IRepository<TEntity, TKey> is found, try to infer from interface name
         var interfaceName = interfaceSymbol.Name;
         if (interfaceName.StartsWith("I") && interfaceName.EndsWith("Repository"))
         {
@@ -619,7 +606,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
         
         sb.AppendLine($"    /// </summary>");
-        sb.AppendLine($"    public partial class {GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {info.FullInterfaceName}");
+        sb.AppendLine($"    public class {GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {info.FullInterfaceName}");
         sb.AppendLine("    {");
         
         // Generate constructor
@@ -850,9 +837,9 @@ public class RepositoryGenerator : IIncrementalGenerator
 
     private static string GetImplementationName(string interfaceName)
     {
-        // IUserRepository -> UserRepository
-        if (interfaceName.StartsWith("I") && char.IsUpper(interfaceName[1]))
-            return interfaceName.Substring(1);
+        // IUserRepository -> UserRepositoryImplementation
+        if (interfaceName.StartsWith("I") && interfaceName.Length > 1 && char.IsUpper(interfaceName[1]))
+            return interfaceName.Substring(1) + "Implementation";
         
         return interfaceName + "Implementation";
     }
@@ -928,17 +915,38 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            // TODO: Implement multi-mapping logic");
             sb.AppendLine($"            throw new NotImplementedException(\"Multi-mapping support requires additional implementation\");");
         }
-        else if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || method.ReturnType.Contains("List"))
+        else if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
+                 method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
+                 method.ReturnType.Contains("HashSet") || method.ReturnType.Contains("ISet") ||
+                 method.ReturnType.Contains("IReadOnly"))
         {
             // Returns collection
             sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
+            var conversion = GetCollectionConversion(method.ReturnType);
+            
             if (isAsync)
             {
-                sb.AppendLine($"            return await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                if (!string.IsNullOrEmpty(conversion))
+                {
+                    sb.AppendLine($"            var result = await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                    sb.AppendLine($"            return result.{conversion};");
+                }
+                else
+                {
+                    sb.AppendLine($"            return await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                }
             }
             else
             {
-                sb.AppendLine($"            return _connection.Query<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                if (!string.IsNullOrEmpty(conversion))
+                {
+                    sb.AppendLine($"            var result = _connection.Query<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                    sb.AppendLine($"            return result.{conversion};");
+                }
+                else
+                {
+                    sb.AppendLine($"            return _connection.Query<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                }
             }
         }
         else if (method.ReturnType.Contains("int") || method.ReturnType.Contains("long"))
@@ -992,16 +1000,37 @@ public class RepositoryGenerator : IIncrementalGenerator
         var procName = attrs.Schema != null ? $"{attrs.Schema}.{attrs.ProcedureName}" : attrs.ProcedureName;
         var paramObj = GenerateParameterObject(method.Parameters);
 
-        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || method.ReturnType.Contains("List"))
+        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
+            method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
+            method.ReturnType.Contains("HashSet") || method.ReturnType.Contains("ISet") ||
+            method.ReturnType.Contains("IReadOnly"))
         {
             // Returns collection
+            var conversion = GetCollectionConversion(method.ReturnType);
+            
             if (isAsync)
             {
-                sb.AppendLine($"            return await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(\"{procName}\", {paramObj}, commandType: CommandType.StoredProcedure);");
+                if (!string.IsNullOrEmpty(conversion))
+                {
+                    sb.AppendLine($"            var result = await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(\"{procName}\", {paramObj}, commandType: CommandType.StoredProcedure);");
+                    sb.AppendLine($"            return result.{conversion};");
+                }
+                else
+                {
+                    sb.AppendLine($"            return await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(\"{procName}\", {paramObj}, commandType: CommandType.StoredProcedure);");
+                }
             }
             else
             {
-                sb.AppendLine($"            return _connection.Query<{GetInnerType(method.ReturnType)}>(\"{procName}\", {paramObj}, commandType: CommandType.StoredProcedure);");
+                if (!string.IsNullOrEmpty(conversion))
+                {
+                    sb.AppendLine($"            var result = _connection.Query<{GetInnerType(method.ReturnType)}>(\"{procName}\", {paramObj}, commandType: CommandType.StoredProcedure);");
+                    sb.AppendLine($"            return result.{conversion};");
+                }
+                else
+                {
+                    sb.AppendLine($"            return _connection.Query<{GetInnerType(method.ReturnType)}>(\"{procName}\", {paramObj}, commandType: CommandType.StoredProcedure);");
+                }
             }
         }
         else if (method.ReturnType.Contains("int") || method.ReturnType.Contains("long") || method.ReturnType.Contains("bool"))
@@ -1259,6 +1288,20 @@ public class RepositoryGenerator : IIncrementalGenerator
         var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
         var paramObj = GenerateParameterObject(convention.Parameters);
 
+        // Special handling for id parameter when convention doesn't extract it
+        if (string.IsNullOrEmpty(whereClause) && convention.Parameters.Count > 0)
+        {
+            // Check if there's an 'id' parameter (case-insensitive)
+            var idParam = convention.Parameters.FirstOrDefault(p => 
+                p.Name.Equals("id", StringComparison.OrdinalIgnoreCase));
+            
+            if (idParam != null)
+            {
+                whereClause = $"id = @{idParam.Name}";
+                paramObj = $"new {{ {idParam.Name} }}";
+            }
+        }
+
         if (string.IsNullOrEmpty(whereClause))
         {
             sb.AppendLine($"            throw new InvalidOperationException(\"Delete without WHERE clause is not allowed\");");
@@ -1268,11 +1311,11 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            var sql = \"DELETE FROM {tableName} WHERE {whereClause}\";");
             if (isAsync)
             {
-                sb.AppendLine($"            return await _connection.ExecuteAsync(sql, {paramObj});");
+                sb.AppendLine($"            await _connection.ExecuteAsync(sql, {paramObj});");
             }
             else
             {
-                sb.AppendLine($"            return _connection.Execute(sql, {paramObj});");
+                sb.AppendLine($"            _connection.Execute(sql, {paramObj});");
             }
         }
 
@@ -1367,20 +1410,57 @@ public class RepositoryGenerator : IIncrementalGenerator
             return GetInnerType(taskInner); // Recursively handle nested generics
         }
 
-        // Handle IEnumerable<T>, ICollection<T>, List<T>, etc.
+        // Handle arrays (T[] or T?[])
+        if (typeString.Contains("[]"))
+        {
+            return typeString.Replace("[]", "");
+        }
+
+        // Handle IEnumerable<T>, ICollection<T>, List<T>, HashSet<T>, ISet<T>, etc.
         if (typeString.Contains("IEnumerable<") || typeString.Contains("ICollection<") || 
-            typeString.Contains("IList<") || typeString.Contains("List<"))
+            typeString.Contains("IList<") || typeString.Contains("List<") ||
+            typeString.Contains("HashSet<") || typeString.Contains("ISet<") ||
+            typeString.Contains("IReadOnlyCollection<") || typeString.Contains("IReadOnlyList<"))
         {
             var collectionStart = typeString.IndexOf('<');
             if (collectionStart >= 0)
             {
                 var innerType = ExtractFirstGenericArgument(typeString.Substring(collectionStart));
-                return innerType.TrimEnd('?');
+                // Don't trim '?' - preserve nullability of the element type
+                return innerType;
             }
         }
 
-        // No generic type found, return as is
-        return typeString.TrimEnd('?');
+        // No generic type found, return as is (preserve nullability)
+        return typeString;
+    }
+
+    private static string GetCollectionConversion(string returnType)
+    {
+        // Determine what conversion method to use based on return type
+        // Returns: empty string (no conversion), "ToList()", "ToArray()", "ToHashSet()"
+        
+        if (returnType.Contains("[]"))
+            return "ToArray()";
+        
+        // List<T>, IList<T>, IReadOnlyList<T> all need ToList()
+        if (returnType.Contains("List<") || returnType.Contains("System.Collections.Generic.List<") ||
+            returnType.Contains("IList<") || returnType.Contains("System.Collections.Generic.IList<") ||
+            returnType.Contains("IReadOnlyList<") || returnType.Contains("System.Collections.Generic.IReadOnlyList<"))
+            return "ToList()";
+        
+        // IReadOnlyCollection<T> also needs ToList() (can't use ToHashSet for this)
+        if (returnType.Contains("IReadOnlyCollection<") || returnType.Contains("System.Collections.Generic.IReadOnlyCollection<"))
+            return "ToList()";
+        
+        if (returnType.Contains("HashSet<") || returnType.Contains("System.Collections.Generic.HashSet<"))
+            return "ToHashSet()";
+        
+        if (returnType.Contains("ISet<") || returnType.Contains("System.Collections.Generic.ISet<"))
+            return "ToHashSet()";
+        
+        // IEnumerable, ICollection - no conversion needed (QueryAsync returns IEnumerable)
+        return string.Empty;
     }
 
     private static string ExtractFirstGenericArgument(string text)

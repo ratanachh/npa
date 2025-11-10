@@ -34,7 +34,7 @@ public class QueryMethodGenerationSample : ISample
         await Task.CompletedTask;
     }
 
-    private static async Task DemonstrateOrderByConventions()
+    private static Task DemonstrateOrderByConventions()
     {
         Console.WriteLine("1. OrderBy Convention-Based Methods");
         Console.WriteLine("   The generator parses method names like:");
@@ -42,9 +42,10 @@ public class QueryMethodGenerationSample : ISample
         Console.WriteLine("   - FindByStatusOrderByNameDesc -> ... ORDER BY name DESC");
         Console.WriteLine("   - GetAllOrderByCreatedAtDesc -> SELECT * FROM users ORDER BY created_at DESC");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
-    private static async Task DemonstratePaginationAttributes()
+    private static Task DemonstratePaginationAttributes()
     {
         Console.WriteLine("2. Pagination Attributes");
         Console.WriteLine("   Use [Paginated] attribute for automatic pagination:");
@@ -52,9 +53,10 @@ public class QueryMethodGenerationSample : ISample
         Console.WriteLine("   - [Paginated(PageSize = 10, MaxPageSize = 100)]");
         Console.WriteLine("   - [Paginated(IncludeTotalCount = true)]");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
-    private static async Task DemonstrateComplexOrdering()
+    private static Task DemonstrateComplexOrdering()
     {
         Console.WriteLine("3. Complex Multi-Column Ordering");
         Console.WriteLine("   Method names support multiple OrderBy clauses:");
@@ -87,6 +89,7 @@ public class QueryMethodGenerationSample : ISample
         Task<IEnumerable<User>> GetAllSortedByName();
     }
 ");
+        return Task.CompletedTask;
     }
 }
 

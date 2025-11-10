@@ -259,7 +259,7 @@ public class SchemaPerTenantSample
     /// Demo 6: Schema-level security
     /// Shows: PostgreSQL permissions can enforce schema-level access
     /// </summary>
-    private async Task Demo6_SchemaLevelSecurityAsync()
+    private Task Demo6_SchemaLevelSecurityAsync()
     {
         Console.WriteLine("─────────────────────────────────────────────────────────────────");
         Console.WriteLine("Demo 6: Schema-Level Security");
@@ -284,6 +284,7 @@ public class SchemaPerTenantSample
         Console.WriteLine("   Optional: Create dedicated DB user per tenant");
         Console.WriteLine("   Defense in depth: Application + DB level security");
         Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     /// <summary>
