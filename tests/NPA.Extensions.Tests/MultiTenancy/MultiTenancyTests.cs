@@ -7,7 +7,7 @@ using Xunit;
 
 namespace NPA.Extensions.Tests.MultiTenancy;
 
-public class MultiTenancyTests
+public class MultiTenancyTests : IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
 
@@ -17,6 +17,19 @@ public class MultiTenancyTests
         services.AddLogging();
         services.AddMultiTenancy();
         _serviceProvider = services.BuildServiceProvider();
+    }
+
+    public void Dispose()
+    {
+        // Clear tenant context after each test to prevent leakage
+        var provider = _serviceProvider.GetRequiredService<ITenantProvider>();
+        provider.ClearCurrentTenant();
+        
+        // Dispose the service provider
+        if (_serviceProvider is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
     }
 
     [Fact]
@@ -30,6 +43,17 @@ public class MultiTenancyTests
 
         // Assert
         tenantId.Should().BeNull();
+    }
+
+    [Fact]
+    public void TenantProvider_ShouldBeSingleton()
+    {
+        // Arrange & Act
+        var provider1 = _serviceProvider.GetRequiredService<ITenantProvider>();
+        var provider2 = _serviceProvider.GetRequiredService<ITenantProvider>();
+
+        // Assert
+        provider1.Should().BeSameAs(provider2, "ITenantProvider should be registered as singleton");
     }
 
     [Fact]

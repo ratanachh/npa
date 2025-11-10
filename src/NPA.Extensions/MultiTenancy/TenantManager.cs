@@ -62,9 +62,15 @@ public class TenantManager
     /// Sets the current tenant context for the operation scope.
     /// </summary>
     /// <param name="tenantId">The tenant ID</param>
-    public async Task SetCurrentTenantAsync(string tenantId)
+    /// <remarks>
+    /// Note: This method uses GetAwaiter().GetResult() instead of await to ensure
+    /// AsyncLocal context is properly preserved in the calling execution context.
+    /// Using async/await can cause the context to be lost after continuation.
+    /// </remarks>
+    public Task SetCurrentTenantAsync(string tenantId)
     {
-        var tenant = await _tenantStore.GetByIdAsync(tenantId);
+        // Get tenant synchronously to avoid AsyncLocal context issues
+        var tenant = _tenantStore.GetByIdAsync(tenantId).GetAwaiter().GetResult();
         if (tenant == null)
         {
             throw new InvalidOperationException($"Tenant '{tenantId}' not found");
@@ -85,6 +91,8 @@ public class TenantManager
         }
 
         _logger.LogDebug("Current tenant set to '{TenantId}'", tenantId);
+        
+        return Task.CompletedTask;
     }
 
     /// <summary>
