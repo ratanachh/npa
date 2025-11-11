@@ -1,4 +1,4 @@
-﻿namespace NPA.Samples.Core;
+namespace NPA.Samples.Core;
 
 /// <summary>
 /// Represents a runnable sample that demonstrates a feature of the NPA framework.

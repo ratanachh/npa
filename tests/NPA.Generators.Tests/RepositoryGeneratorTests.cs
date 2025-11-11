@@ -916,10 +916,9 @@ namespace TestNamespace
             expectedType.Should().Be(QueryType.Exists);
         else if (cleanName.StartsWith("Delete"))
             expectedType.Should().Be(QueryType.Delete);
-            
+
         expectedProperty.Should().NotBeNullOrEmpty();
     }
 
     #endregion
 }
-

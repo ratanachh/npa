@@ -55,7 +55,7 @@ public class SchemaPerTenantSample
         await Demo6_SchemaLevelSecurityAsync();
         await Demo7_CostEfficiencyAsync();
 
-        Console.WriteLine("\n✅ All schema-per-tenant demos completed successfully!\n");
+        Console.WriteLine("\n[Completed] All schema-per-tenant demos completed successfully!\n");
     }
 
     /// <summary>
@@ -93,7 +93,7 @@ public class SchemaPerTenantSample
             Console.WriteLine($"  └─ Product: {product.Name}");
         }
 
-        Console.WriteLine("\n✅ Each tenant's data is in a separate schema!");
+        Console.WriteLine("\n[Completed] Each tenant's data is in a separate schema!");
         Console.WriteLine("   Same database, different schemas = good isolation");
         Console.WriteLine("   SQL: SELECT * FROM acme_schema.products");
         Console.WriteLine();
@@ -137,7 +137,7 @@ public class SchemaPerTenantSample
             }
         }
 
-        Console.WriteLine("\n✅ Key insight: tenant_id column is optional!");
+        Console.WriteLine("\n[Completed] Key insight: tenant_id column is optional!");
         Console.WriteLine("   Our sample includes it for entity compatibility");
         Console.WriteLine("   In pure schema-per-tenant, you could omit it entirely");
         Console.WriteLine("   Schema-level isolation is already complete");
@@ -182,7 +182,7 @@ public class SchemaPerTenantSample
             Console.WriteLine($"     • Same monitoring tools");
         }
 
-        Console.WriteLine("\n✅ Shared infrastructure = better resource utilization!");
+        Console.WriteLine("\n[Completed] Shared infrastructure = better resource utilization!");
         Console.WriteLine("   Lower cost than database-per-tenant");
         Console.WriteLine("   Simpler operations than managing multiple databases");
         Console.WriteLine("   Better than discriminator for compliance/isolation needs");
@@ -215,7 +215,7 @@ public class SchemaPerTenantSample
             Console.WriteLine($"  └─ Export:  COPY {schemaName}.products TO '/backup/{schemaName}_products.csv'");
         }
 
-        Console.WriteLine("\n✅ Schema-based operations are efficient!");
+        Console.WriteLine("\n[Completed] Schema-based operations are efficient!");
         Console.WriteLine("   Backup single tenant without affecting others");
         Console.WriteLine("   Restore to point-in-time for specific tenant");
         Console.WriteLine("   Faster than full database backup");
@@ -248,7 +248,7 @@ public class SchemaPerTenantSample
             Console.WriteLine($"  └─ Tier: {GetTier(quotaInfo.MaxUsers)}");
         }
 
-        Console.WriteLine("\n✅ Different tenants can have different limits!");
+        Console.WriteLine("\n[Completed] Different tenants can have different limits!");
         Console.WriteLine("   Enterprise tier: More users and storage");
         Console.WriteLine("   Standard tier: Moderate limits");
         Console.WriteLine("   Starter tier: Basic limits");
@@ -279,7 +279,7 @@ public class SchemaPerTenantSample
             Console.WriteLine($"  └─ Isolation: Cannot access other schemas");
         }
 
-        Console.WriteLine("\n✅ Database-level security enforcement!");
+        Console.WriteLine("\n[Completed] Database-level security enforcement!");
         Console.WriteLine("   PostgreSQL GRANT/REVOKE controls schema access");
         Console.WriteLine("   Optional: Create dedicated DB user per tenant");
         Console.WriteLine("   Defense in depth: Application + DB level security");
@@ -333,7 +333,7 @@ public class SchemaPerTenantSample
             Console.WriteLine($"   • Isolation: Basic ⭐⭐⭐");
         }
 
-        Console.WriteLine("\n✅ Schema per tenant: Sweet spot for most SaaS!");
+        Console.WriteLine("\n[Completed] Schema per tenant: Sweet spot for most SaaS!");
         Console.WriteLine("   60-75% cheaper than database-per-tenant");
         Console.WriteLine("   Better isolation than discriminator column");
         Console.WriteLine("   Scales to 100-1000 tenants efficiently");

@@ -53,11 +53,11 @@ public class CustomGeneratorAttributesSampleRunner : ISample
         Console.WriteLine("\n╔═══════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║                         SUMMARY                               ║");
         Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
-        Console.WriteLine("✅ All 9 custom generator attributes demonstrated");
-        Console.WriteLine("✅ Attributes work seamlessly together");
-        Console.WriteLine("✅ Reduces boilerplate, increases consistency");
-        Console.WriteLine("✅ Type-safe, compile-time validation");
-        Console.WriteLine("✅ Production-ready with comprehensive testing\n");
+        Console.WriteLine("[Completed] All 9 custom generator attributes demonstrated");
+        Console.WriteLine("[Completed] Attributes work seamlessly together");
+        Console.WriteLine("[Completed] Reduces boilerplate, increases consistency");
+        Console.WriteLine("[Completed] Type-safe, compile-time validation");
+        Console.WriteLine("[Completed] Production-ready with comprehensive testing\n");
 
         Console.WriteLine("Press any key to return to the menu...");
         Console.ReadKey();

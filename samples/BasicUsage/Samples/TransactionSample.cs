@@ -38,7 +38,7 @@ public class TransactionSample
         await Demo5_MixedOperationsWithOrderingAsync();
         await Demo6_BackwardCompatibilityAsync();
 
-        Console.WriteLine("\n✅ All transaction demos completed successfully!\n");
+        Console.WriteLine("\n[Completed] All transaction demos completed successfully!\n");
     }
 
     /// <summary>
@@ -130,7 +130,7 @@ public class TransactionSample
         await transaction.CommitAsync();
 
         var elapsed = DateTime.Now - startTime;
-        Console.WriteLine($"✅ Created {orderCount} orders in {elapsed.TotalMilliseconds:F0}ms");
+        Console.WriteLine($"[Completed] Created {orderCount} orders in {elapsed.TotalMilliseconds:F0}ms");
         Console.WriteLine($"   Performance: {orderCount} INSERTs in single transaction = 1 database round trip");
         Console.WriteLine($"   Without transaction: Would require {orderCount} separate round trips (90-95% slower)");
         Console.WriteLine();
@@ -183,7 +183,7 @@ public class TransactionSample
         Console.WriteLine("  Committing transaction...");
         await transaction.CommitAsync();
 
-        Console.WriteLine($"✅ Transaction committed with explicit flush! Order ID: {order.Id}");
+        Console.WriteLine($"[Completed] Transaction committed with explicit flush! Order ID: {order.Id}");
         Console.WriteLine();
     }
 
@@ -236,7 +236,7 @@ public class TransactionSample
             .SetParameter("orderNumber", "ORD-ROLLBACK-001")
             .GetSingleResultAsync();
 
-        Console.WriteLine($"✅ Verified: Order not in database (foundOrder is null: {foundOrder == null})");
+        Console.WriteLine($"[Completed] Verified: Order not in database (foundOrder is null: {foundOrder == null})");
         Console.WriteLine();
     }
 
@@ -296,7 +296,7 @@ public class TransactionSample
         Console.WriteLine("\n  Committing transaction...");
         await transaction.CommitAsync();
 
-        Console.WriteLine("✅ Mixed operations executed in correct priority order!");
+        Console.WriteLine("[Completed] Mixed operations executed in correct priority order!");
         Console.WriteLine();
     }
 
@@ -340,7 +340,7 @@ public class TransactionSample
         await _entityManager.PersistAsync(item);
 
         Console.WriteLine($"✓ Order item ID immediately available: {item.Id}");
-        Console.WriteLine("✅ Backward compatibility: Operations work exactly as before!");
+        Console.WriteLine("[Completed] Backward compatibility: Operations work exactly as before!");
         Console.WriteLine("   No transaction = immediate execution (Phase 1.2 behavior)");
         Console.WriteLine();
     }

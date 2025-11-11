@@ -43,7 +43,7 @@ public class MultiTenancySample
         await Demo6_MultiTenantTransactionsAsync();
         await Demo7_TenantDataStatisticsAsync();
 
-        Console.WriteLine("\n✅ All multi-tenancy demos completed successfully!\n");
+        Console.WriteLine("\n[Completed] All multi-tenancy demos completed successfully!\n");
     }
 
     /// <summary>
@@ -110,7 +110,7 @@ public class MultiTenancySample
             Console.WriteLine($"  └─ {product}");
         }
 
-        Console.WriteLine("\n✅ Tenant isolation working correctly!");
+        Console.WriteLine("\n[Completed] Tenant isolation working correctly!");
         Console.WriteLine("   SQL: SELECT * FROM products WHERE tenant_id = 'acme-corp'");
         Console.WriteLine();
     }
@@ -139,7 +139,7 @@ public class MultiTenancySample
         await _entityManager.PersistAsync(category);
         Console.WriteLine($"  After persist:  TenantId = '{category.TenantId}' (auto-populated!)");
 
-        Console.WriteLine($"\n✅ TenantId automatically set by EntityManager!");
+        Console.WriteLine($"\n[Completed] TenantId automatically set by EntityManager!");
         Console.WriteLine($"   Category[{category.Id}] now belongs to tenant: {category.TenantId}");
         Console.WriteLine();
     }
@@ -186,7 +186,7 @@ public class MultiTenancySample
             Console.WriteLine($"  {tenant}: {products.Count()} product(s)");
         }
 
-        Console.WriteLine("\n✅ Tenant switching demonstrates perfect data isolation!");
+        Console.WriteLine("\n[Completed] Tenant switching demonstrates perfect data isolation!");
         Console.WriteLine();
     }
 
@@ -231,7 +231,7 @@ public class MultiTenancySample
         _tenantProvider.SetCurrentTenant("tenant-security");
         var verifiedProduct = await _entityManager.FindAsync<Product>(product.Id);
         
-        Console.WriteLine($"\n✅ Data integrity verified!");
+        Console.WriteLine($"\n[Completed] Data integrity verified!");
         Console.WriteLine($"   Original price: $149.99");
         Console.WriteLine($"   Current price:  ${verifiedProduct?.Price}");
         Console.WriteLine($"   Cross-tenant modification was prevented!");
@@ -296,7 +296,7 @@ public class MultiTenancySample
 
         Console.WriteLine($"  Total inventory value: ${totalValue:N2}");
 
-        Console.WriteLine("\n✅ Automatic tenant filtering works seamlessly with all query types!");
+        Console.WriteLine("\n[Completed] Automatic tenant filtering works seamlessly with all query types!");
         Console.WriteLine("   SQL includes: WHERE tenant_id = 'query-demo-tenant'");
         Console.WriteLine();
     }
@@ -338,7 +338,7 @@ public class MultiTenancySample
         
         await transaction.CommitAsync();
 
-        Console.WriteLine($"✅ Created {productCount} products in single transaction!");
+        Console.WriteLine($"[Completed] Created {productCount} products in single transaction!");
         Console.WriteLine("   All products have TenantId = 'transaction-tenant'");
         Console.WriteLine("   Performance: 90-95% faster than individual operations");
         Console.WriteLine();
@@ -399,7 +399,7 @@ public class MultiTenancySample
         Console.WriteLine($"  Average Price:         ${avgPrice:N2}");
         Console.WriteLine($"  Total Inventory Value: ${totalInventoryValue:N2}");
 
-        Console.WriteLine("\n✅ All statistics automatically filtered by tenant!");
+        Console.WriteLine("\n[Completed] All statistics automatically filtered by tenant!");
         Console.WriteLine("   Each tenant sees only their own data and metrics");
         Console.WriteLine();
     }

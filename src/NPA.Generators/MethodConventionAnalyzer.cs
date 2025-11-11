@@ -1,6 +1,4 @@
 using Microsoft.CodeAnalysis;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace NPA.Generators;
 
@@ -17,6 +15,9 @@ public static class MethodConventionAnalyzer
         var methodName = method.Name.Replace("Async", ""); // Remove Async suffix
         var parameters = method.Parameters;
         var returnType = method.ReturnType;
+
+        // Check for Distinct modifier
+        var hasDistinct = methodName.Contains("Distinct");
 
         // Determine query type from method name prefix
         var queryType = DetermineQueryType(methodName);
@@ -36,6 +37,7 @@ public static class MethodConventionAnalyzer
             PropertyNames = propertyNames,
             OrderByProperties = orderByProperties,
             ReturnsCollection = returnsCollection,
+            HasDistinct = hasDistinct,
             Parameters = parameters.Select(p => new ParameterInfo
             {
                 Name = p.Name,
@@ -46,7 +48,7 @@ public static class MethodConventionAnalyzer
 
     private static QueryType DetermineQueryType(string methodName)
     {
-        if (methodName.StartsWith("Find") || methodName.StartsWith("Get") || methodName.StartsWith("Query") || methodName.StartsWith("Search"))
+        if (methodName.StartsWith("Find") || methodName.StartsWith("Get") || methodName.StartsWith("Query") || methodName.StartsWith("Search") || methodName.StartsWith("Read") || methodName.StartsWith("Stream"))
             return QueryType.Select;
         
         if (methodName.StartsWith("Count"))
@@ -72,27 +74,26 @@ public static class MethodConventionAnalyzer
         // Define known prefixes for each query type
         var prefixes = queryType switch
         {
-            QueryType.Select => new[] { "Find", "Get", "Query", "Search" },
+            QueryType.Select => new[] { "Find", "Get", "Query", "Search", "Read", "Stream" },
             QueryType.Count => new[] { "Count" },
             QueryType.Exists => new[] { "Exists", "Has", "Is", "Contains" },
             QueryType.Delete => new[] { "Delete", "Remove" },
             QueryType.Update => new[] { "Update", "Modify" },
             QueryType.Insert => new[] { "Insert", "Add", "Save", "Create" },
-            _ => new string[0]
+            _ => Array.Empty<string>()
         };
 
         foreach (var prefix in prefixes)
         {
-            if (methodName.StartsWith(prefix))
+            if (!methodName.StartsWith(prefix)) continue;
+            
+            // Check for "By" after the prefix
+            if (methodName.Length > prefix.Length + 2 && 
+                methodName.Substring(prefix.Length, 2) == "By")
             {
-                // Check for "By" after the prefix
-                if (methodName.Length > prefix.Length + 2 && 
-                    methodName.Substring(prefix.Length, 2) == "By")
-                {
-                    return prefix + "By";
-                }
-                return prefix;
+                return prefix + "By";
             }
+            return prefix;
         }
 
         return string.Empty;
@@ -104,6 +105,12 @@ public static class MethodConventionAnalyzer
         var ordering = new List<OrderByInfo>();
         
         var afterPrefix = methodName.Substring(prefix.Length);
+        
+        // Remove "Distinct" if present (it's handled separately as a modifier)
+        if (afterPrefix.StartsWith("Distinct"))
+        {
+            afterPrefix = afterPrefix.Substring(8); // Skip "Distinct"
+        }
         
         // Check if there's an "OrderBy" clause
         var orderByIndex = afterPrefix.IndexOf("OrderBy", StringComparison.Ordinal);
@@ -120,7 +127,7 @@ public static class MethodConventionAnalyzer
             propertyPart = afterPrefix;
         }
         
-        // Parse property names with Spring Data JPA keywords
+        // Parse property names with NPA keywords
         if (!string.IsNullOrEmpty(propertyPart))
         {
             properties = ParsePropertyExpressions(propertyPart);
@@ -130,21 +137,42 @@ public static class MethodConventionAnalyzer
     }
     
     /// <summary>
-    /// Parses property expressions with Spring Data JPA keywords like LessThan, GreaterThan, Between, Like, etc.
-    /// Supports: And, Or, LessThan, GreaterThan, Between, Like, NotLike, StartingWith, EndingWith, Containing,
-    /// In, NotIn, IsNull, IsNotNull, True, False, Before, After, IgnoreCase
+    /// Parses property expressions with NPA keywords like LessThan, GreaterThan, Between, Like, etc.
+    /// Supports all Spring Data NPA keywords with synonyms (Is prefix, EndsWith vs EndingWith, etc.)
     /// </summary>
     private static List<string> ParsePropertyExpressions(string propertyPart)
     {
         var properties = new List<string>();
         
-        // Spring Data JPA operator keywords (NOT including And/Or which are separators)
+        // NPA operator keywords (NOT including And/Or which are separators)
+        // Ordered by length (longest first) to avoid partial matches
         var operatorKeywords = new[]
         {
-            "GreaterThanEqual", "LessThanEqual", "GreaterThan", "LessThan",
-            "StartingWith", "EndingWith", "NotContaining", "Containing", "NotLike", "Like",
-            "IsNotNull", "IsNull", "NotIn", "In", "Between",
-            "IgnoreCase", "AllIgnoreCase", "True", "False", "Before", "After"
+            // Comparison (with synonyms)
+            "IsGreaterThanEqual", "GreaterThanEqual", "IsLessThanEqual", "LessThanEqual",
+            "IsGreaterThan", "GreaterThan", "IsLessThan", "LessThan",
+            
+            // String operations (with synonyms)
+            "IsStartingWith", "StartingWith", "StartsWith",
+            "IsEndingWith", "EndingWith", "EndsWith",
+            "IsNotContaining", "NotContaining", "IsContaining", "Containing", "Contains",
+            "IsNotLike", "NotLike", "IsLike", "Like",
+            
+            // Pattern matching (regex)
+            "MatchesRegex", "IsMatches", "Matches", "Regex",
+            
+            // Null checks (with synonyms)
+            "IsNotNull", "NotNull", "IsNull", "Null",
+            
+            // Collection operations (with synonyms)
+            "IsNotIn", "NotIn", "IsIn", "In",
+            
+            // Other operations
+            "IsBetween", "Between",
+            "IgnoringCase", "IgnoreCase", "AllIgnoringCase", "AllIgnoreCase",
+            "IsAfter", "After", "IsBefore", "Before",
+            "IsTrue", "True", "IsFalse", "False",
+            "IsNot", "Not", "Equals", "Is"
         };
         
         // Separator keywords
@@ -161,19 +189,18 @@ public static class MethodConventionAnalyzer
             // Check for operator keywords first
             foreach (var keyword in operatorKeywords)
             {
-                if (remaining.StartsWith(keyword))
+                if (!remaining.StartsWith(keyword)) continue;
+                
+                // Append keyword to current property
+                if (currentProperty.Length > 0)
                 {
-                    // Append keyword to current property
-                    if (currentProperty.Length > 0)
-                    {
-                        properties.Add(currentProperty.ToString() + ":" + keyword);
-                        currentProperty.Clear();
-                    }
-                    
-                    remaining = remaining.Substring(keyword.Length);
-                    foundOperator = true;
-                    break;
+                    properties.Add(currentProperty + ":" + keyword);
+                    currentProperty.Clear();
                 }
+                    
+                remaining = remaining.Substring(keyword.Length);
+                foundOperator = true;
+                break;
             }
             
             if (foundOperator)
@@ -182,19 +209,18 @@ public static class MethodConventionAnalyzer
             // Check for separator keywords (And/Or)
             foreach (var separator in separatorKeywords)
             {
-                if (remaining.StartsWith(separator))
+                if (!remaining.StartsWith(separator)) continue;
+                
+                // Save current property if any
+                if (currentProperty.Length > 0)
                 {
-                    // Save current property if any
-                    if (currentProperty.Length > 0)
-                    {
-                        properties.Add(currentProperty.ToString());
-                        currentProperty.Clear();
-                    }
-                    
-                    remaining = remaining.Substring(separator.Length);
-                    foundSeparator = true;
-                    break;
+                    properties.Add(currentProperty.ToString());
+                    currentProperty.Clear();
                 }
+                    
+                remaining = remaining.Substring(separator.Length);
+                foundSeparator = true;
+                break;
             }
             
             if (foundSeparator)
@@ -258,79 +284,26 @@ public static class MethodConventionAnalyzer
         
         return result;
     }
-
-    private static List<string> ExtractPropertyNames(string methodName, QueryType queryType)
-    {
-        var properties = new List<string>();
-
-        // Remove the query type prefix
-        var remainder = RemovePrefix(methodName, queryType);
-        
-        // Check for "By" keyword
-        var byIndex = remainder.IndexOf("By");
-        if (byIndex >= 0)
-        {
-            remainder = remainder.Substring(byIndex + 2); // Skip "By"
-        }
-
-        // Check for "And" and "Or" separators
-        if (remainder.Contains("And"))
-        {
-            var parts = remainder.Split(new[] { "And" }, System.StringSplitOptions.RemoveEmptyEntries);
-            properties.AddRange(parts);
-        }
-        else if (remainder.Contains("Or"))
-        {
-            var parts = remainder.Split(new[] { "Or" }, System.StringSplitOptions.RemoveEmptyEntries);
-            properties.AddRange(parts);
-        }
-        else if (!string.IsNullOrEmpty(remainder))
-        {
-            properties.Add(remainder);
-        }
-
-        return properties;
-    }
-
-    private static string RemovePrefix(string methodName, QueryType queryType)
-    {
-        var prefixes = queryType switch
-        {
-            QueryType.Select => new[] { "FindBy", "Find", "GetBy", "Get", "QueryBy", "Query", "SearchBy", "Search" },
-            QueryType.Count => new[] { "CountBy", "Count" },
-            QueryType.Exists => new[] { "ExistsBy", "Exists", "HasBy", "Has", "IsBy", "Is", "ContainsBy", "Contains" },
-            QueryType.Delete => new[] { "DeleteBy", "Delete", "RemoveBy", "Remove" },
-            QueryType.Update => new[] { "UpdateBy", "Update", "ModifyBy", "Modify" },
-            QueryType.Insert => new[] { "InsertBy", "Insert", "AddBy", "Add", "SaveBy", "Save", "CreateBy", "Create" },
-            _ => new string[0]
-        };
-
-        foreach (var prefix in prefixes.OrderByDescending(p => p.Length))
-        {
-            if (methodName.StartsWith(prefix))
-            {
-                return methodName.Substring(prefix.Length);
-            }
-        }
-
-        return methodName;
-    }
-
+    
     private static bool IsCollectionReturnType(ITypeSymbol returnType)
     {
         var typeString = returnType.ToDisplayString();
         
         // Handle Task<T>
-        if (typeString.StartsWith("System.Threading.Tasks.Task<"))
-        {
-            var innerType = returnType is INamedTypeSymbol namedType && namedType.TypeArguments.Length > 0
-                ? namedType.TypeArguments[0]
-                : null;
+        if (!typeString.StartsWith("System.Threading.Tasks.Task<"))
+            return typeString.Contains("IEnumerable<") ||
+                   typeString.Contains("ICollection<") ||
+                   typeString.Contains("IList<") ||
+                   typeString.Contains("List<") ||
+                   typeString.Contains("[]");
+        
+        var innerType = returnType is INamedTypeSymbol { TypeArguments.Length: > 0 } namedType
+            ? namedType.TypeArguments[0]
+            : null;
             
-            if (innerType != null)
-            {
-                typeString = innerType.ToDisplayString();
-            }
+        if (innerType != null)
+        {
+            typeString = innerType.ToDisplayString();
         }
 
         return typeString.Contains("IEnumerable<") ||
@@ -351,7 +324,7 @@ public static class MethodConventionAnalyzer
         var result = new System.Text.StringBuilder();
         result.Append(char.ToLower(text[0]));
 
-        for (int i = 1; i < text.Length; i++)
+        for (var i = 1; i < text.Length; i++)
         {
             if (char.IsUpper(text[i]))
             {
@@ -392,6 +365,16 @@ public class MethodConvention
     /// Gets or sets a value indicating whether the method returns a collection.
     /// </summary>
     public bool ReturnsCollection { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a value indicating whether the query should use DISTINCT.
+    /// </summary>
+    public bool HasDistinct { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the maximum number of results to return (for First/Top queries).
+    /// </summary>
+    public int? Limit { get; set; }
     
     /// <summary>
     /// Gets or sets the method parameters.

@@ -1,4 +1,4 @@
-﻿using NPA.Core.Annotations;
+using NPA.Core.Annotations;
 using NPA.Core.Repositories;
 using NPA.Samples.Core;
 using NPA.Samples.Entities;

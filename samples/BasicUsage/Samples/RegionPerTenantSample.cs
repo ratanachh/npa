@@ -54,7 +54,7 @@ public class RegionPerTenantSample
         await Demo6_CrossRegionReportingAsync();
         await Demo7_RegionalScalingAsync();
 
-        Console.WriteLine("\n✅ All region-per-tenant demos completed successfully!\n");
+        Console.WriteLine("\n[Completed] All region-per-tenant demos completed successfully!\n");
     }
 
     /// <summary>
@@ -97,7 +97,7 @@ public class RegionPerTenantSample
             Console.WriteLine();
         }
 
-        Console.WriteLine("✅ Tenants isolated by geographic region!");
+        Console.WriteLine("[Completed] Tenants isolated by geographic region!");
         Console.WriteLine("   US tenants → US-East database");
         Console.WriteLine("   EU tenants → EU-West database");
         Console.WriteLine("   APAC tenants → APAC-Singapore database");
@@ -134,7 +134,7 @@ public class RegionPerTenantSample
             Console.WriteLine();
         }
 
-        Console.WriteLine("✅ Data residency compliance enforced!");
+        Console.WriteLine("[Completed] Data residency compliance enforced!");
         Console.WriteLine("   GDPR: EU tenant data never leaves EU region");
         Console.WriteLine("   PDPA: Singapore tenant data stays in APAC");
         Console.WriteLine("   SOC2: US tenant data in compliant US data centers");
@@ -189,7 +189,7 @@ public class RegionPerTenantSample
             Console.WriteLine();
         }
 
-        Console.WriteLine("✅ Regional deployment dramatically reduces latency!");
+        Console.WriteLine("[Completed] Regional deployment dramatically reduces latency!");
         Console.WriteLine("   US users: 10ms vs 250ms (25x faster)");
         Console.WriteLine("   EU users: 15ms vs 140ms (9x faster)");
         Console.WriteLine("   APAC users: 20ms vs 250ms (12x faster)");
@@ -221,7 +221,7 @@ public class RegionPerTenantSample
             Console.WriteLine();
         }
 
-        Console.WriteLine("✅ Regional failover keeps data in jurisdiction!");
+        Console.WriteLine("[Completed] Regional failover keeps data in jurisdiction!");
         Console.WriteLine("   EU primary fails → EU secondary takes over");
         Console.WriteLine("   Data never crosses regional boundaries during DR");
         Console.WriteLine("   Maintains compliance during outages");
@@ -258,7 +258,7 @@ public class RegionPerTenantSample
             Console.WriteLine();
         }
 
-        Console.WriteLine("✅ Multi-region deployment supports global scale!");
+        Console.WriteLine("[Completed] Multi-region deployment supports global scale!");
         Console.WriteLine("   Each region operates independently");
         Console.WriteLine("   Global tenant directory routes to correct region");
         Console.WriteLine("   Scales horizontally by adding regions");
@@ -310,7 +310,7 @@ public class RegionPerTenantSample
             Console.WriteLine($"   {metric.Key}: {value}");
         }
 
-        Console.WriteLine("\n✅ Cross-region reporting for analytics!");
+        Console.WriteLine("\n[Completed] Cross-region reporting for analytics!");
         Console.WriteLine("   Aggregate metrics from all regions");
         Console.WriteLine("   No PII crosses borders - only aggregates");
         Console.WriteLine("   Compliance-safe global dashboards");
@@ -347,7 +347,7 @@ public class RegionPerTenantSample
             Console.WriteLine();
         }
 
-        Console.WriteLine("✅ Each region scales based on demand!");
+        Console.WriteLine("[Completed] Each region scales based on demand!");
         Console.WriteLine("   US-East: Premium tier for high-growth market");
         Console.WriteLine("   EU-West: Business tier for stable operations");
         Console.WriteLine("   APAC: Standard tier scaling with growth");

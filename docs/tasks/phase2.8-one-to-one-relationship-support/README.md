@@ -1,11 +1,11 @@
-﻿# Phase 2.8: One-to-One Relationship Support
+# Phase 2.8: One-to-One Relationship Support
 
 ## 📋 Task Overview
 
 **Objective**: Implement support for `OneToOne` relationships, a feature that was identified as missing during a code review. This completes the core relationship mapping capabilities of the framework.
 
 **Priority**: High  
-**Status**: ✅ COMPLETED
+**Status**: [Completed] COMPLETED
 
 ## 🎯 Success Criteria
 
@@ -33,22 +33,22 @@
 
 ## 🏗️ Implementation Plan
 
-### Step 1: Create the OneToOneAttribute ✅
+### Step 1: Create the OneToOneAttribute [Completed]
 1. Created the `src/NPA.Core/Annotations/OneToOneAttribute.cs` file.
 2. Implemented the properties (`MappedBy`, `Cascade`, `Fetch`, `Optional`).
 
-### Step 2: Update Metadata Processing ✅
+### Step 2: Update Metadata Processing [Completed]
 1. Modified `MetadataProvider.cs` to handle `OneToOneAttribute`.
 2. Modified `EntityMetadataGenerator.cs` to parse `OneToOneAttribute`.
 
-### Step 3: Update SQL Generation ✅
+### Step 3: Update SQL Generation [Completed]
 1. Modified `SqlGenerator.cs` in the `GenerateJoinClause` method.
 2. Added a case for `RelationshipType.OneToOne` to generate the correct `JOIN` and `ON` clause logic.
 
-### Step 4: Create Unit Tests ✅
+### Step 4: Create Unit Tests [Completed]
 1. Added new tests to `tests/NPA.Core.Tests/Query/CPQL/SqlGeneratorTests.cs` to verify correct SQL generation for `OneToOne` joins.
 
-### Step 5: Update Documentation ✅
+### Step 5: Update Documentation [Completed]
 1. This document has been updated to reflect the completion of the task.
 
 ## 📁 File Structure

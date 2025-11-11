@@ -1322,8 +1322,9 @@ public class RepositoryGenerator : IIncrementalGenerator
         var paramObj = GenerateParameterObject(convention.Parameters);
         var hasParameters = !string.IsNullOrEmpty(paramObj) && paramObj != "null";
 
-        // Build the full SQL query
-        var sqlBuilder = new StringBuilder($"SELECT * FROM {tableName}");
+        // Build the full SQL query with optional DISTINCT and LIMIT
+        var selectClause = convention.HasDistinct ? "SELECT DISTINCT *" : "SELECT *";
+        var sqlBuilder = new StringBuilder($"{selectClause} FROM {tableName}");
         
         if (!string.IsNullOrEmpty(whereClause))
         {
@@ -1333,6 +1334,13 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (!string.IsNullOrEmpty(orderByClause))
         {
             sqlBuilder.Append($" ORDER BY {orderByClause}");
+        }
+
+        // Add LIMIT clause if specified
+        // Using ANSI SQL FETCH FIRST syntax for maximum compatibility
+        if (convention.Limit.HasValue)
+        {
+            sqlBuilder.Append($" FETCH FIRST {convention.Limit.Value} ROWS ONLY");
         }
 
         var fullSql = sqlBuilder.ToString();
@@ -1399,10 +1407,13 @@ public class RepositoryGenerator : IIncrementalGenerator
         var sb = new StringBuilder();
         var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
         var paramObj = GenerateParameterObject(convention.Parameters);
+        
+        // Handle DISTINCT for COUNT queries
+        var countExpression = convention.HasDistinct ? "COUNT(DISTINCT *)" : "COUNT(*)";
 
         if (string.IsNullOrEmpty(whereClause))
         {
-            sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {tableName}\";");
+            sb.AppendLine($"            var sql = \"SELECT {countExpression} FROM {tableName}\";");
             if (isAsync)
             {
                 sb.AppendLine($"            return await _connection.ExecuteScalarAsync<int>(sql);");
@@ -1414,7 +1425,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
         else
         {
-            sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {tableName} WHERE {whereClause}\";");
+            sb.AppendLine($"            var sql = \"SELECT {countExpression} FROM {tableName} WHERE {whereClause}\";");
             if (isAsync)
             {
                 sb.AppendLine($"            return await _connection.ExecuteScalarAsync<int>(sql, {paramObj});");
@@ -1549,6 +1560,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 switch (keyword)
                 {
                     case "GreaterThan":
+                    case "IsGreaterThan":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} > @{parameters[paramIndex].Name}");
@@ -1556,6 +1568,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "GreaterThanEqual":
+                    case "IsGreaterThanEqual":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} >= @{parameters[paramIndex].Name}");
@@ -1563,6 +1576,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "LessThan":
+                    case "IsLessThan":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} < @{parameters[paramIndex].Name}");
@@ -1570,6 +1584,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "LessThanEqual":
+                    case "IsLessThanEqual":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} <= @{parameters[paramIndex].Name}");
@@ -1577,6 +1592,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "Between":
+                    case "IsBetween":
                         if (paramIndex + 1 < parameters.Count)
                         {
                             clauses.Add($"{columnName} BETWEEN @{parameters[paramIndex].Name} AND @{parameters[paramIndex + 1].Name}");
@@ -1584,7 +1600,10 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "Like":
+                    case "IsLike":
                     case "Containing":
+                    case "IsContaining":
+                    case "Contains":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} LIKE CONCAT('%', @{parameters[paramIndex].Name}, '%')");
@@ -1592,14 +1611,30 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "NotLike":
+                    case "IsNotLike":
                     case "NotContaining":
+                    case "IsNotContaining":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} NOT LIKE CONCAT('%', @{parameters[paramIndex].Name}, '%')");
                             paramIndex++;
                         }
                         break;
+                    case "Regex":
+                    case "Matches":
+                    case "IsMatches":
+                    case "MatchesRegex":
+                        if (paramIndex < parameters.Count)
+                        {
+                            // MySQL uses REGEXP, PostgreSQL uses ~, SQL Server doesn't have native regex
+                            // Using MySQL syntax by default - providers can override
+                            clauses.Add($"{columnName} REGEXP @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
                     case "StartingWith":
+                    case "IsStartingWith":
+                    case "StartsWith":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} LIKE CONCAT(@{parameters[paramIndex].Name}, '%')");
@@ -1607,6 +1642,8 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "EndingWith":
+                    case "IsEndingWith":
+                    case "EndsWith":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} LIKE CONCAT('%', @{parameters[paramIndex].Name})");
@@ -1614,6 +1651,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "In":
+                    case "IsIn":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} IN @{parameters[paramIndex].Name}");
@@ -1621,6 +1659,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "NotIn":
+                    case "IsNotIn":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} NOT IN @{parameters[paramIndex].Name}");
@@ -1631,19 +1670,50 @@ public class RepositoryGenerator : IIncrementalGenerator
                         clauses.Add($"{columnName} IS NULL");
                         // No parameter consumed
                         break;
+                    case "Null":
+                        // Shorthand for IsNull
+                        clauses.Add($"{columnName} IS NULL");
+                        // No parameter consumed
+                        break;
                     case "IsNotNull":
                         clauses.Add($"{columnName} IS NOT NULL");
                         // No parameter consumed
                         break;
+                    case "NotNull":
+                        // Shorthand for IsNotNull
+                        clauses.Add($"{columnName} IS NOT NULL");
+                        // No parameter consumed
+                        break;
+                    case "Is":
+                    case "Equals":
+                        // Synonyms for equality - handle NULL specially
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} = @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
+                    case "Not":
+                    case "IsNot":
+                        // Inequality operator
+                        if (paramIndex < parameters.Count)
+                        {
+                            clauses.Add($"{columnName} <> @{parameters[paramIndex].Name}");
+                            paramIndex++;
+                        }
+                        break;
                     case "True":
+                    case "IsTrue":
                         clauses.Add($"{columnName} = TRUE");
                         // No parameter consumed
                         break;
                     case "False":
+                    case "IsFalse":
                         clauses.Add($"{columnName} = FALSE");
                         // No parameter consumed
                         break;
                     case "Before":
+                    case "IsBefore":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} < @{parameters[paramIndex].Name}");
@@ -1651,6 +1721,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "After":
+                    case "IsAfter":
                         if (paramIndex < parameters.Count)
                         {
                             clauses.Add($"{columnName} > @{parameters[paramIndex].Name}");
@@ -1658,7 +1729,18 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                         break;
                     case "IgnoreCase":
+                    case "IgnoringCase":
                         // Apply to the previous clause if exists
+                        if (clauses.Count > 0 && paramIndex > 0)
+                        {
+                            var lastClause = clauses[clauses.Count - 1];
+                            clauses[clauses.Count - 1] = $"LOWER({columnName}) = LOWER(@{parameters[paramIndex - 1].Name})";
+                        }
+                        break;
+                    case "AllIgnoreCase":
+                    case "AllIgnoringCase":
+                        // This would require tracking all properties and applying LOWER to all comparisons
+                        // For now, treat same as IgnoreCase
                         if (clauses.Count > 0 && paramIndex > 0)
                         {
                             var lastClause = clauses[clauses.Count - 1];

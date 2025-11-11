@@ -17,14 +17,14 @@ This document tracks the status of sample projects currently in the `samples/` d
 **Current State**: Partially functional
 
 #### What It Demonstrates
-- ✅ Phase 1.1: Entity mapping with attributes (`User.cs`)
-- ✅ Phase 1.2: EntityManager CRUD operations (`Phase1Demo.cs`)
-- ✅ Phase 1.3: CPQL query with parameters (`Phase1Demo.cs`)
+- [Completed] Phase 1.1: Entity mapping with attributes (`User.cs`)
+- [Completed] Phase 1.2: EntityManager CRUD operations (`Phase1Demo.cs`)
+- [Completed] Phase 1.3: CPQL query with parameters (`Phase1Demo.cs`)
 - ⚠️ Phase 1.4: SQL Server provider (in progress, not fully working)
 
 #### Issues
 - Uses SQL Server provider which is still in development (Phase 1.4 🚧)
-- Should be updated to use PostgreSQL provider which is completed ✅
+- Should be updated to use PostgreSQL provider which is completed [Completed]
 - PostgreSQL branch exists but is commented out in `Program.cs`
 
 #### Recommendation
@@ -129,11 +129,11 @@ string provider = args.Length > 0 ? args[0].ToLowerInvariant() : "postgresql";
 
 ---
 
-## ✅ Functional Samples Summary
+## [Completed] Functional Samples Summary
 
 | Sample | Status | Can Run? | Demonstrates | Needs Fix |
 |--------|--------|----------|--------------|-----------|
-| **BasicUsage** | ⚠️ Partial | Yes (with caveats) | Phase 1.1-1.3 ✅ | Switch to PostgreSQL |
+| **BasicUsage** | ⚠️ Partial | Yes (with caveats) | Phase 1.1-1.3 [Completed] | Switch to PostgreSQL |
 | **AdvancedQueries** | 📋 Stub | No | Nothing | Depends on Phase 2.3 |
 | **RepositoryPattern** | 📋 Stub | No | Nothing | Depends on Phase 2.4 |
 | **SourceGeneratorDemo** | 📋 Stub | No | Nothing | Depends on Phase 4 |
@@ -160,7 +160,7 @@ string provider = args.Length > 0 ? args[0].ToLowerInvariant() : "postgresql";
    - Mark clearly as "Phase X.X Placeholder - Not Implemented"
 
 3. **Update samples README files**
-   - Add "Status: ✅ Functional" or "Status: 📋 Placeholder"
+   - Add "Status: [Completed] Functional" or "Status: 📋 Placeholder"
    - Link to phase documentation
    - Explain dependencies
 
@@ -210,10 +210,10 @@ string provider = args.Length > 0 ? args[0].ToLowerInvariant() : "postgresql";
 - **Planned Samples**: All Phase 2-6 documents
 
 ### Gap Analysis
-- ✅ Documentation accurately reflects implementation status
+- [Completed] Documentation accurately reflects implementation status
 - ⚠️ Existing samples don't match documentation
 - ❌ 4 out of 5 samples are non-functional placeholders
-- ✅ Task documents are properly marked (Ready vs Planned)
+- [Completed] Task documents are properly marked (Ready vs Planned)
 
 ---
 

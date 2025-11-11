@@ -1,4 +1,4 @@
-﻿namespace NPA.Core.Annotations;
+namespace NPA.Core.Annotations;
 
 /// <summary>
 /// Defines a one-to-one association to another entity.

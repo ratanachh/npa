@@ -1,4 +1,4 @@
-﻿# NPA Framework Samples
+# NPA Framework Samples
 
 This directory contains sample projects demonstrating the features of the NPA (Nasal Persistence Architecture) framework.
 

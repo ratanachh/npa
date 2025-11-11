@@ -1,4 +1,4 @@
-﻿using NPA.Core.Annotations;
+using NPA.Core.Annotations;
 using Xunit;
 
 namespace NPA.Core.Tests.Annotations;

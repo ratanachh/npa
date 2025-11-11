@@ -4,7 +4,7 @@
 
 This index provides a complete overview of all sample projects organized by phase, complexity, and learning objectives.
 
-> **Current Status**: NPA has completed Phase 1.1-1.3 (Entity Mapping, CRUD Operations, CPQL Queries). The samples marked with ✅ are ready to implement. Samples marked with 📋 describe planned features and serve as design references for future development.
+> **Current Status**: NPA has completed Phase 1.1-1.3 (Entity Mapping, CRUD Operations, CPQL Queries). The samples marked with [Completed] are ready to implement. Samples marked with 📋 describe planned features and serve as design references for future development.
 
 ---
 
@@ -13,9 +13,9 @@ This index provides a complete overview of all sample projects organized by phas
 ### Phase 1: Core Foundation (6 samples)
 | Sample | Status | Complexity | Time | Key Features |
 |--------|--------|------------|------|--------------|
-| [1.1 Basic Entity Mapping](./phase1.1-basic-entity-mapping-sample.md) | ✅ Ready | ⭐ Beginner | 2-3h | Attributes, Metadata Inspection |
-| [1.2 CRUD Operations](./phase1.2-crud-operations-sample.md) | ✅ Ready | ⭐⭐ Intermediate | 4-5h | EntityManager, PostgreSQL, Dapper |
-| [1.3 CPQL Query API](./phase1.3-cpql-query-sample.md) | ✅ Ready | ⭐⭐ Intermediate | 3-4h | CPQL, Parameters, Aggregates |
+| [1.1 Basic Entity Mapping](./phase1.1-basic-entity-mapping-sample.md) | [Completed] Ready | ⭐ Beginner | 2-3h | Attributes, Metadata Inspection |
+| [1.2 CRUD Operations](./phase1.2-crud-operations-sample.md) | [Completed] Ready | ⭐⭐ Intermediate | 4-5h | EntityManager, PostgreSQL, Dapper |
+| [1.3 CPQL Query API](./phase1.3-cpql-query-sample.md) | [Completed] Ready | ⭐⭐ Intermediate | 3-4h | CPQL, Parameters, Aggregates |
 | 1.4 SQL Server Provider | 🚧 In Progress | ⭐⭐ Intermediate | 4-5h | SQL Server Implementation |
 | 1.5 MySQL/MariaDB Provider | 📋 Planned | ⭐⭐ Intermediate | 4-5h | MySQL Provider |
 | 1.6 PostgreSQL Advanced | 📋 Planned | ⭐⭐ Intermediate | 3-4h | Advanced PostgreSQL Features |
@@ -67,21 +67,21 @@ This index provides a complete overview of all sample projects organized by phas
 
 ## 🎓 By Learning Path
 
-### Beginner Path (Start Here!) ✅ Currently Available
+### Beginner Path (Start Here!) [Completed] Currently Available
 1. ⭐ [Phase 1.1 - Basic Entity Mapping](./phase1.1-basic-entity-mapping-sample.md)
    - Duration: 2-3 hours
    - Learn: JPA-like attributes, metadata inspection
-   - Status: ✅ Ready to implement
+   - Status: [Completed] Ready to implement
 
 2. ⭐⭐ [Phase 1.2 - CRUD Operations](./phase1.2-crud-operations-sample.md)
    - Duration: 4-5 hours
    - Learn: EntityManager, PostgreSQL, Dapper integration
-   - Status: ✅ Ready to implement
+   - Status: [Completed] Ready to implement
 
 3. ⭐⭐ [Phase 1.3 - CPQL Query API](./phase1.3-cpql-query-sample.md)
    - Duration: 3-4 hours
    - Learn: CPQL queries, parameters, aggregates
-   - Status: ✅ Ready to implement
+   - Status: [Completed] Ready to implement
 
 ### Intermediate Path
 4. ⭐⭐ Phase 1.6 - Repository Generation
@@ -278,7 +278,7 @@ Enterprise-grade architecture and patterns.
 | **Total** | **3** | **1** | **23** | **27** |
 
 **Legend:**
-- ✅ **Ready** - Sample can be implemented now (features available)
+- [Completed] **Ready** - Sample can be implemented now (features available)
 - 🚧 **In Progress** - Feature implementation in progress
 - 📋 **Planned** - Design reference for future implementation
 

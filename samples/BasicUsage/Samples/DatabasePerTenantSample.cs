@@ -52,7 +52,7 @@ public class DatabasePerTenantSample
         await Demo6_PerformanceIsolationAsync();
         await Demo7_IndependentBackupRestoreAsync();
 
-        Console.WriteLine("\n✅ All database-per-tenant demos completed successfully!\n");
+        Console.WriteLine("\n[Completed] All database-per-tenant demos completed successfully!\n");
     }
 
     /// <summary>
@@ -89,7 +89,7 @@ public class DatabasePerTenantSample
             Console.WriteLine($"  └─ Product: {product.Name}");
         }
 
-        Console.WriteLine("\n✅ Each tenant's data is in a completely separate database!");
+        Console.WriteLine("\n[Completed] Each tenant's data is in a completely separate database!");
         Console.WriteLine("   Maximum isolation - no shared tables, no shared infrastructure");
         Console.WriteLine();
     }
@@ -131,7 +131,7 @@ public class DatabasePerTenantSample
             Console.WriteLine($"  └─ {columnName} ({dataType})");
         }
 
-        Console.WriteLine("\n✅ Key insight: tenant_id column is optional!");
+        Console.WriteLine("\n[Completed] Key insight: tenant_id column is optional!");
         Console.WriteLine("   Our sample includes it for entity compatibility");
         Console.WriteLine("   In pure database-per-tenant, you could omit it entirely");
         Console.WriteLine("   Database-level isolation is already complete");
@@ -167,7 +167,7 @@ public class DatabasePerTenantSample
             Console.WriteLine($"  └─ Scaling: {kvp.Value}");
         }
 
-        Console.WriteLine("\n✅ Each tenant can have different database resources!");
+        Console.WriteLine("\n[Completed] Each tenant can have different database resources!");
         Console.WriteLine("   Scale up/down based on tenant size and SLA");
         Console.WriteLine("   No noisy neighbor problems");
         Console.WriteLine();
@@ -198,7 +198,7 @@ public class DatabasePerTenantSample
             Console.WriteLine($"  └─ Database: {GetDatabaseName(tenant.ConnectionString!)}");
         }
 
-        Console.WriteLine("\n✅ Database per tenant enables data residency compliance!");
+        Console.WriteLine("\n[Completed] Database per tenant enables data residency compliance!");
         Console.WriteLine("   GDPR: EU tenant data stays in EU");
         Console.WriteLine("   SOC2: US tenant data in compliant US data centers");
         Console.WriteLine("   ISO27001: APAC tenant data in certified APAC regions");
@@ -236,7 +236,7 @@ public class DatabasePerTenantSample
         Console.WriteLine($"   └─ Tier: Premium (dedicated server)");
         Console.WriteLine($"   └─ Downtime: < 5 minutes");
 
-        Console.WriteLine("\n✅ Database per tenant makes migration straightforward!");
+        Console.WriteLine("\n[Completed] Database per tenant makes migration straightforward!");
         Console.WriteLine("   Self-contained database with all tenant data");
         Console.WriteLine("   No risk of affecting other tenants");
         Console.WriteLine("   Standard database backup/restore tools work");
@@ -291,7 +291,7 @@ public class DatabasePerTenantSample
         await contosoManager.PersistAsync(contosoProduct);
         Console.WriteLine($"  └─ Created 1 product (light write load)");
 
-        Console.WriteLine("\n✅ Performance is completely isolated!");
+        Console.WriteLine("\n[Completed] Performance is completely isolated!");
         Console.WriteLine("   Acme's heavy load DOES NOT impact Contoso");
         Console.WriteLine("   Separate databases = separate resources");
         Console.WriteLine("   No query queue contention, no table locking conflicts");
@@ -328,7 +328,7 @@ public class DatabasePerTenantSample
             Console.WriteLine($"  └─ Point-in-time recovery: Available");
         }
 
-        Console.WriteLine("\n✅ Backup/restore is tenant-specific!");
+        Console.WriteLine("\n[Completed] Backup/restore is tenant-specific!");
         Console.WriteLine("   Different SLAs = different backup frequencies");
         Console.WriteLine("   Restore single tenant without affecting others");
         Console.WriteLine("   Easy tenant offboarding - just drop the database");

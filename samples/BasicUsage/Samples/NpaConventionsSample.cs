@@ -6,14 +6,15 @@ using NPA.Core.Repositories;
 namespace BasicUsage.Samples;
 
 /// <summary>
-/// Demonstrates Spring Data JPA-style query method naming conventions.
+/// Demonstrates NPA query method naming conventions.
 /// These methods require NO [Query] attribute - the SQL is generated automatically!
+/// Based on Spring Data JPA conventions for developer familiarity.
 /// </summary>
-public class SpringDataJpaConventionsSample
+public class NpaConventionsSample
 {
     public static async Task RunAsync(IDbConnection connection)
     {
-        Console.WriteLine("=== Spring Data JPA Query Method Conventions ===");
+        Console.WriteLine("=== NPA Query Method Conventions ===");
         Console.WriteLine();
 
         await SeedDataAsync(connection);
@@ -29,6 +30,10 @@ public class SpringDataJpaConventionsSample
         await DemonstrateMultipleConditionsAsync();
         await DemonstrateOrderingAsync();
         await DemonstrateCountAndExistsAsync();
+        await DemonstrateSynonymsAsync();
+        await DemonstrateResultLimitingAsync();
+        await DemonstrateRegexPatternMatchingAsync();
+        await DemonstrateDistinctAsync();
 
         Console.WriteLine();
         Console.WriteLine("=== Sample Complete ===");
@@ -230,10 +235,148 @@ public class SpringDataJpaConventionsSample
         
         return Task.CompletedTask;
     }
+
+    private static Task DemonstrateSynonymsAsync()
+    {
+        Console.WriteLine("--- Keyword Synonyms (NPA compatibility) ---");
+        Console.WriteLine("All Is-prefix variants and shorthands are supported!");
+        Console.WriteLine();
+        
+        Console.WriteLine("Comparison with 'Is' prefix:");
+        Console.WriteLine("  FindByPriceIsGreaterThanAsync(decimal price) = FindByPriceGreaterThanAsync(decimal price)");
+        Console.WriteLine("  FindByStockQuantityIsLessThanAsync(int qty) = FindByStockQuantityLessThanAsync(int qty)");
+        Console.WriteLine();
+        
+        Console.WriteLine("String operators with synonyms:");
+        Console.WriteLine("  FindByNameContainsAsync(string keyword) = FindByNameContainingAsync(string keyword)");
+        Console.WriteLine("  FindByNameIsContainingAsync(string keyword) = FindByNameContainingAsync(string keyword)");
+        Console.WriteLine("  FindByNameStartsWithAsync(string prefix) = FindByNameStartingWithAsync(string prefix)");
+        Console.WriteLine("  FindByNameEndsWithAsync(string suffix) = FindByNameEndingWithAsync(string suffix)");
+        Console.WriteLine();
+        
+        Console.WriteLine("Equality synonyms:");
+        Console.WriteLine("  FindByNameAsync(string name) = default equality");
+        Console.WriteLine("  FindByNameIsAsync(string name) = same as above");
+        Console.WriteLine("  FindByNameEqualsAsync(string name) = same as above");
+        Console.WriteLine();
+        
+        Console.WriteLine("Null check shorthands:");
+        Console.WriteLine("  FindByDiscontinuedAtNullAsync() = FindByDiscontinuedAtIsNullAsync()");
+        Console.WriteLine("  FindByDiscontinuedAtNotNullAsync() = FindByDiscontinuedAtIsNotNullAsync()");
+        Console.WriteLine();
+        
+        Console.WriteLine("Boolean synonyms:");
+        Console.WriteLine("  FindByIsActiveIsTrueAsync() = FindByIsActiveTrueAsync()");
+        Console.WriteLine("  FindByIsActiveIsFalseAsync() = FindByIsActiveFalseAsync()");
+        Console.WriteLine();
+        
+        Console.WriteLine("Case modifiers:");
+        Console.WriteLine("  FindByNameIgnoreCaseAsync(string name) - case-insensitive search");
+        Console.WriteLine("  FindByNameIgnoringCaseAsync(string name) - synonym for IgnoreCase");
+        Console.WriteLine("  FindByNameAllIgnoreCaseAsync(string name) - all properties case-insensitive");
+        Console.WriteLine();
+        
+        return Task.CompletedTask;
+    }
+
+    private static Task DemonstrateResultLimitingAsync()
+    {
+        Console.WriteLine("--- Result Limiting (NEW!) ---");
+        Console.WriteLine("Limit the number of results returned");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindFirst5ByCategoryOrderByPriceAscAsync(string category)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE category = @category ORDER BY price ASC FETCH FIRST 5 ROWS ONLY");
+        Console.WriteLine("  Example: Get 5 cheapest products in category");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindTop10ByOrderByCreatedAtDescAsync()");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products ORDER BY created_at DESC FETCH FIRST 10 ROWS ONLY");
+        Console.WriteLine("  Example: Get 10 newest products");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: GetTop3ByStockQuantityGreaterThanOrderByStockQuantityDescAsync(int minStock)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE stock_quantity > @minStock ORDER BY stock_quantity DESC FETCH FIRST 3 ROWS ONLY");
+        Console.WriteLine("  Example: Top 3 most stocked items");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindFirstByCategoryAsync(string category)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE category = @category FETCH FIRST 1 ROWS ONLY");
+        Console.WriteLine("  Example: Get first match (defaults to 1 if no number specified)");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindTop20ByPriceGreaterThanOrderByPriceAscAsync(decimal minPrice)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE price > @minPrice ORDER BY price ASC FETCH FIRST 20 ROWS ONLY");
+        Console.WriteLine("  Example: Top 20 products above price threshold, sorted by price");
+        Console.WriteLine();
+        
+        Console.WriteLine("💡 Tip: Always use OrderBy with First/Top for predictable results!");
+        Console.WriteLine();
+        
+        return Task.CompletedTask;
+    }
+
+    private static Task DemonstrateRegexPatternMatchingAsync()
+    {
+        Console.WriteLine("--- Regex Pattern Matching (NEW!) ---");
+        Console.WriteLine("Match text fields using regular expressions");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindByNameRegexAsync(string pattern)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE name REGEXP @pattern");
+        Console.WriteLine("  Example: FindByNameRegexAsync(@\"^Laptop.*\") → products starting with 'Laptop'");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindByCategoryMatchesAsync(string pattern)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE category REGEXP @pattern");
+        Console.WriteLine("  Example: FindByCategoryMatchesAsync(@\"^(Electronics|Furniture)$\") → exact category matches");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindByNameMatchesRegexAsync(string pattern)");
+        Console.WriteLine("  SQL: SELECT * FROM catalog_products WHERE name REGEXP @pattern");
+        Console.WriteLine("  Example: FindByNameMatchesRegexAsync(@\".*Mouse|Keyboard.*\") → products with Mouse or Keyboard");
+        Console.WriteLine();
+        
+        Console.WriteLine("Real-world use cases:");
+        Console.WriteLine("  - Email validation: FindByContactEmailRegexAsync(@\"^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$\")");
+        Console.WriteLine("  - SKU format: FindBySkuMatchesAsync(@\"^[A-Z]{3}-\\d{4}$\") → ABC-1234 format");
+        Console.WriteLine("  - Product codes: FindByCodeRegexAsync(@\"^PROD-[0-9]{6}$\") → PROD-123456");
+        Console.WriteLine();
+        
+        Console.WriteLine("⚠️  Note: Regex uses REGEXP operator (MySQL/MariaDB/PostgreSQL)");
+        Console.WriteLine("   SQL Server requires custom CLR implementation");
+        Console.WriteLine();
+        
+        return Task.CompletedTask;
+    }
+
+    private static Task DemonstrateDistinctAsync()
+    {
+        Console.WriteLine("--- Distinct Queries ---");
+        Console.WriteLine("Remove duplicate rows from results");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindDistinctByCategoryAsync(string category)");
+        Console.WriteLine("  SQL: SELECT DISTINCT * FROM catalog_products WHERE category = @category");
+        Console.WriteLine("  Example: Unique products in category (removes duplicates)");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: CountDistinctByCategoryAsync(string category)");
+        Console.WriteLine("  SQL: SELECT COUNT(DISTINCT *) FROM catalog_products WHERE category = @category");
+        Console.WriteLine("  Example: Count unique products in category");
+        Console.WriteLine();
+        
+        Console.WriteLine("Method: FindDistinctByIsActiveTrueOrderByNameAscAsync()");
+        Console.WriteLine("  SQL: SELECT DISTINCT * FROM catalog_products WHERE is_active = TRUE ORDER BY name ASC");
+        Console.WriteLine("  Example: Unique active products sorted by name");
+        Console.WriteLine();
+        
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>
-/// Sample entity for demonstrating Spring Data JPA conventions.
+/// Sample entity for demonstrating NPA conventions.
 /// </summary>
 [Entity]
 [Table("catalog_products")]
@@ -267,7 +410,7 @@ public class CatalogProduct
 }
 
 /// <summary>
-/// Repository demonstrating ALL Spring Data JPA query method conventions.
+/// Repository demonstrating ALL NPA query method conventions.
 /// NO [Query] attributes needed - SQL is generated automatically!
 /// </summary>
 [Repository]
@@ -326,4 +469,83 @@ public interface ICatalogProductRepository : IRepository<CatalogProduct, long>
     // === Delete Methods ===
     Task DeleteByCategoryAsync(string category);
     Task DeleteByDiscontinuedAtIsNotNullAsync();
+
+    // === Keyword Synonyms (all variants work!) ===
+    // Comparison with Is-prefix
+    Task<IEnumerable<CatalogProduct>> FindByPriceIsGreaterThanAsync(decimal price);
+    Task<IEnumerable<CatalogProduct>> FindByStockQuantityIsLessThanAsync(int quantity);
+    Task<IEnumerable<CatalogProduct>> FindByPriceIsBetweenAsync(decimal min, decimal max);
+    
+    // String operator synonyms
+    Task<IEnumerable<CatalogProduct>> FindByNameContainsAsync(string keyword);
+    Task<IEnumerable<CatalogProduct>> FindByNameIsContainingAsync(string keyword);
+    Task<IEnumerable<CatalogProduct>> FindByNameStartsWithAsync(string prefix);
+    Task<IEnumerable<CatalogProduct>> FindByNameIsStartingWithAsync(string prefix);
+    Task<IEnumerable<CatalogProduct>> FindByNameEndsWithAsync(string suffix);
+    Task<IEnumerable<CatalogProduct>> FindByNameIsEndingWithAsync(string suffix);
+    
+    // Equality synonyms
+    Task<CatalogProduct?> FindByNameIsAsync(string name);
+    Task<CatalogProduct?> FindByNameEqualsAsync(string name);
+    
+    // Inequality synonyms
+    Task<IEnumerable<CatalogProduct>> FindByCategoryNotAsync(string category);
+    Task<IEnumerable<CatalogProduct>> FindByCategoryIsNotAsync(string category);
+    
+    // Null check shorthands
+    Task<IEnumerable<CatalogProduct>> FindByDiscontinuedAtNullAsync();
+    Task<IEnumerable<CatalogProduct>> FindByDiscontinuedAtNotNullAsync();
+    
+    // Boolean synonyms
+    Task<IEnumerable<CatalogProduct>> FindByIsActiveIsTrueAsync();
+    Task<IEnumerable<CatalogProduct>> FindByIsActiveIsFalseAsync();
+    
+    // Date/Time synonyms
+    Task<IEnumerable<CatalogProduct>> FindByCreatedAtIsAfterAsync(DateTime date);
+    Task<IEnumerable<CatalogProduct>> FindByCreatedAtIsBeforeAsync(DateTime date);
+    
+    // Collection synonyms
+    Task<IEnumerable<CatalogProduct>> FindByIdIsInAsync(long[] ids);
+    Task<IEnumerable<CatalogProduct>> FindByCategoryIsNotInAsync(string[] categories);
+    
+    // Case-insensitive modifiers
+    Task<CatalogProduct?> FindByNameIgnoreCaseAsync(string name);
+    Task<CatalogProduct?> FindByNameIgnoringCaseAsync(string name);
+    Task<IEnumerable<CatalogProduct>> FindByNameAllIgnoreCaseAsync(string name);
+
+    // === Result Limiting (NEW!) ===
+    Task<IEnumerable<CatalogProduct>> FindFirst5ByCategoryOrderByPriceAscAsync(string category);
+    Task<IEnumerable<CatalogProduct>> FindTop10ByOrderByCreatedAtDescAsync();
+    Task<IEnumerable<CatalogProduct>> GetTop3ByStockQuantityGreaterThanOrderByStockQuantityDescAsync(int minStock);
+    Task<CatalogProduct?> FindFirstByCategoryAsync(string category);
+    Task<IEnumerable<CatalogProduct>> FindTop20ByPriceGreaterThanOrderByPriceAscAsync(decimal minPrice);
+    Task<IEnumerable<CatalogProduct>> GetFirst10ByIsActiveTrueAsync();
+    Task<IEnumerable<CatalogProduct>> FindTop5ByCategoryAndPriceLessThanOrderByPriceDescAsync(string category, decimal maxPrice);
+
+    // === Pattern Matching - Regex (NEW!) ===
+    Task<IEnumerable<CatalogProduct>> FindByNameRegexAsync(string pattern);
+    Task<IEnumerable<CatalogProduct>> FindByCategoryMatchesAsync(string pattern);
+    Task<IEnumerable<CatalogProduct>> FindByNameMatchesRegexAsync(string pattern);
+    Task<IEnumerable<CatalogProduct>> FindByNameIsMatchesAsync(string pattern);
+    Task<IEnumerable<CatalogProduct>> FindByNameRegexAndIsActiveTrueAsync(string pattern);
+    Task<IEnumerable<CatalogProduct>> FindByCategoryMatchesOrNameContainsAsync(string categoryPattern, string nameKeyword);
+
+    // === Distinct Queries ===
+    Task<IEnumerable<CatalogProduct>> FindDistinctByCategoryAsync(string category);
+    Task<long> CountDistinctByCategoryAsync(string category);
+    Task<IEnumerable<CatalogProduct>> FindDistinctByIsActiveTrueOrderByNameAscAsync();
+    Task<IEnumerable<CatalogProduct>> FindDistinctByPriceGreaterThanAsync(decimal price);
+
+    // === Advanced Combinations ===
+    // Combine First/Top with other keywords
+    Task<IEnumerable<CatalogProduct>> FindFirst10ByNameContainsAndIsActiveTrueOrderByPriceAscAsync(string keyword);
+    Task<IEnumerable<CatalogProduct>> GetTop5ByPriceBetweenOrderByCreatedAtDescAsync(decimal min, decimal max);
+    
+    // Combine Regex with other keywords
+    Task<IEnumerable<CatalogProduct>> FindByNameRegexAndPriceGreaterThanAsync(string pattern, decimal price);
+    Task<IEnumerable<CatalogProduct>> FindFirst20ByNameMatchesOrderByNameAscAsync(string pattern);
+    
+    // Distinct with combinations
+    Task<IEnumerable<CatalogProduct>> FindDistinctTop10ByCategoryOrderByPriceAscAsync(string category);
+    Task<long> CountDistinctByPriceGreaterThanAndIsActiveTrueAsync(decimal price);
 }

@@ -46,7 +46,7 @@ public class EntityMetadataGenerator : IIncrementalGenerator
         var semanticModel = context.SemanticModel;
         var classSymbol = semanticModel.GetDeclaredSymbol(classDecl) as INamedTypeSymbol;
 
-        if (classSymbol == null || !classSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == "EntityAttribute" || a.AttributeClass?.Name == "Entity"))
+        if (classSymbol == null || !classSymbol.GetAttributes().Any(a => a.AttributeClass?.Name is "EntityAttribute" or "Entity"))
             return null;
 
         return new EntityMetadataInfo
@@ -63,13 +63,13 @@ public class EntityMetadataGenerator : IIncrementalGenerator
 
     private static string GetTableName(INamedTypeSymbol classSymbol)
     {
-        var tableAttribute = classSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "TableAttribute" || a.AttributeClass?.Name == "Table");
+        var tableAttribute = classSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "TableAttribute" or "Table");
         return tableAttribute?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? classSymbol.Name.ToLowerInvariant() + "s";
     }
 
     private static string? GetSchemaName(INamedTypeSymbol classSymbol)
     {
-        var tableAttribute = classSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "TableAttribute" || a.AttributeClass?.Name == "Table");
+        var tableAttribute = classSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "TableAttribute" or "Table");
         return tableAttribute?.NamedArguments.FirstOrDefault(na => na.Key == "Schema").Value.Value?.ToString();
     }
 

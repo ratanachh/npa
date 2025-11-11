@@ -82,7 +82,7 @@ class Program
             // Run demo scenarios
             await RunUdemyCloneDemoAsync(entityManager, tenantManager);
 
-            Console.WriteLine("\n\n✅ Demo completed! Press any key to exit...");
+            Console.WriteLine("\n\n[Completed] Demo completed! Press any key to exit...");
             Console.ReadKey();
         }
     }
@@ -312,7 +312,7 @@ class Program
             Console.WriteLine($"✓ Created tenant: {name} ({tier} tier)");
         }
 
-        Console.WriteLine($"\n✅ {tenants.Length} tenants created with isolated data!\n");
+        Console.WriteLine($"\n[Completed] {tenants.Length} tenants created with isolated data!\n");
     }
 
     static async Task Demo2_CreateCategoriesAndInstructorsAsync(IEntityManager entityManager, TenantManager tenantManager)
@@ -511,7 +511,7 @@ class Program
         course.EnrolledStudentsCount = students.Length;
         await entityManager.MergeAsync(course);
 
-        Console.WriteLine($"\n✅ {students.Length} students enrolled in the course!\n");
+        Console.WriteLine($"\n[Completed] {students.Length} students enrolled in the course!\n");
     }
 
     static async Task Demo5_ReviewsAndRatingsAsync(IEntityManager entityManager, TenantManager tenantManager)
@@ -552,7 +552,7 @@ class Program
         course.TotalReviews = reviews.Length;
         await entityManager.MergeAsync(course);
 
-        Console.WriteLine($"\n✅ Course rating: {course.AverageRating:F1}★ ({course.TotalReviews} reviews)\n");
+        Console.WriteLine($"\n[Completed] Course rating: {course.AverageRating:F1}★ ({course.TotalReviews} reviews)\n");
     }
 
     static async Task Demo6_ReportingAndAnalyticsAsync(IEntityManager entityManager, TenantManager tenantManager)
@@ -602,6 +602,6 @@ class Program
             Console.WriteLine($"     └─ {course.EnrolledStudentsCount} students, {course.AverageRating:F1}★, ${course.Price}");
         }
 
-        Console.WriteLine($"\n✅ Multi-tenant SaaS platform is fully operational!\n");
+        Console.WriteLine($"\n[Completed] Multi-tenant SaaS platform is fully operational!\n");
     }
 }

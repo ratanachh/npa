@@ -19,9 +19,9 @@ Each sample project is designed to showcase specific features and best practices
 ## 📚 Sample Projects by Phase
 
 ### Phase 1: Core Foundation Samples (Currently Available)
-- [Phase 1.1 - Basic Entity Mapping](./phase1.1-basic-entity-mapping-sample.md) ✅
-- [Phase 1.2 - CRUD Operations Sample](./phase1.2-crud-operations-sample.md) ✅
-- [Phase 1.3 - CPQL Query API Sample](./phase1.3-cpql-query-sample.md) ✅
+- [Phase 1.1 - Basic Entity Mapping](./phase1.1-basic-entity-mapping-sample.md) [Completed]
+- [Phase 1.2 - CRUD Operations Sample](./phase1.2-crud-operations-sample.md) [Completed]
+- [Phase 1.3 - CPQL Query API Sample](./phase1.3-cpql-query-sample.md) [Completed]
 - Phase 1.4 - SQL Server Provider Sample 🚧
 - Phase 1.5 - MySQL/MariaDB Provider Sample 🚧
 - Phase 1.6 - PostgreSQL Advanced Features 🚧
