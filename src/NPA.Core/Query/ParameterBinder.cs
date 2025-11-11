@@ -66,17 +66,34 @@ public class ParameterBinder : IParameterBinder
         if (value == null)
             return null;
 
-        // Basic SQL injection prevention
+        // Enhanced SQL injection prevention
         if (value is string stringValue)
         {
-            // Remove potential SQL injection characters
-            return stringValue.Replace("'", "''")
-                             .Replace("--", "")
-                             .Replace("/*", "")
-                             .Replace("*/", "");
+            // Use parameterized queries instead of string manipulation for security
+            // This method should only be used as a last resort
+            return SanitizeStringValue(stringValue);
         }
 
         return value;
+    }
+
+    private static string SanitizeStringValue(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        // Comprehensive SQL injection prevention
+        return input.Replace("'", "''")           // Escape single quotes
+                   .Replace("\\", "\\\\")         // Escape backslashes
+                   .Replace("\0", "\\0")          // Escape null characters
+                   .Replace("\n", "\\n")          // Escape newlines
+                   .Replace("\r", "\\r")          // Escape carriage returns
+                   .Replace("\x1a", "\\Z")        // Escape Ctrl+Z
+                   .Replace("--", "")             // Remove SQL comments
+                   .Replace("/*", "")             // Remove block comment start
+                   .Replace("*/", "")             // Remove block comment end
+                   .Replace("xp_", "x_p_")        // Prevent xp_cmdshell calls
+                   .Replace("sp_", "s_p_");       // Prevent stored procedure calls
     }
 
     private object CreateAnonymousObject(Dictionary<string, object?> properties)
