@@ -101,6 +101,12 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Detect multi-tenancy
         var multiTenantInfo = DetectMultiTenancy(semanticModel.Compilation, entityType);
 
+        // Extract entity metadata (table name and column mappings)
+        var entityMetadata = ExtractEntityMetadata(semanticModel.Compilation, entityType);
+        
+        // Build dictionary of all entity metadata (main + related entities)
+        var entitiesMetadata = BuildEntityMetadataDictionary(semanticModel.Compilation, entityMetadata);
+
         return new RepositoryInfo
         {
             InterfaceName = interfaceSymbol.Name,
@@ -112,7 +118,9 @@ public class RepositoryGenerator : IIncrementalGenerator
             HasCompositeKey = hasCompositeKey,
             CompositeKeyProperties = compositeKeyProps,
             ManyToManyRelationships = manyToManyRelationships,
-            MultiTenantInfo = multiTenantInfo
+            MultiTenantInfo = multiTenantInfo,
+            EntityMetadata = entityMetadata,
+            EntitiesMetadata = entitiesMetadata
         };
     }
 
@@ -321,6 +329,171 @@ public class RepositoryGenerator : IIncrementalGenerator
         };
     }
 
+    private static EntityMetadataInfo? ExtractEntityMetadata(Compilation compilation, string entityTypeName)
+    {
+        // Find the entity type symbol
+        var entityType = compilation.GetTypeByMetadataName(entityTypeName);
+        if (entityType == null)
+        {
+            // Try to find it without full namespace
+            entityType = compilation.GetSymbolsWithName(entityTypeName.Split('.').Last(), SymbolFilter.Type)
+                .OfType<INamedTypeSymbol>()
+                .FirstOrDefault();
+        }
+
+        if (entityType == null)
+            return null;
+
+        var metadata = new EntityMetadataInfo
+        {
+            Name = entityType.Name,
+            Namespace = entityType.ContainingNamespace?.ToDisplayString() ?? string.Empty,
+            FullName = entityType.ToDisplayString(),
+            TableName = GetTableNameFromAttribute(entityType),
+            SchemaName = GetSchemaNameFromAttribute(entityType),
+            Properties = new List<PropertyMetadataInfo>(),
+            Relationships = new List<RelationshipMetadataInfo>()
+        };
+
+        // Extract property metadata
+        foreach (var property in entityType.GetMembers().OfType<IPropertySymbol>())
+        {
+            var columnName = GetColumnNameFromAttribute(property);
+            var isPrimaryKey = property.GetAttributes().Any(a => a.AttributeClass?.Name == "IdAttribute");
+            var isRequired = property.GetAttributes().Any(a => a.AttributeClass?.Name == "RequiredAttribute");
+            var isUnique = property.GetAttributes().Any(a => a.AttributeClass?.Name == "UniqueAttribute");
+
+            metadata.Properties.Add(new PropertyMetadataInfo
+            {
+                Name = property.Name,
+                TypeName = property.Type.ToDisplayString(),
+                ColumnName = columnName,
+                IsNullable = property.NullableAnnotation == NullableAnnotation.Annotated,
+                IsPrimaryKey = isPrimaryKey,
+                IsRequired = isRequired,
+                IsUnique = isUnique
+            });
+            
+            // Extract relationship metadata from ManyToOne and OneToMany attributes
+            var manyToOneAttr = property.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "ManyToOneAttribute");
+            var oneToManyAttr = property.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "OneToManyAttribute");
+            var oneToOneAttr = property.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "OneToOneAttribute");
+            
+            if (manyToOneAttr != null && property.Type is INamedTypeSymbol relatedType)
+            {
+                metadata.Relationships.Add(new RelationshipMetadataInfo
+                {
+                    PropertyName = property.Name,
+                    Type = "ManyToOne",
+                    TargetEntity = relatedType.Name
+                });
+            }
+            else if (oneToManyAttr != null && property.Type is INamedTypeSymbol { TypeArguments.Length: > 0 } collectionType)
+            {
+                var targetType = collectionType.TypeArguments[0] as INamedTypeSymbol;
+                if (targetType != null)
+                {
+                    metadata.Relationships.Add(new RelationshipMetadataInfo
+                    {
+                        PropertyName = property.Name,
+                        Type = "OneToMany",
+                        TargetEntity = targetType.Name
+                    });
+                }
+            }
+            else if (oneToOneAttr != null && property.Type is INamedTypeSymbol oneToOneRelatedType)
+            {
+                metadata.Relationships.Add(new RelationshipMetadataInfo
+                {
+                    PropertyName = property.Name,
+                    Type = "OneToOne",
+                    TargetEntity = oneToOneRelatedType.Name
+                });
+            }
+        }
+
+        return metadata;
+    }
+
+    private static string GetTableNameFromAttribute(INamedTypeSymbol entityType)
+    {
+        var tableAttr = entityType.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "TableAttribute");
+
+        if (tableAttr != null && tableAttr.ConstructorArguments.Length > 0)
+        {
+            if (tableAttr.ConstructorArguments[0].Value is string tableName)
+                return tableName;
+        }
+
+        // Default: pluralize entity name and convert to snake_case
+        return MethodConventionAnalyzer.ToSnakeCase(entityType.Name) + "s";
+    }
+
+    private static string? GetSchemaNameFromAttribute(INamedTypeSymbol entityType)
+    {
+        var tableAttr = entityType.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "TableAttribute");
+
+        if (tableAttr != null)
+        {
+            var schemaArg = tableAttr.NamedArguments.FirstOrDefault(a => a.Key == "Schema");
+            if (schemaArg.Value.Value is string schema)
+                return schema;
+        }
+
+        return null;
+    }
+
+    private static string GetColumnNameFromAttribute(IPropertySymbol property)
+    {
+        var columnAttr = property.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute");
+
+        if (columnAttr != null && columnAttr.ConstructorArguments.Length > 0)
+        {
+            if (columnAttr.ConstructorArguments[0].Value is string columnName)
+                return columnName;
+        }
+
+        // Default: convert property name to snake_case
+        return MethodConventionAnalyzer.ToSnakeCase(property.Name);
+    }
+
+    /// <summary>
+    /// Builds a dictionary of entity metadata including the main entity and all related entities
+    /// </summary>
+    private static Dictionary<string, EntityMetadataInfo> BuildEntityMetadataDictionary(
+        Compilation compilation, 
+        EntityMetadataInfo? mainEntityMetadata)
+    {
+        var dictionary = new Dictionary<string, EntityMetadataInfo>();
+        
+        if (mainEntityMetadata == null)
+            return dictionary;
+        
+        // Add the main entity
+        dictionary[mainEntityMetadata.Name] = mainEntityMetadata;
+        
+        // Add related entities from relationships
+        foreach (var relationship in mainEntityMetadata.Relationships)
+        {
+            if (!dictionary.ContainsKey(relationship.TargetEntity))
+            {
+                var relatedMetadata = ExtractEntityMetadata(compilation, relationship.TargetEntity);
+                if (relatedMetadata != null)
+                {
+                    dictionary[relatedMetadata.Name] = relatedMetadata;
+                }
+            }
+        }
+        
+        return dictionary;
+    }
+
     private static (string? entityType, string? keyType) ExtractRepositoryTypes(INamedTypeSymbol interfaceSymbol)
     {
         // Look for IRepository<TEntity, TKey> in the interface hierarchy
@@ -353,14 +526,32 @@ public class RepositoryGenerator : IIncrementalGenerator
         foreach (var attr in attributes)
         {
             var attrName = attr.AttributeClass?.Name;
+            var attrFullName = attr.AttributeClass?.ToDisplayString();
             
             if (attrName == "QueryAttribute")
             {
                 info.HasQuery = true;
+                // Try to get SQL from constructor arguments
                 if (attr.ConstructorArguments.Length > 0)
                 {
-                    info.QuerySql = attr.ConstructorArguments[0].Value?.ToString();
+                    var ctorArg = attr.ConstructorArguments[0];
+                    info.QuerySql = ctorArg.Value?.ToString() ?? string.Empty;
                 }
+                else
+                {
+                    // Fallback: Try to get from attribute syntax directly
+                    var attributeSyntax = attr.ApplicationSyntaxReference?.GetSyntax();
+                    if (attributeSyntax is Microsoft.CodeAnalysis.CSharp.Syntax.AttributeSyntax attrSyntax &&
+                        attrSyntax.ArgumentList?.Arguments.Count > 0)
+                    {
+                        var firstArg = attrSyntax.ArgumentList.Arguments[0];
+                        if (firstArg.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.LiteralExpressionSyntax literal)
+                        {
+                            info.QuerySql = literal.Token.ValueText;
+                        }
+                    }
+                }
+                
                 info.CommandTimeout = GetNamedArgument<int?>(attr, "CommandTimeout");
                 var buffered = GetNamedArgument<bool?>(attr, "Buffered");
                 info.Buffered = buffered ?? true;
@@ -368,10 +559,26 @@ public class RepositoryGenerator : IIncrementalGenerator
             else if (attrName == "StoredProcedureAttribute")
             {
                 info.HasStoredProcedure = true;
+                // Try to get procedure name from constructor arguments
                 if (attr.ConstructorArguments.Length > 0)
                 {
-                    info.ProcedureName = attr.ConstructorArguments[0].Value?.ToString();
+                    info.ProcedureName = attr.ConstructorArguments[0].Value?.ToString() ?? string.Empty;
                 }
+                else
+                {
+                    // Fallback: Try to get from attribute syntax directly
+                    var attributeSyntax = attr.ApplicationSyntaxReference?.GetSyntax();
+                    if (attributeSyntax is Microsoft.CodeAnalysis.CSharp.Syntax.AttributeSyntax attrSyntax &&
+                        attrSyntax.ArgumentList?.Arguments.Count > 0)
+                    {
+                        var firstArg = attrSyntax.ArgumentList.Arguments[0];
+                        if (firstArg.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.LiteralExpressionSyntax literal)
+                        {
+                            info.ProcedureName = literal.Token.ValueText;
+                        }
+                    }
+                }
+                
                 info.CommandTimeout = GetNamedArgument<int?>(attr, "CommandTimeout");
                 info.Schema = GetNamedArgument<string>(attr, "Schema");
             }
@@ -704,7 +911,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Generate method implementations
         foreach (var method in info.Methods)
         {
-            sb.AppendLine(GenerateMethodImplementation(method, info.EntityType, info.KeyType));
+            sb.AppendLine(GenerateMethodImplementation(method, info));
             sb.AppendLine();
         }
 
@@ -914,7 +1121,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         return interfaceName + "Implementation";
     }
 
-    private static string GenerateMethodImplementation(MethodInfo method, string entityType, string keyType)
+    private static string GenerateMethodImplementation(MethodInfo method, RepositoryInfo info)
     {
         var sb = new StringBuilder();
 
@@ -930,7 +1137,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        {");
 
         // Generate implementation based on attributes or conventions
-        var implementation = GenerateMethodBody(method, entityType, keyType);
+        var implementation = GenerateMethodBody(method, info);
         sb.Append(implementation);
 
         sb.AppendLine("        }");
@@ -938,7 +1145,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string GenerateMethodBody(MethodInfo method, string entityType, string keyType)
+    private static string GenerateMethodBody(MethodInfo method, RepositoryInfo info)
     {
         var sb = new StringBuilder();
         var attrs = method.Attributes;
@@ -946,36 +1153,41 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Check for custom attributes first
         if (attrs.HasQuery)
         {
-            sb.Append(GenerateQueryMethodBody(method, entityType, attrs));
+            sb.Append(GenerateQueryMethodBody(method, info, attrs));
         }
         else if (attrs.HasStoredProcedure)
         {
-            sb.Append(GenerateStoredProcedureMethodBody(method, entityType, attrs));
+            sb.Append(GenerateStoredProcedureMethodBody(method, info.EntityType, attrs));
         }
         else if (attrs.HasBulkOperation)
         {
-            sb.Append(GenerateBulkOperationMethodBody(method, entityType, attrs));
+            sb.Append(GenerateBulkOperationMethodBody(method, info.EntityType, attrs));
         }
         else if (method.Symbol != null)
         {
             // Use convention-based generation
             var convention = MethodConventionAnalyzer.AnalyzeMethod(method.Symbol);
-            sb.Append(GenerateConventionBasedMethodBody(method, entityType, convention));
+            sb.Append(GenerateConventionBasedMethodBody(method, info.EntityType, convention));
         }
         else
         {
             // Fallback to simple conventions
-            sb.Append(GenerateSimpleConventionBody(method, entityType));
+            sb.Append(GenerateSimpleConventionBody(method, info.EntityType));
         }
 
         return sb.ToString();
     }
 
-    private static string GenerateQueryMethodBody(MethodInfo method, string entityType, MethodAttributeInfo attrs)
+    private static string GenerateQueryMethodBody(MethodInfo method, RepositoryInfo info, MethodAttributeInfo attrs)
     {
         var sb = new StringBuilder();
         var isAsync = method.ReturnType.StartsWith("System.Threading.Tasks.Task");
         var paramObj = GenerateParameterObject(method.Parameters);
+
+        // Convert CPQL to SQL using entity metadata dictionary
+        var sql = info.EntitiesMetadata.Count > 0
+            ? CpqlToSqlConverter.ConvertToSql(attrs.QuerySql ?? string.Empty, info.EntitiesMetadata)
+            : CpqlToSqlConverter.ConvertToSql(attrs.QuerySql ?? string.Empty);
 
         if (attrs.HasMultiMapping)
         {
@@ -984,7 +1196,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             var isCollection = method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("List") || 
                              method.ReturnType.Contains("ICollection") || method.ReturnType.Contains("[]");
             
-            sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
+            sb.AppendLine($"            var sql = @\"{sql}\";");
             sb.AppendLine($"            var splitOn = \"{attrs.SplitOn ?? "Id"}\";");
             sb.AppendLine();
             
@@ -1086,7 +1298,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                  method.ReturnType.Contains("IReadOnly"))
         {
             // Returns collection
-            sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
+            sb.AppendLine($"            var sql = @\"{sql}\";");
             var conversion = GetCollectionConversion(method.ReturnType);
             
             if (isAsync)
@@ -1117,7 +1329,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         else if (method.ReturnType.Contains("int") || method.ReturnType.Contains("long"))
         {
             // Returns scalar (count, etc.)
-            sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
+            sb.AppendLine($"            var sql = @\"{sql}\";");
             if (isAsync)
             {
                 sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
@@ -1130,7 +1342,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         else if (method.ReturnType.Contains("bool"))
         {
             // Returns boolean (exists check)
-            sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
+            sb.AppendLine($"            var sql = @\"{sql}\";");
             if (isAsync)
             {
                 sb.AppendLine($"            var result = await _connection.ExecuteScalarAsync<int>(sql, {paramObj});");
@@ -1144,7 +1356,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         else
         {
             // Returns single entity or nullable
-            sb.AppendLine($"            var sql = @\"{attrs.QuerySql}\";");
+            sb.AppendLine($"            var sql = @\"{sql}\";");
             if (isAsync)
             {
                 sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
@@ -1317,7 +1529,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GenerateSelectQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
         var orderByClause = BuildOrderByClause(convention.OrderByProperties);
         var paramObj = GenerateParameterObject(convention.Parameters);
         var hasParameters = !string.IsNullOrEmpty(paramObj) && paramObj != "null";
@@ -1405,7 +1617,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GenerateCountQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
         var paramObj = GenerateParameterObject(convention.Parameters);
         
         // Handle DISTINCT for COUNT queries
@@ -1442,7 +1654,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GenerateExistsQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
         var paramObj = GenerateParameterObject(convention.Parameters);
 
         sb.AppendLine($"            var sql = \"SELECT COUNT(1) FROM {tableName} WHERE {whereClause}\";");
@@ -1462,7 +1674,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GenerateDeleteQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
         var paramObj = GenerateParameterObject(convention.Parameters);
 
         // Special handling for id parameter when convention doesn't extract it
@@ -1537,7 +1749,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string BuildWhereClause(List<string> propertyNames, List<ParameterInfo> parameters)
+    private static string BuildWhereClause(List<string> propertyNames, List<string> separators, List<ParameterInfo> parameters)
     {
         if (propertyNames.Count == 0)
             return string.Empty;
@@ -1769,7 +1981,23 @@ public class RepositoryGenerator : IIncrementalGenerator
             }
         }
 
-        return string.Join(" AND ", clauses);
+        // Join clauses with appropriate separators (AND or OR)
+        if (clauses.Count == 0)
+            return string.Empty;
+        if (clauses.Count == 1)
+            return clauses[0];
+        
+        var result = new StringBuilder();
+        result.Append(clauses[0]);
+        
+        for (int i = 1; i < clauses.Count; i++)
+        {
+            // Use separator if available, otherwise default to AND
+            var separator = i - 1 < separators.Count ? separators[i - 1].ToUpper() : "AND";
+            result.Append($" {separator} {clauses[i]}");
+        }
+        
+        return result.ToString();
     }
 
     private static string BuildOrderByClause(List<OrderByInfo> orderByProperties)
@@ -1928,6 +2156,8 @@ internal class RepositoryInfo
     public List<string> CompositeKeyProperties { get; set; } = new();
     public List<ManyToManyRelationshipInfo> ManyToManyRelationships { get; set; } = new();
     public MultiTenantInfo? MultiTenantInfo { get; set; }
+    public EntityMetadataInfo? EntityMetadata { get; set; }
+    public Dictionary<string, EntityMetadataInfo> EntitiesMetadata { get; set; } = new();
 }
 
 internal class MultiTenantInfo

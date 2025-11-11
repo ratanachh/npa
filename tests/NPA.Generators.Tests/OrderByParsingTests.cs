@@ -7,6 +7,8 @@ namespace NPA.Generators.Tests;
 
 public class OrderByParsingTests
 {
+    #region Method Analysis Tests (using IMethodSymbol)
+    
     [Theory]
     [InlineData("FindByEmailOrderByName", "Name", "Asc")]
     [InlineData("FindByEmailOrderByNameDesc", "Name", "Desc")]
@@ -146,6 +148,122 @@ public class OrderByParsingTests
         result.OrderByProperties[0].PropertyName.Should().Be("Name");
         result.OrderByProperties[0].Direction.Should().Be("Desc");
     }
+    
+    #endregion
+    
+    #region Integration Tests (verify generated SQL)
+    
+    [Fact]
+    public void OrderByParsing_SingleAscending_ShouldGenerateOrderByClause()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }}
+        public string Email { get; set; }
+        public string Name { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        Task<IEnumerable<User>> FindByEmailOrderByNameAsync(string email);
+    }
+}";
+
+        // Act
+        var result = RunRepositoryGenerator(source);
+
+        // Assert
+        result.Diagnostics.Should().BeEmpty();
+        var generatedCode = GetGeneratedCode(result);
+        generatedCode.Should().Contain("ORDER BY");
+    }
+    
+    [Fact]
+    public void OrderByParsing_SingleDescending_ShouldGenerateOrderByDescClause()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }
+        public string CreatedAt { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        Task<IEnumerable<User>> FindAllOrderByCreatedAtDescAsync();
+    }
+}";
+
+        // Act
+        var result = RunRepositoryGenerator(source);
+
+        // Assert
+        result.Diagnostics.Should().BeEmpty();
+        var generatedCode = GetGeneratedCode(result);
+        generatedCode.Should().Contain("ORDER BY");
+        generatedCode.Should().Contain("DESC");
+    }
+    
+    private static GeneratorRunResult RunRepositoryGenerator(string source)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.EntityAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(NPA.Core.Repositories.IRepository<,>).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location)
+        };
+
+        var compilation = CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { syntaxTree },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+
+        var runResult = driver.GetRunResult();
+        
+        return runResult.Results[0];
+    }
+    
+    private static string GetGeneratedCode(GeneratorRunResult result)
+    {
+        if (result.GeneratedSources.Length == 0)
+            return string.Empty;
+            
+        return result.GeneratedSources[0].SourceText.ToString();
+    }
+    
+    #endregion
 
     private IMethodSymbol CreateMethod(string methodName)
     {

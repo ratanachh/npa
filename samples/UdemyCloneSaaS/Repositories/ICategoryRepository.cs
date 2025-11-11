@@ -10,7 +10,7 @@ namespace UdemyCloneSaaS.Repositories;
 [Repository]
 public interface ICategoryRepository : IRepository<Category, long>
 {
-    [Query("SELECT c FROM Category c WHERE c.Slug = :slug")]
+    // [Query("SELECT c FROM Category c WHERE c.Slug = :slug")]
     Task<Category?> FindBySlugAsync(string slug);
 
     [Query("SELECT c FROM Category c WHERE c.IsActive = true ORDER BY c.CourseCount DESC")]

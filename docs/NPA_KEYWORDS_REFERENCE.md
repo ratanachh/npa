@@ -6,6 +6,7 @@ These conventions are based on Spring Data JPA for developer familiarity and eas
 
 ## Table of Contents
 - [Subject Keywords](#subject-keywords)
+- [Custom Query Attributes](#custom-query-attributes-new)
 - [Comparison Operators](#comparison-operators)
 - [String Operators](#string-operators)
 - [Collection Operators](#collection-operators)
@@ -37,6 +38,96 @@ Control the type of query operation:
 | `Exists` | EXISTS | `bool` | `ExistsByNameAsync` |
 | `Delete` | DELETE | `Task` or affected rows | `DeleteByIdAsync` |
 | `Remove` | DELETE | `Task` or affected rows | `RemoveByStatusAsync` |
+
+---
+
+## Custom Query Attributes 🆕
+
+Override method naming conventions with custom SQL or CPQL queries (NEW in this version):
+
+| Attribute | Purpose | Return Type | Example |
+|-----------|---------|-------------|---------|
+| `[Query]` | Execute custom SQL/CPQL query | Collection or single entity | `[Query("SELECT * FROM Products WHERE Price > @price")]` |
+| `[StoredProcedure]` | Call stored procedure | Collection or single entity | `[StoredProcedure("sp_GetTopProducts")]` |
+
+**Query Attribute:**
+Use `[Query]` to execute custom SQL or CPQL (Custom Persistence Query Language) while maintaining repository pattern.
+
+CPQL is a simplified entity-based query syntax similar to JPA that gets automatically converted to SQL:
+
+```csharp
+public interface IProductRepository : IRepository<Product, long>
+{
+    // CPQL query (entity-based, automatically converted to SQL)
+    [Query("SELECT p FROM Product p WHERE p.Price > :price")]
+    Task<IEnumerable<Product>> GetExpensiveProductsAsync(decimal price);
+    
+    // Or use standard SQL directly
+    [Query("SELECT * FROM Products WHERE Price > @price AND Category = @category")]
+    Task<IEnumerable<Product>> GetExpensiveProducts2Async(decimal price, string category);
+    
+    // CPQL with aggregate functions
+    [Query("SELECT COUNT(p) FROM Product p WHERE p.Category = :category")]
+    Task<long> CountByCategoryAsync(string category);
+    
+    // CPQL with complex conditions
+    [Query("SELECT p FROM Product p WHERE p.Price BETWEEN :min AND :max ORDER BY p.Price DESC")]
+    Task<IEnumerable<Product>> GetProductsInRangeAsync(decimal min, decimal max);
+}
+```
+
+**CPQL Syntax:**
+- Entity-based: `SELECT p FROM Product p` instead of `SELECT * FROM Products`
+- Property access: `p.Price`, `p.Category` (alias is removed automatically)
+- Parameters: Use `:param` syntax (converted to `@param` for SQL)
+- Supports: SELECT, WHERE, ORDER BY, aggregate functions (COUNT, AVG, SUM, MAX, MIN)
+- Automatically converts to optimized SQL for your database
+
+**SQL Syntax:**
+You can also use standard SQL directly:
+- Table-based: `SELECT * FROM Products`
+- Parameters: Use `@param` syntax directly
+- Full SQL power: joins, CTEs, window functions, etc.
+
+**StoredProcedure Attribute:**
+Use `[StoredProcedure]` to call database stored procedures:
+
+```csharp
+public interface IProductRepository : IRepository<Product, long>
+{
+    // Call stored procedure
+    [StoredProcedure("sp_GetTopProducts")]
+    Task<IEnumerable<Product>> GetTopProductsAsync(int count);
+    
+    // Stored procedure with multiple parameters
+    [StoredProcedure("sp_SearchProducts")]
+    Task<IEnumerable<Product>> SearchProductsAsync(
+        string keyword, 
+        decimal minPrice, 
+        decimal maxPrice
+    );
+    
+    // Stored procedure returning single entity
+    [StoredProcedure("sp_GetProductDetails")]
+    Task<Product> GetProductDetailsAsync(long productId);
+}
+```
+
+**Parameter Binding:**
+- CPQL: Use `:param` syntax (e.g., `:price`, `:category`)
+- SQL: Use `@param` syntax (e.g., `@price`, `@category`)
+- Parameters are matched by name to method parameters
+- Supports all primitive types and strings
+- Multiple parameters supported
+
+**💡 Best Practices:**
+- Use CPQL for entity-based queries (portable, database-agnostic)
+- Use SQL for complex joins, CTEs, or database-specific features
+- Use `[Query]` for complex queries that can't be expressed with conventions
+- Use `[StoredProcedure]` to leverage existing database logic
+- Keep queries readable with multiline strings (`@"..."`)
+- Add comments to explain complex custom queries
+- Consider using conventions first; custom queries are for special cases
 
 ---
 
@@ -466,6 +557,27 @@ FindByNameAllIgnoringCaseAsync("laptop")
 
 ## Advanced Examples
 
+### Custom Query Attributes
+```csharp
+// Simple custom query
+[Query("SELECT * FROM Products WHERE Price > @price")]
+var expensive = await repo.GetExpensiveProductsAsync(100m);
+
+// Complex join query
+[Query(@"
+    SELECT p.* 
+    FROM Products p 
+    INNER JOIN OrderItems oi ON p.Id = oi.ProductId 
+    GROUP BY p.Id 
+    HAVING COUNT(*) > @minOrders
+")]
+var popular = await repo.GetPopularProductsAsync(5);
+
+// Stored procedure call
+[StoredProcedure("sp_GetTopSellingProducts")]
+var topSelling = await repo.GetTopSellingProductsAsync(10);
+```
+
 ### Combining First/Top with Other Keywords
 ```csharp
 // Top 10 products containing "Pro" that are active, sorted by price
@@ -522,6 +634,7 @@ var sorted = await repo.FindDistinctByIsActiveTrueOrderByNameAscAsync();
 | Category | Keywords | Count |
 |----------|----------|-------|
 | **Subject Keywords** | Find, Get, Query, Search, Read, Stream, Count, Exists, Delete, Remove | 10 |
+| **Custom Queries** 🆕 | [Query], [StoredProcedure] | 2 attributes |
 | **Comparison** | GreaterThan, LessThan, Between, etc. | 5 base + synonyms |
 | **String** | Like, Containing, StartingWith, EndingWith, etc. | 6 base + synonyms |
 | **Collection** | In, NotIn | 2 base + synonyms |
@@ -534,7 +647,7 @@ var sorted = await repo.FindDistinctByIsActiveTrueOrderByNameAscAsync();
 | **Pattern Matching** 🆕 | Regex, Matches, MatchesRegex, IsMatches | 4 |
 | **Total Synonyms** | Is-prefix, shorthands, case variants | 30+ |
 
-**Total**: **50+ unique keyword variants** supported!
+**Total**: **50+ unique keyword variants + 2 custom query attributes** supported!
 
 ---
 
@@ -542,29 +655,35 @@ var sorted = await repo.FindDistinctByIsActiveTrueOrderByNameAscAsync();
 
 1. **Use OrderBy with First/Top**: Always specify ordering for predictable results
    ```csharp
-   [Completed] FindFirst10ByOrderByCreatedAtDescAsync()
+   ✅ FindFirst10ByOrderByCreatedAtDescAsync()
    ❌ FindFirst10ByAsync() // Random 10 rows!
    ```
 
-2. **Property Names Must Match**: Use exact PascalCase property names
+2. **Custom Queries for Complex Logic**: Use `[Query]` or `[StoredProcedure]` when conventions aren't enough
    ```csharp
-   [Completed] FindByStockQuantityAsync(int qty)    // Property: StockQuantity
+   ✅ [Query("SELECT * FROM Products WHERE Price > @price * 1.2")]
+   ❌ Trying to express complex calculations in method names
+   ```
+
+3. **Property Names Must Match**: Use exact PascalCase property names
+   ```csharp
+   ✅ FindByStockQuantityAsync(int qty)    // Property: StockQuantity
    ❌ FindByStock_QuantityAsync(int qty)   // Won't work!
    ```
 
-3. **Regex Patterns**: Escape special characters in patterns
+4. **Regex Patterns**: Escape special characters in patterns
    ```csharp
-   [Completed] FindByEmailRegexAsync(@".*\.com$")   // Escaped dot
+   ✅ FindByEmailRegexAsync(@".*\.com$")   // Escaped dot
    ❌ FindByEmailRegexAsync(@".*..com$")   // Wrong!
    ```
 
-4. **Use Synonyms for Readability**: Choose what reads best
+5. **Use Synonyms for Readability**: Choose what reads best
    ```csharp
    FindByNameContainsAsync("laptop")      // Concise
    FindByNameIsContainingAsync("laptop")  // More explicit
    ```
 
-5. **Combine Features**: Mix keywords for powerful queries
+6. **Combine Features**: Mix keywords for powerful queries
    ```csharp
    FindFirst10ByNameRegexAndPriceGreaterThanOrderByPriceAscAsync(pattern, 100m)
    ```
@@ -574,6 +693,6 @@ var sorted = await repo.FindDistinctByIsActiveTrueOrderByNameAscAsync();
 ## See Also
 
 - **Working Examples**: `NpaConventionsSample.cs`
-- **Test Coverage**: `NpaSynonymTests.cs`, `ResultLimitingTests.cs`, `RegexPatternMatchingTests.cs`
+- **Test Coverage**: `NpaSynonymTests.cs`, `ResultLimitingTests.cs`, `RegexPatternMatchingTests.cs`, `CustomQueryAttributesTests.cs`
 - **Documentation**: `SPRING_DATA_NPA_SUPPORT.md`
 - **Spring Data JPA Reference** (inspiration): https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html

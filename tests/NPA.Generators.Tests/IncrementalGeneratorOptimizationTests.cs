@@ -30,7 +30,7 @@ public class IncrementalGeneratorOptimizationTests
         // Act
         var implementsInterface = comparerType!.GetInterfaces()
             .Any(i => i.IsGenericType && 
-                     i.GetGenericTypeDefinition() == typeof(System.Collections.Generic.IEqualityComparer<>) &&
+                     i.GetGenericTypeDefinition() == typeof(IEqualityComparer<>) &&
                      i.GetGenericArguments()[0].Name == repositoryInfoType!.Name);
 
         // Assert

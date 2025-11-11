@@ -25,8 +25,11 @@ public static class MethodConventionAnalyzer
         // Get the prefix string for extracting properties
         var prefix = GetMethodPrefix(methodName, queryType);
         
+        // Extract result limit (First/Top keywords)
+        var limit = ExtractResultLimit(methodName, prefix);
+        
         // Extract property names and ordering from method name
-        var (propertyNames, orderByProperties) = ExtractPropertiesAndOrdering(methodName, prefix);
+        var (propertyNames, separators, orderByProperties) = ExtractPropertiesAndOrdering(methodName, prefix);
 
         // Determine if it returns a collection or single result
         var returnsCollection = IsCollectionReturnType(returnType);
@@ -35,9 +38,11 @@ public static class MethodConventionAnalyzer
         {
             QueryType = queryType,
             PropertyNames = propertyNames,
+            PropertySeparators = separators,
             OrderByProperties = orderByProperties,
             ReturnsCollection = returnsCollection,
             HasDistinct = hasDistinct,
+            Limit = limit,
             Parameters = parameters.Select(p => new ParameterInfo
             {
                 Name = p.Name,
@@ -99,9 +104,59 @@ public static class MethodConventionAnalyzer
         return string.Empty;
     }
 
-    private static (List<string> properties, List<OrderByInfo> ordering) ExtractPropertiesAndOrdering(string methodName, string prefix)
+    private static int? ExtractResultLimit(string methodName, string prefix)
+    {
+        // After the prefix, check for First or Top keywords
+        var afterPrefix = methodName.Substring(prefix.Length);
+        
+        // Skip "Distinct" if present (it's a separate modifier)
+        if (afterPrefix.StartsWith("Distinct"))
+        {
+            afterPrefix = afterPrefix.Substring(8); // Skip "Distinct"
+        }
+        
+        // Check for "First" or "Top" followed by optional number
+        if (afterPrefix.StartsWith("First"))
+        {
+            afterPrefix = afterPrefix.Substring(5); // Skip "First"
+            return ExtractNumber(afterPrefix, defaultValue: 1);
+        }
+        
+        if (afterPrefix.StartsWith("Top"))
+        {
+            afterPrefix = afterPrefix.Substring(3); // Skip "Top"
+            return ExtractNumber(afterPrefix, defaultValue: 1);
+        }
+        
+        return null;
+    }
+    
+    private static int ExtractNumber(string text, int defaultValue)
+    {
+        // Extract leading digits
+        int number = 0;
+        int digitCount = 0;
+        
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (char.IsDigit(text[i]))
+            {
+                number = number * 10 + (text[i] - '0');
+                digitCount++;
+            }
+            else
+            {
+                break;
+            }
+        }
+        
+        return digitCount > 0 ? number : defaultValue;
+    }
+
+    private static (List<string> properties, List<string> separators, List<OrderByInfo> ordering) ExtractPropertiesAndOrdering(string methodName, string prefix)
     {
         var properties = new List<string>();
+        var separators = new List<string>();
         var ordering = new List<OrderByInfo>();
         
         var afterPrefix = methodName.Substring(prefix.Length);
@@ -110,6 +165,26 @@ public static class MethodConventionAnalyzer
         if (afterPrefix.StartsWith("Distinct"))
         {
             afterPrefix = afterPrefix.Substring(8); // Skip "Distinct"
+        }
+        
+        // Remove "First" or "Top" with optional number (handled separately as Limit)
+        if (afterPrefix.StartsWith("First"))
+        {
+            afterPrefix = afterPrefix.Substring(5); // Skip "First"
+            // Skip any digits
+            while (afterPrefix.Length > 0 && char.IsDigit(afterPrefix[0]))
+            {
+                afterPrefix = afterPrefix.Substring(1);
+            }
+        }
+        else if (afterPrefix.StartsWith("Top"))
+        {
+            afterPrefix = afterPrefix.Substring(3); // Skip "Top"
+            // Skip any digits
+            while (afterPrefix.Length > 0 && char.IsDigit(afterPrefix[0]))
+            {
+                afterPrefix = afterPrefix.Substring(1);
+            }
         }
         
         // Check if there's an "OrderBy" clause
@@ -130,19 +205,21 @@ public static class MethodConventionAnalyzer
         // Parse property names with NPA keywords
         if (!string.IsNullOrEmpty(propertyPart))
         {
-            properties = ParsePropertyExpressions(propertyPart);
+            (properties, separators) = ParsePropertyExpressions(propertyPart);
         }
         
-        return (properties, ordering);
+        return (properties, separators, ordering);
     }
     
     /// <summary>
     /// Parses property expressions with NPA keywords like LessThan, GreaterThan, Between, Like, etc.
     /// Supports all Spring Data NPA keywords with synonyms (Is prefix, EndsWith vs EndingWith, etc.)
+    /// Returns properties and the separators between them.
     /// </summary>
-    private static List<string> ParsePropertyExpressions(string propertyPart)
+    private static (List<string> properties, List<string> separators) ParsePropertyExpressions(string propertyPart)
     {
         var properties = new List<string>();
+        var separators = new List<string>();
         
         // NPA operator keywords (NOT including And/Or which are separators)
         // Ordered by length (longest first) to avoid partial matches
@@ -217,6 +294,9 @@ public static class MethodConventionAnalyzer
                     properties.Add(currentProperty.ToString());
                     currentProperty.Clear();
                 }
+                
+                // Track the separator
+                separators.Add(separator);
                     
                 remaining = remaining.Substring(separator.Length);
                 foundSeparator = true;
@@ -237,7 +317,7 @@ public static class MethodConventionAnalyzer
             properties.Add(currentProperty.ToString());
         }
         
-        return properties;
+        return (properties, separators);
     }
     
     /// <summary>
@@ -355,6 +435,12 @@ public class MethodConvention
     /// Gets or sets the property names used in WHERE clause.
     /// </summary>
     public List<string> PropertyNames { get; set; } = new();
+    
+    /// <summary>
+    /// Gets or sets the separators between properties ("And" or "Or").
+    /// The list has N-1 elements for N properties (separator[i] is between property[i] and property[i+1]).
+    /// </summary>
+    public List<string> PropertySeparators { get; set; } = new();
     
     /// <summary>
     /// Gets or sets the ordering information.

@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using NPA.Core.Annotations;
 using Xunit;
 
@@ -9,6 +11,8 @@ namespace NPA.Generators.Tests;
 /// </summary>
 public class CustomQueryAttributesTests
 {
+    #region Attribute Property Tests
+    
     [Fact]
     public void QueryAttribute_ShouldStoreSQL()
     {
@@ -213,4 +217,213 @@ public class CustomQueryAttributesTests
         attributeUsage.Should().NotBeNull();
         attributeUsage!.ValidOn.Should().HaveFlag(AttributeTargets.Method);
     }
+    
+    #endregion
+    
+    #region Integration Tests
+    
+    [Fact]
+    public void QueryAttribute_ShouldGenerateQueryExecution()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }
+        public string Email { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        [Query(""SELECT * FROM users WHERE email = @email"")]
+        Task<IEnumerable<User>> FindByCustomEmailAsync(string email);
+    }
+}";
+
+        // Act
+        var result = RunGenerator(source);
+
+        // Assert
+        result.Diagnostics.Should().BeEmpty();
+        var generatedCode = GetGeneratedCode(result);
+        generatedCode.Should().Contain("SELECT * FROM users WHERE email = @email");
+        generatedCode.Should().Contain("FindByCustomEmailAsync");
+        generatedCode.Should().Contain("QueryAsync<");
+    }
+    
+    [Fact]
+    public void StoredProcedureAttribute_ShouldGenerateStoredProcedureCall()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }
+        public string Email { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        [StoredProcedure(""sp_GetUsersByRole"")]
+        Task<IEnumerable<User>> GetUsersByRoleAsync(string role);
+    }
+}";
+
+        // Act
+        var result = RunGenerator(source);
+
+        // Assert
+        result.Diagnostics.Should().BeEmpty();
+        var generatedCode = GetGeneratedCode(result);
+        generatedCode.Should().Contain("sp_GetUsersByRole");
+        generatedCode.Should().Contain("GetUsersByRoleAsync");
+        generatedCode.Should().Contain("CommandType.StoredProcedure");
+    }
+    
+    [Fact]
+    public void MultiMappingAttribute_ShouldGenerateMultiMappingCode()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }
+        public string Email { get; set; }
+        public Address Address { get; set; }
+    }
+    
+    [Entity]
+    public class Address
+    {
+        [Id]
+        public long Id { get; set; }
+        public string Street { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        [Query(""SELECT * FROM users u INNER JOIN addresses a ON u.address_id = a.id"")]
+        [MultiMapping(""Id"", SplitOn = ""Id"")]
+        Task<IEnumerable<User>> GetUsersWithAddressesAsync();
+    }
+}";
+
+        // Act
+        var result = RunGenerator(source);
+
+        // Assert
+        result.Diagnostics.Should().BeEmpty();
+        var generatedCode = GetGeneratedCode(result);
+        generatedCode.Should().Contain("GetUsersWithAddressesAsync");
+        generatedCode.Should().Contain("splitOn:");
+    }
+    
+    [Fact]
+    public void BulkOperationAttribute_ShouldGenerateBulkOperationCode()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }
+        public string Email { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        [BulkOperation(BatchSize = 500)]
+        Task BulkInsertAsync(IEnumerable<User> users);
+    }
+}";
+
+        // Act
+        var result = RunGenerator(source);
+
+        // Assert
+        result.Diagnostics.Should().BeEmpty();
+        var generatedCode = GetGeneratedCode(result);
+        generatedCode.Should().Contain("BulkInsertAsync");
+    }
+    
+    #endregion
+    
+    #region Helper Methods
+    
+    private static GeneratorRunResult RunGenerator(string source)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.EntityAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(NPA.Core.Repositories.IRepository<,>).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location)
+        };
+
+        var compilation = CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { syntaxTree },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+
+        var runResult = driver.GetRunResult();
+        
+        return runResult.Results[0];
+    }
+    
+    private static string GetGeneratedCode(GeneratorRunResult result)
+    {
+        if (result.GeneratedSources.Length == 0)
+            return string.Empty;
+            
+        return result.GeneratedSources[0].SourceText.ToString();
+    }
+    
+    #endregion
 }
