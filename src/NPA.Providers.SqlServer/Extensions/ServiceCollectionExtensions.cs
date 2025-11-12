@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NPA.Core.Configuration;
 using NPA.Core.Core;
 using NPA.Core.Extensions;
 using NPA.Core.Metadata;
@@ -82,6 +83,9 @@ public static class ServiceCollectionExtensions
         var options = new SqlServerOptions();
         configure(options);
 
+        // Build effective connection string with pooling configuration
+        var effectiveConnectionString = BuildConnectionString(connectionString, options);
+
         // Register options
         services.AddSingleton(options);
 
@@ -98,19 +102,8 @@ public static class ServiceCollectionExtensions
         // Register the main database provider
         services.AddSingleton<IDatabaseProvider, SqlServerProvider>();
 
-        // Register connection factory with custom connection configuration
-        services.AddTransient<IDbConnection>(provider =>
-        {
-            var connection = new SqlConnection(connectionString);
-            
-            if (options.CommandTimeout.HasValue)
-            {
-                // Note: Command timeout is set on individual commands, not the connection
-                // This would be handled in the EntityManager or through a connection wrapper
-            }
-
-            return connection;
-        });
+        // Register connection factory with effective connection string
+        services.AddTransient<IDbConnection>(_ => new SqlConnection(effectiveConnectionString));
 
         // Register metadata provider
         services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
@@ -126,6 +119,39 @@ public static class ServiceCollectionExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Builds an effective connection string with pooling and SQL Server-specific options.
+    /// </summary>
+    private static string BuildConnectionString(string baseConnectionString, SqlServerOptions options)
+    {
+        var builder = new SqlConnectionStringBuilder(baseConnectionString);
+
+        // Apply connection pooling settings
+        builder.Pooling = options.Pooling.Enabled;
+        builder.MinPoolSize = options.Pooling.MinPoolSize;
+        builder.MaxPoolSize = options.Pooling.MaxPoolSize;
+        builder.ConnectTimeout = (int)options.Pooling.ConnectionTimeout.TotalSeconds;
+
+        if (options.Pooling.ConnectionLifetime.HasValue)
+        {
+            builder.LoadBalanceTimeout = (int)options.Pooling.ConnectionLifetime.Value.TotalSeconds;
+        }
+
+        builder.Enlist = true; // Automatic transaction enlistment
+
+        // Apply SQL Server-specific options
+        if (options.CommandTimeout.HasValue)
+        {
+            builder.CommandTimeout = options.CommandTimeout.Value;
+        }
+
+        builder.MultipleActiveResultSets = options.EnableMars;
+        builder.Encrypt = options.Encrypt;
+        builder.TrustServerCertificate = options.TrustServerCertificate;
+
+        return builder.ConnectionString;
     }
 
     /// <summary>
@@ -181,6 +207,12 @@ public static class ServiceCollectionExtensions
 public class SqlServerOptions
 {
     /// <summary>
+    /// Gets or sets the connection pooling options.
+    /// Configure Min/Max pool size, connection lifetime, and idle timeout for optimal performance.
+    /// </summary>
+    public ConnectionPoolOptions Pooling { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the command timeout in seconds.
     /// </summary>
     public int? CommandTimeout { get; set; }
@@ -209,21 +241,6 @@ public class SqlServerOptions
     /// Gets or sets the retry delay in milliseconds.
     /// </summary>
     public int RetryDelayMs { get; set; } = 1000;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether to enable connection pooling.
-    /// </summary>
-    public bool EnableConnectionPooling { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the minimum pool size.
-    /// </summary>
-    public int MinPoolSize { get; set; } = 0;
-
-    /// <summary>
-    /// Gets or sets the maximum pool size.
-    /// </summary>
-    public int MaxPoolSize { get; set; } = 100;
 
     /// <summary>
     /// Gets or sets a value indicating whether to enable multiple active result sets (MARS).

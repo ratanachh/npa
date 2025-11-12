@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NPA.Core.Configuration;
 using NPA.Core.Core;
 using NPA.Core.Extensions;
 using NPA.Core.Metadata;
@@ -85,6 +86,9 @@ public static class ServiceCollectionExtensions
         // Register options
         services.AddSingleton(options);
 
+        // Build effective connection string
+        var effectiveConnectionString = BuildConnectionString(connectionString, options);
+
         // Register SQLite-specific services
         services.AddSingleton<ISqlDialect, SqliteDialect>();
         services.AddSingleton<ITypeConverter, SqliteTypeConverter>();
@@ -101,16 +105,7 @@ public static class ServiceCollectionExtensions
         // Register connection factory with options
         services.AddTransient<IDbConnection>(provider =>
         {
-            var connectionStringBuilder = new SqliteConnectionStringBuilder(connectionString);
-
-            // Apply options
-            if (options.CacheSize.HasValue)
-                connectionStringBuilder.Cache = (SqliteCacheMode)options.CacheSize.Value;
-
-            if (options.Mode.HasValue)
-                connectionStringBuilder.Mode = options.Mode.Value;
-
-            var connection = new SqliteConnection(connectionStringBuilder.ConnectionString);
+            var connection = new SqliteConnection(effectiveConnectionString);
             
             // Set pragmas if specified
             if (options.ForeignKeys.HasValue || options.JournalMode != null)
@@ -151,6 +146,32 @@ public static class ServiceCollectionExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Builds an effective connection string with pooling and other configuration options.
+    /// Note: SQLite uses shared cache mode instead of traditional connection pooling.
+    /// </summary>
+    private static string BuildConnectionString(string baseConnectionString, SqliteOptions options)
+    {
+        var builder = new SqliteConnectionStringBuilder(baseConnectionString);
+
+        // SQLite doesn't have traditional pooling, but supports shared cache mode
+        // Pooling configuration translates to cache mode
+        if (options.Pooling.Enabled)
+        {
+            builder.Cache = SqliteCacheMode.Shared;
+        }
+        else
+        {
+            builder.Cache = SqliteCacheMode.Private;
+        }
+
+        // Apply open mode
+        if (options.Mode.HasValue)
+            builder.Mode = options.Mode.Value;
+
+        return builder.ConnectionString;
     }
 
     /// <summary>
@@ -206,9 +227,11 @@ public static class ServiceCollectionExtensions
 public class SqliteOptions
 {
     /// <summary>
-    /// Gets or sets the cache size.
+    /// Gets or sets the connection pooling options.
+    /// Note: SQLite uses shared cache mode instead of traditional connection pooling.
+    /// When Enabled=true, uses SqliteCacheMode.Shared; when false, uses SqliteCacheMode.Private.
     /// </summary>
-    public int? CacheSize { get; set; }
+    public ConnectionPoolOptions Pooling { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the database open mode.

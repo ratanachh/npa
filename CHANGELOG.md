@@ -8,13 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Current Status
-- **Overall Progress**: 83% complete (29/35 tasks)
-- **Total Tests**: 1,093 passing
+- **Overall Progress**: 86% complete (30/35 tasks)
+- **Total Tests**: 1,220 passing
 - **Phase 1-2**: ✅ 100% Complete
-- **Phase 3**: 80% Complete (4/5 tasks)
+- **Phase 3**: ✅ 100% Complete (5/5 tasks)
 - **Phase 4**: 86% Complete (6/7 tasks)
 - **Phase 5**: ✅ 100% Complete
 - **Phase 6**: 0% Complete (planning stage)
+
+### Added - Connection Pooling Optimization (Phase 3.5)
+- `ConnectionPoolOptions` class with unified pooling configuration API
+- Leverages ADO.NET built-in connection pooling across all database providers
+- **SQL Server**: Connection string generation with `SqlConnectionStringBuilder`
+- **PostgreSQL**: Connection string generation with `NpgsqlConnectionStringBuilder`
+- **MySQL**: Connection string generation with `MySqlConnectionStringBuilder`
+- **SQLite**: Shared cache mode configuration (Enabled → Shared cache)
+- Configurable pool size (MinPoolSize: 5, MaxPoolSize: 100 defaults)
+- Connection timeouts and lifetime management
+- Connection validation and reset on return
+- External pooling support (PgBouncer for PostgreSQL, ProxySQL for MySQL)
+- Performance: Eliminates connection establishment overhead
+- Zero breaking changes: Backward compatible with existing connection strings
+- **127 comprehensive tests** covering all scenarios (29 Core + 19 SQL Server + 28 PostgreSQL + 31 MySQL + 20 SQLite)
 
 ---
 

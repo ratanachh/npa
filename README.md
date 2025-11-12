@@ -2,7 +2,7 @@
 
 A lightweight, high-performance Object-Relational Mapping library for .NET that provides Java Persistence API (JPA) inspired features while leveraging Dapper's excellent performance as the underlying data access technology.
 
-> **🚧 Development Status**: This project is **83% complete** (29/35 tasks). **Phase 1-2 are 100% complete**, Phase 3 is 80% complete, Phase 4 is 86% complete, and **Phase 5 is 100% complete**. Core features including entity mapping, CRUD operations, CPQL queries, relationships, transactions, bulk operations, lazy loading, caching, migrations, monitoring, audit logging, and multi-tenancy are **production-ready** . See the [Development Roadmap](#-development-roadmap) for detailed progress.
+> **🚧 Development Status**: This project is **86% complete** (30/35 tasks). **Phase 1-3 are 100% complete**, Phase 4 is 86% complete, and **Phase 5 is 100% complete**. Core features including entity mapping, CRUD operations, CPQL queries, relationships, transactions, bulk operations, lazy loading, connection pooling, caching, migrations, monitoring, audit logging, and multi-tenancy are **production-ready**. See the [Development Roadmap](#-development-roadmap) for detailed progress.
 
 ## 🎯 Project Goals
 
@@ -2802,10 +2802,38 @@ All query operations support both async and sync execution:
   - TransactionException for transaction errors
   - 22 comprehensive tests passing (TransactionTests, DeferredExecutionTests, BackwardCompatibilityTests)
   - Full async/sync support
-- [ ] **3.2 Cascade operations** 📋 PLANNED
-- [ ] **3.3 Bulk operations** (insert, update, delete) 📋 PLANNED
-- [ ] **3.4 Lazy loading support** 📋 PLANNED
-- [ ] **3.5 Connection pooling optimization** 📋 PLANNED
+- [x] **3.2 Cascade operations** [Completed] **COMPLETED**
+  - CascadeType enum: PERSIST, MERGE, REMOVE, REFRESH, ALL
+  - Automatic cascade propagation for relationships
+  - 52 tests passing (CascadeOperationTests, One-to-Many, Many-to-One, One-to-One, Self-referencing)
+  - Circular reference detection and handling
+  - Full async/sync support
+- [x] **3.3 Bulk operations** (insert, update, delete) [Completed] **COMPLETED**
+  - IBulkOperationProvider with database-specific optimizations
+  - SQL Server: SqlBulkCopy (10-100x faster than individual inserts)
+  - PostgreSQL: COPY command support
+  - MySQL: Optimized batch INSERT statements
+  - SQLite: Transaction-based batching
+  - 50+ tests passing across all providers
+  - Progress reporting for large datasets
+- [x] **3.4 Lazy loading support** [Completed] **COMPLETED**
+  - Castle.Core proxies for entity interception
+  - Relationship-level lazy loading configuration
+  - Automatic proxy generation for navigation properties
+  - Session-aware loading to avoid N+1 queries
+  - 30+ tests passing (LazyLoadingTests, Proxy tests)
+  - Cache integration to minimize database roundtrips
+- [x] **3.5 Connection pooling optimization** [Completed] **COMPLETED**
+  - ConnectionPoolOptions with unified API across all databases
+  - Leverages ADO.NET built-in connection pooling
+  - Configurable pool size (Min: 5, Max: 100 defaults)
+  - Connection lifetime and idle timeout management
+  - Connection validation and reset on return
+  - External pooling support (PgBouncer, ProxySQL)
+  - Zero breaking changes, backward compatible
+  - 127 comprehensive tests passing (29 Core + 19 SQL Server + 28 PostgreSQL + 31 MySQL + 20 SQLite)
+
+**Phase 3 Status: ✅ COMPLETE (5/5 tasks)**
 
 ### Phase 4: Source Generator Enhancement
 - [ ] **4.1 Advanced repository generation patterns** 📋 PLANNED

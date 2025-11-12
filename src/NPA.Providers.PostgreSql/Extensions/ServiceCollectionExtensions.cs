@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NPA.Core.Configuration;
 using NPA.Core.Core;
 using NPA.Core.Extensions;
 using NPA.Core.Metadata;
@@ -85,6 +86,9 @@ public static class ServiceCollectionExtensions
         // Register options
         services.AddSingleton(options);
 
+        // Build effective connection string with pooling configuration
+        var effectiveConnectionString = BuildConnectionString(connectionString, options);
+
         // Register PostgreSQL-specific services
         services.AddSingleton<ISqlDialect, PostgreSqlDialect>();
         services.AddSingleton<ITypeConverter, PostgreSqlTypeConverter>();
@@ -98,35 +102,8 @@ public static class ServiceCollectionExtensions
         // Register the main database provider
         services.AddSingleton<IDatabaseProvider, PostgreSqlProvider>();
 
-        // Register connection factory with custom connection configuration
-        services.AddTransient<IDbConnection>(provider =>
-        {
-            var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString);
-
-            // Apply options
-            if (options.CommandTimeout.HasValue)
-                connectionStringBuilder.CommandTimeout = options.CommandTimeout.Value;
-
-            if (options.MaxPoolSize.HasValue)
-                connectionStringBuilder.MaxPoolSize = options.MaxPoolSize.Value;
-
-            if (options.MinPoolSize.HasValue)
-                connectionStringBuilder.MinPoolSize = options.MinPoolSize.Value;
-
-            if (options.ConnectionIdleLifetime.HasValue)
-                connectionStringBuilder.ConnectionIdleLifetime = options.ConnectionIdleLifetime.Value;
-
-            if (options.ConnectionPruningInterval.HasValue)
-                connectionStringBuilder.ConnectionPruningInterval = options.ConnectionPruningInterval.Value;
-
-            if (options.EnablePooling.HasValue)
-                connectionStringBuilder.Pooling = options.EnablePooling.Value;
-
-            if (options.Timeout.HasValue)
-                connectionStringBuilder.Timeout = options.Timeout.Value;
-
-            return new NpgsqlConnection(connectionStringBuilder.ConnectionString);
-        });
+        // Register connection factory with configured connection string
+        services.AddTransient<IDbConnection>(_ => new NpgsqlConnection(effectiveConnectionString));
 
         // Register metadata provider
         services.AddNpaMetadataProvider(); // Uses generated provider if available for 10-100x performance
@@ -142,6 +119,62 @@ public static class ServiceCollectionExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Builds an effective connection string with pooling and other configuration options.
+    /// </summary>
+    private static string BuildConnectionString(string baseConnectionString, PostgreSqlOptions options)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString);
+
+        // Apply connection pooling options
+        builder.Pooling = options.Pooling.Enabled;
+        builder.MinPoolSize = options.Pooling.MinPoolSize;
+        builder.MaxPoolSize = options.Pooling.MaxPoolSize;
+
+        if (options.Pooling.ConnectionLifetime.HasValue)
+            builder.ConnectionLifetime = (int)options.Pooling.ConnectionLifetime.Value.TotalSeconds;
+
+        if (options.Pooling.IdleTimeout.HasValue)
+            builder.ConnectionIdleLifetime = (int)options.Pooling.IdleTimeout.Value.TotalSeconds;
+
+        // Apply command timeout
+        if (options.CommandTimeout.HasValue)
+            builder.CommandTimeout = options.CommandTimeout.Value;
+
+        // Apply connection timeout (different from command timeout)
+        builder.Timeout = (int)options.Pooling.ConnectionTimeout.TotalSeconds;
+
+        // Apply other PostgreSQL-specific options
+        if (!string.IsNullOrEmpty(options.SslMode))
+        {
+            if (Enum.TryParse<SslMode>(options.SslMode, true, out var sslMode))
+                builder.SslMode = sslMode;
+        }
+
+        if (!string.IsNullOrEmpty(options.ApplicationName))
+            builder.ApplicationName = options.ApplicationName;
+
+        builder.IncludeErrorDetail = options.IncludeErrorDetails;
+
+        if (options.KeepAlive.HasValue)
+            builder.KeepAlive = options.KeepAlive.Value;
+
+        if (options.TcpKeepAliveTime.HasValue)
+            builder.TcpKeepAliveTime = options.TcpKeepAliveTime.Value;
+
+        if (options.TcpKeepAliveInterval.HasValue)
+            builder.TcpKeepAliveInterval = options.TcpKeepAliveInterval.Value;
+
+        if (options.MaxAutoPrepare > 0)
+        {
+            builder.MaxAutoPrepare = options.MaxAutoPrepare;
+            if (options.AutoPrepareMinUsages > 0)
+                builder.AutoPrepareMinUsages = options.AutoPrepareMinUsages;
+        }
+
+        return builder.ConnectionString;
     }
 
     /// <summary>
@@ -197,14 +230,15 @@ public static class ServiceCollectionExtensions
 public class PostgreSqlOptions
 {
     /// <summary>
+    /// Gets or sets the connection pooling options.
+    /// Configure Min/Max pool size, connection lifetime, and idle timeout for optimal performance.
+    /// </summary>
+    public ConnectionPoolOptions Pooling { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the command timeout in seconds.
     /// </summary>
     public int? CommandTimeout { get; set; }
-
-    /// <summary>
-    /// Gets or sets the connection timeout in seconds.
-    /// </summary>
-    public int? Timeout { get; set; }
 
     /// <summary>
     /// Gets or sets the maximum batch size for bulk operations.
@@ -212,40 +246,9 @@ public class PostgreSqlOptions
     public int MaxBatchSize { get; set; } = 5000;
 
     /// <summary>
-    /// Gets or sets a value indicating whether to enable connection pooling.
-    /// </summary>
-    public bool? EnablePooling { get; set; }
-
-    /// <summary>
-    /// Gets or sets the minimum pool size.
-    /// </summary>
-    public int? MinPoolSize { get; set; }
-
-    /// <summary>
-    /// Gets or sets the maximum pool size.
-    /// </summary>
-    public int? MaxPoolSize { get; set; }
-
-    /// <summary>
-    /// Gets or sets the connection idle lifetime in seconds.
-    /// </summary>
-    public int? ConnectionIdleLifetime { get; set; }
-
-    /// <summary>
-    /// Gets or sets the connection pruning interval in seconds.
-    /// </summary>
-    public int? ConnectionPruningInterval { get; set; }
-
-    /// <summary>
-    /// Gets or sets a value indicating whether to enable SSL mode.
+    /// Gets or sets the SSL mode for connections.
     /// </summary>
     public string? SslMode { get; set; }
-
-    /// <summary>
-    /// Gets or sets a value indicating whether to trust the server certificate.
-    /// </summary>
-    public bool TrustServerCertificate { get; set; } = false;
-
     /// <summary>
     /// Gets or sets the application name for connection tracking.
     /// </summary>
@@ -272,9 +275,10 @@ public class PostgreSqlOptions
     public int? TcpKeepAliveInterval { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether to enable prepared statements.
+    /// Gets or sets the minimum usage count before a statement is automatically prepared.
+    /// Set to 0 to disable automatic preparation.
     /// </summary>
-    public bool AutoPrepareMinUsages { get; set; } = false;
+    public int AutoPrepareMinUsages { get; set; } = 0;
 
     /// <summary>
     /// Gets or sets the maximum number of automatic prepared statements.
