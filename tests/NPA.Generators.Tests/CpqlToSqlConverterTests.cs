@@ -1463,7 +1463,457 @@ public class CpqlToSqlConverterTests
     }
 
     #endregion
+
+    #region UPDATE and DELETE Query Tests
+
+    [Fact]
+    public void ConvertToSql_SimpleUpdate_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var cpql = "UPDATE Product p SET p.Price = :price WHERE p.Id = :id";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("UPDATE product SET price = @price WHERE id = @id");
+    }
+
+    [Fact]
+    public void ConvertToSql_UpdateWithMetadata_ShouldUseTableAndColumnNames()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "User",
+            TableName = "users",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "Id", ColumnName = "id" },
+                new() { Name = "AccountBalance", ColumnName = "account_balance" },
+                new() { Name = "Country", ColumnName = "country" }
+            }
+        };
+        var cpql = "UPDATE User u SET u.AccountBalance = u.AccountBalance + :amount WHERE u.Country = :country";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("UPDATE users SET account_balance = account_balance + @amount WHERE country = @country");
+    }
+
+    [Fact]
+    public void ConvertToSql_UpdateMultipleFields_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Product",
+            TableName = "products",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "Id", ColumnName = "id" },
+                new() { Name = "Price", ColumnName = "price" },
+                new() { Name = "Stock", ColumnName = "stock" },
+                new() { Name = "IsActive", ColumnName = "is_active" }
+            }
+        };
+        var cpql = "UPDATE Product p SET p.Price = :price, p.Stock = :stock, p.IsActive = :active WHERE p.Id = :id";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("UPDATE products SET price = @price, stock = @stock, is_active = @active WHERE id = @id");
+    }
+
+    [Fact]
+    public void ConvertToSql_UpdateWithExpression_ShouldPreserveExpression()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Order",
+            TableName = "orders",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "TotalAmount", ColumnName = "total_amount" },
+                new() { Name = "DiscountPercent", ColumnName = "discount_percent" }
+            }
+        };
+        var cpql = "UPDATE Order o SET o.TotalAmount = o.TotalAmount * (1 - o.DiscountPercent / 100) WHERE o.DiscountPercent > :minDiscount";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("UPDATE orders SET total_amount = total_amount * (1 - discount_percent / 100) WHERE discount_percent > @minDiscount");
+    }
+
+    [Fact]
+    public void ConvertToSql_SimpleDelete_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var cpql = "DELETE FROM Product p WHERE p.Id = :id";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("DELETE FROM product WHERE id = @id");
+    }
+
+    [Fact]
+    public void ConvertToSql_DeleteWithMetadata_ShouldUseTableAndColumnNames()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "User",
+            TableName = "users",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "IsActive", ColumnName = "is_active" },
+                new() { Name = "CreatedAt", ColumnName = "created_at" }
+            }
+        };
+        var cpql = "DELETE FROM User u WHERE u.IsActive = false AND u.CreatedAt < :date";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("DELETE FROM users WHERE is_active = false AND created_at < @date");
+    }
+
+    [Fact]
+    public void ConvertToSql_DeleteWithComplexCondition_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Session",
+            TableName = "sessions",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "ExpiresAt", ColumnName = "expires_at" },
+                new() { Name = "IsRevoked", ColumnName = "is_revoked" },
+                new() { Name = "UserId", ColumnName = "user_id" }
+            }
+        };
+        var cpql = "DELETE FROM Session s WHERE (s.ExpiresAt < :now OR s.IsRevoked = true) AND s.UserId = :userId";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("DELETE FROM sessions WHERE (expires_at < @now OR is_revoked = true) AND user_id = @userId");
+    }
+
+    [Fact]
+    public void ConvertToSql_DeleteWithInClause_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Product",
+            TableName = "products",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "CategoryId", ColumnName = "category_id" },
+                new() { Name = "Status", ColumnName = "status" }
+            }
+        };
+        var cpql = "DELETE FROM Product p WHERE p.CategoryId = ANY(:categoryIds) AND p.Status = :status";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("DELETE FROM products WHERE category_id = ANY(@categoryIds) AND status = @status");
+    }
+
+    [Fact]
+    public void ConvertToSql_UpdateWithoutWhere_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Settings",
+            TableName = "app_settings",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "LastUpdated", ColumnName = "last_updated" }
+            }
+        };
+        var cpql = "UPDATE Settings s SET s.LastUpdated = :timestamp";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("UPDATE app_settings SET last_updated = @timestamp");
+    }
+
+    [Fact]
+    public void ConvertToSql_DeleteWithoutWhere_ShouldConvertCorrectly()
+    {
+        // Arrange - Dangerous but valid SQL
+        var cpql = "DELETE FROM TempData t";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("DELETE FROM tempdata");
+    }
+
+    [Fact]
+    public void ConvertToSql_UpdateWithMultipleEntitiesMetadata_ShouldUseCorrectMetadata()
+    {
+        // Arrange
+        var entitiesMetadata = new Dictionary<string, EntityMetadataInfo>
+        {
+            {
+                "User",
+                new EntityMetadataInfo
+                {
+                    Name = "User",
+                    TableName = "users",
+                    Properties = new List<PropertyMetadataInfo>
+                    {
+                        new() { Name = "LastLogin", ColumnName = "last_login" },
+                        new() { Name = "LoginCount", ColumnName = "login_count" },
+                        new() { Name = "Id", ColumnName = "id" }
+                    }
+                }
+            }
+        };
+        var cpql = "UPDATE User u SET u.LastLogin = :now, u.LoginCount = u.LoginCount + 1 WHERE u.Id = :userId";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, entitiesMetadata);
+
+        // Assert
+        sql.Should().Be("UPDATE users SET last_login = @now, login_count = login_count + 1 WHERE id = @userId");
+    }
+
+    [Fact]
+    public void ConvertToSql_DeleteWithMultipleEntitiesMetadata_ShouldUseCorrectMetadata()
+    {
+        // Arrange
+        var entitiesMetadata = new Dictionary<string, EntityMetadataInfo>
+        {
+            {
+                "AuditLog",
+                new EntityMetadataInfo
+                {
+                    Name = "AuditLog",
+                    TableName = "audit_logs",
+                    Properties = new List<PropertyMetadataInfo>
+                    {
+                        new() { Name = "CreatedAt", ColumnName = "created_at" },
+                        new() { Name = "Severity", ColumnName = "severity" }
+                    }
+                }
+            }
+        };
+        var cpql = "DELETE FROM AuditLog a WHERE a.CreatedAt < :cutoffDate AND a.Severity = :severity";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, entitiesMetadata);
+
+        // Assert
+        sql.Should().Be("DELETE FROM audit_logs WHERE created_at < @cutoffDate AND severity = @severity");
+    }
+
+    #endregion
+
+    #region INSERT Query Tests
+
+    [Fact]
+    public void ConvertToSql_SimpleInsert_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var cpql = "INSERT INTO Product (Name, Price) VALUES (:name, :price)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("INSERT INTO product (name, price) VALUES (@name, @price)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithMetadata_ShouldUseTableAndColumnNames()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Product",
+            TableName = "products",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "Name", ColumnName = "product_name" },
+                new() { Name = "Price", ColumnName = "unit_price" },
+                new() { Name = "Stock", ColumnName = "stock_quantity" }
+            }
+        };
+        var cpql = "INSERT INTO Product (Name, Price, Stock) VALUES (:name, :price, :stock)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("INSERT INTO products (product_name, unit_price, stock_quantity) VALUES (@name, @price, @stock)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertMultipleColumns_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var cpql = "INSERT INTO User (Username, Email, FirstName, LastName, IsActive) VALUES (:username, :email, :firstName, :lastName, :isActive)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("INSERT INTO user (username, email, first_name, last_name, is_active) VALUES (@username, @email, @firstName, @lastName, @isActive)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithMixedCaseColumns_ShouldConvertToSnakeCase()
+    {
+        // Arrange
+        var cpql = "INSERT INTO Order (TotalAmount, DiscountPercent, OrderDate, CustomerId) VALUES (:totalAmount, :discountPercent, :orderDate, :customerId)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("INSERT INTO order (total_amount, discount_percent, order_date, customer_id) VALUES (@totalAmount, @discountPercent, @orderDate, @customerId)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithSingleColumn_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var cpql = "INSERT INTO Category (Name) VALUES (:name)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("INSERT INTO category (name) VALUES (@name)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithMetadataPartialMatch_ShouldUseFallbackForUnmatchedColumns()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Product",
+            TableName = "products",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "Name", ColumnName = "product_name" },
+                new() { Name = "Price", ColumnName = "unit_price" }
+                // Stock is not in metadata
+            }
+        };
+        var cpql = "INSERT INTO Product (Name, Price, Stock) VALUES (:name, :price, :stock)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("INSERT INTO products (product_name, unit_price, stock) VALUES (@name, @price, @stock)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithTimestampColumns_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var metadata = new EntityMetadataInfo
+        {
+            Name = "Session",
+            TableName = "sessions",
+            Properties = new List<PropertyMetadataInfo>
+            {
+                new() { Name = "UserId", ColumnName = "user_id" },
+                new() { Name = "CreatedAt", ColumnName = "created_at" },
+                new() { Name = "ExpiresAt", ColumnName = "expires_at" }
+            }
+        };
+        var cpql = "INSERT INTO Session (UserId, CreatedAt, ExpiresAt) VALUES (:userId, :createdAt, :expiresAt)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
+
+        // Assert
+        sql.Should().Be("INSERT INTO sessions (user_id, created_at, expires_at) VALUES (@userId, @createdAt, @expiresAt)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithBooleanColumn_ShouldConvertCorrectly()
+    {
+        // Arrange
+        var cpql = "INSERT INTO Feature (Name, IsEnabled, IsPublic) VALUES (:name, :isEnabled, :isPublic)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql);
+
+        // Assert
+        sql.Should().Be("INSERT INTO feature (name, is_enabled, is_public) VALUES (@name, @isEnabled, @isPublic)");
+    }
+
+    [Fact]
+    public void ConvertToSql_InsertWithMultipleEntitiesMetadata_ShouldUseCorrectMetadata()
+    {
+        // Arrange
+        var entitiesMetadata = new Dictionary<string, EntityMetadataInfo>
+        {
+            {
+                "User",
+                new EntityMetadataInfo
+                {
+                    Name = "User",
+                    TableName = "users",
+                    Properties = new List<PropertyMetadataInfo>
+                    {
+                        new() { Name = "Email", ColumnName = "email_address" },
+                        new() { Name = "FirstName", ColumnName = "first_name" }
+                    }
+                }
+            },
+            {
+                "Product",
+                new EntityMetadataInfo
+                {
+                    Name = "Product",
+                    TableName = "products",
+                    Properties = new List<PropertyMetadataInfo>
+                    {
+                        new() { Name = "Name", ColumnName = "product_name" },
+                        new() { Name = "Price", ColumnName = "unit_price" }
+                    }
+                }
+            }
+        };
+        var cpql = "INSERT INTO User (Email, FirstName) VALUES (:email, :firstName)";
+
+        // Act
+        var sql = CpqlToSqlConverter.ConvertToSql(cpql, entitiesMetadata);
+
+        // Assert
+        sql.Should().Be("INSERT INTO users (email_address, first_name) VALUES (@email, @firstName)");
+    }
+
+    #endregion
 }
+
 
 
 

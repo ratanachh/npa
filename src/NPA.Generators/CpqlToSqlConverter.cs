@@ -50,18 +50,47 @@ public static class CpqlToSqlConverter
         // Step 2: Extract entity-to-alias mapping from the query
         var entityAliasMap = ExtractEntityAliasMapping(sql);
         
-        // Step 3: Convert SELECT clause (e.g., "SELECT e" or "SELECT COUNT(e)" or "SELECT AVG(e.Property)")
-        sql = ConvertSelectClause(sql, entitiesMetadata, entityAliasMap);
+        // Detect query type (SELECT, INSERT, UPDATE, DELETE)
+        var queryType = DetectQueryType(sql);
+        
+        if (queryType == "INSERT")
+        {
+            // Step 3: Convert INSERT INTO clause
+            sql = ConvertInsertClause(sql, entitiesMetadata, entityAliasMap);
+            
+            // Step 4: No need to remove aliases for INSERT (no entity aliases in column list or VALUES)
+        }
+        else if (queryType == "UPDATE")
+        {
+            // Step 3: Convert UPDATE clause
+            sql = ConvertUpdateClause(sql, entitiesMetadata, entityAliasMap);
+            
+            // Step 4: Remove entity alias from SET and WHERE clauses
+            sql = RemoveEntityAliases(sql, entitiesMetadata, entityAliasMap);
+        }
+        else if (queryType == "DELETE")
+        {
+            // Step 3: Convert DELETE FROM clause
+            sql = ConvertDeleteFromClause(sql, entitiesMetadata, entityAliasMap);
+            
+            // Step 4: Remove entity alias from WHERE clause
+            sql = RemoveEntityAliases(sql, entitiesMetadata, entityAliasMap);
+        }
+        else // SELECT
+        {
+            // Step 3: Convert SELECT clause (e.g., "SELECT e" or "SELECT COUNT(e)" or "SELECT AVG(e.Property)")
+            sql = ConvertSelectClause(sql, entitiesMetadata, entityAliasMap);
 
-        // Step 4: Convert FROM clause (e.g., "FROM Entity e" to "FROM table_name")
-        sql = ConvertFromClause(sql, entitiesMetadata, entityAliasMap);
+            // Step 4: Convert FROM clause (e.g., "FROM Entity e" to "FROM table_name")
+            sql = ConvertFromClause(sql, entitiesMetadata, entityAliasMap);
 
-        // Step 5: Remove entity alias from property references (e.g., "e.Property" to "column_name")
-        sql = RemoveEntityAliases(sql, entitiesMetadata, entityAliasMap);
+            // Step 5: Remove entity alias from property references (e.g., "e.Property" to "column_name")
+            sql = RemoveEntityAliases(sql, entitiesMetadata, entityAliasMap);
 
-        // Step 6: Convert LIMIT (some databases use different syntax)
-        // For now, keep LIMIT as is (works for MySQL, PostgreSQL)
-        // SQL Server would need FETCH FIRST n ROWS ONLY or TOP n
+            // Step 6: Convert LIMIT (some databases use different syntax)
+            // For now, keep LIMIT as is (works for MySQL, PostgreSQL)
+            // SQL Server would need FETCH FIRST n ROWS ONLY or TOP n
+        }
 
         // Step 7: Format the SQL for readability (if requested)
         if (formatSql)
@@ -70,6 +99,129 @@ public static class CpqlToSqlConverter
         }
 
         return sql;
+    }
+
+    /// <summary>
+    /// Detects the type of query (SELECT, INSERT, UPDATE, DELETE)
+    /// </summary>
+    private static string DetectQueryType(string sql)
+    {
+        var trimmed = sql.TrimStart();
+        if (trimmed.StartsWith("INSERT", StringComparison.OrdinalIgnoreCase))
+            return "INSERT";
+        if (trimmed.StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase))
+            return "UPDATE";
+        if (trimmed.StartsWith("DELETE", StringComparison.OrdinalIgnoreCase))
+            return "DELETE";
+        return "SELECT";
+    }
+
+    /// <summary>
+    /// Converts CPQL UPDATE clause to SQL UPDATE clause
+    /// Example: "UPDATE User u SET u.Name = :name WHERE u.Id = :id"
+    /// becomes: "UPDATE users SET name = @name WHERE id = @id"
+    /// </summary>
+    private static string ConvertUpdateClause(string cpql, Dictionary<string, EntityMetadataInfo> entitiesMetadata, Dictionary<string, string> entityAliasMap)
+    {
+        // Pattern: UPDATE EntityName alias SET ...
+        var updatePattern = @"\bUPDATE\s+(\w+)\s+(\w+)\s+SET\b";
+        cpql = Regex.Replace(cpql, updatePattern, match =>
+        {
+            var entityName = match.Groups[1].Value;
+            var alias = match.Groups[2].Value;
+            
+            // Get table name from metadata
+            if (entitiesMetadata.TryGetValue(entityName, out var metadata))
+            {
+                return $"UPDATE {metadata.TableName} SET";
+            }
+            
+            // Fallback: use entity name as table name
+            return $"UPDATE {entityName.ToLowerInvariant()} SET";
+        }, RegexOptions.IgnoreCase);
+        
+        return cpql;
+    }
+
+    /// <summary>
+    /// Converts CPQL DELETE FROM clause to SQL DELETE FROM clause
+    /// Example: "DELETE FROM User u WHERE u.IsActive = false"
+    /// becomes: "DELETE FROM users WHERE is_active = false"
+    /// </summary>
+    private static string ConvertDeleteFromClause(string cpql, Dictionary<string, EntityMetadataInfo> entitiesMetadata, Dictionary<string, string> entityAliasMap)
+    {
+        // Pattern: DELETE FROM EntityName alias WHERE ...
+        var deletePattern = @"\bDELETE\s+FROM\s+(\w+)\s+(\w+)(?=\s+WHERE|\s*$)";
+        cpql = Regex.Replace(cpql, deletePattern, match =>
+        {
+            var entityName = match.Groups[1].Value;
+            var alias = match.Groups[2].Value;
+            
+            // Get table name from metadata
+            if (entitiesMetadata.TryGetValue(entityName, out var metadata))
+            {
+                return $"DELETE FROM {metadata.TableName}";
+            }
+            
+            // Fallback: use entity name as table name
+            return $"DELETE FROM {entityName.ToLowerInvariant()}";
+        }, RegexOptions.IgnoreCase);
+        
+        return cpql;
+    }
+
+    /// <summary>
+    /// Converts CPQL INSERT INTO clause to SQL INSERT INTO clause
+    /// Example: "INSERT INTO Product (Name, Price) VALUES (:name, :price)"
+    /// becomes: "INSERT INTO products (name, price) VALUES (@name, @price)"
+    /// </summary>
+    private static string ConvertInsertClause(string cpql, Dictionary<string, EntityMetadataInfo> entitiesMetadata, Dictionary<string, string> entityAliasMap)
+    {
+        // Pattern: INSERT INTO EntityName (columns) VALUES (...)
+        var insertPattern = @"\bINSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)";
+        cpql = Regex.Replace(cpql, insertPattern, match =>
+        {
+            var entityName = match.Groups[1].Value;
+            var columnsList = match.Groups[2].Value;
+            
+            // Get table name from metadata
+            string tableName;
+            if (entitiesMetadata.TryGetValue(entityName, out var metadata))
+            {
+                tableName = metadata.TableName;
+                
+                // Convert column names using metadata
+                var columns = columnsList.Split(',').Select(c => c.Trim()).ToList();
+                var convertedColumns = new List<string>();
+                
+                foreach (var column in columns)
+                {
+                    var prop = metadata.Properties.FirstOrDefault(p => 
+                        p.Name.Equals(column, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (prop != null)
+                    {
+                        convertedColumns.Add(prop.ColumnName);
+                    }
+                    else
+                    {
+                        // Fallback: convert to snake_case
+                        convertedColumns.Add(ToSnakeCase(column));
+                    }
+                }
+                
+                return $"INSERT INTO {tableName} ({string.Join(", ", convertedColumns)})";
+            }
+            
+            // Fallback: convert entity name to lowercase and columns to snake_case
+            tableName = entityName.ToLowerInvariant();
+            var fallbackColumns = columnsList.Split(',')
+                .Select(c => ToSnakeCase(c.Trim()));
+            
+            return $"INSERT INTO {tableName} ({string.Join(", ", fallbackColumns)})";
+        }, RegexOptions.IgnoreCase);
+        
+        return cpql;
     }
 
     /// <summary>
@@ -86,6 +238,16 @@ public static class CpqlToSqlConverter
         {
             var entityName = fromMatch.Groups[1].Value;
             var alias = fromMatch.Groups[2].Value;
+            mapping[entityName] = alias;
+        }
+        
+        // Extract UPDATE clause: UPDATE EntityName alias
+        var updatePattern = @"\bUPDATE\s+(\w+)\s+(\w+)\s+SET";
+        var updateMatch = Regex.Match(cpql, updatePattern, RegexOptions.IgnoreCase);
+        if (updateMatch.Success)
+        {
+            var entityName = updateMatch.Groups[1].Value;
+            var alias = updateMatch.Groups[2].Value;
             mapping[entityName] = alias;
         }
         

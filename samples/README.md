@@ -44,3 +44,39 @@ This application acts as a host for all feature demonstrations, from basic CRUD 
 
     Enter your choice:
     ```
+
+## Individual Sample Projects
+
+### ProfilerDemo
+
+A standalone sample demonstrating NPA's performance monitoring and profiling capabilities.
+
+**Location**: `samples/ProfilerDemo/`
+
+**Features**:
+- Real-time performance monitoring
+- Slow query detection
+- Cache hit rate analysis
+- Performance metrics (P50, P95, P99)
+- Automated recommendations
+- Integration with NPA.Profiler tool
+
+**Run**:
+```sh
+cd samples/ProfilerDemo
+dotnet run
+```
+
+See `samples/ProfilerDemo/README.md` for detailed usage and profiler tool commands.
+
+---
+
+## Project Structure
+
+```
+samples/
+├── BasicUsage/              # Consolidated sample runner (all core features)
+├── ProfilerDemo/            # Performance profiling sample
+├── UdemyCloneSaaS/          # Real-world SaaS application example
+└── UdemyCloneSaaS.Api/      # API layer for SaaS example
+```

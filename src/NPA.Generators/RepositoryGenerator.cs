@@ -1328,15 +1328,37 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
         else if (method.ReturnType.Contains("int") || method.ReturnType.Contains("long"))
         {
-            // Returns scalar (count, etc.)
+            // Returns scalar (count, affected rows, etc.)
+            // Detect if it's INSERT/UPDATE/DELETE based on SQL query
             sb.AppendLine($"            var sql = @\"{sql}\";");
-            if (isAsync)
+            
+            var isModification = sql.TrimStart().StartsWith("INSERT", StringComparison.OrdinalIgnoreCase) ||
+                                sql.TrimStart().StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase) ||
+                                sql.TrimStart().StartsWith("DELETE", StringComparison.OrdinalIgnoreCase);
+            
+            if (isModification)
             {
-                sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                // INSERT/UPDATE/DELETE - returns affected row count
+                if (isAsync)
+                {
+                    sb.AppendLine($"            return await _connection.ExecuteAsync(sql, {paramObj});");
+                }
+                else
+                {
+                    sb.AppendLine($"            return _connection.Execute(sql, {paramObj});");
+                }
             }
             else
             {
-                sb.AppendLine($"            return _connection.ExecuteScalar<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                // SELECT COUNT, SUM, etc. - returns scalar value
+                if (isAsync)
+                {
+                    sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                }
+                else
+                {
+                    sb.AppendLine($"            return _connection.ExecuteScalar<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                }
             }
         }
         else if (method.ReturnType.Contains("bool"))

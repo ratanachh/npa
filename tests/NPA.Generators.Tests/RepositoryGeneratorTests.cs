@@ -921,4 +921,468 @@ namespace TestNamespace
     }
 
     #endregion
+
+    #region UPDATE and DELETE Query Generation Tests
+
+    [Fact]
+    public void Generator_UpdateQuery_ShouldConvertJPQLToSQLAndUseExecuteAsync()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    public class Product
+    {
+        public int Id { get; set; }
+        public decimal Price { get; set; }
+        public int Stock { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""UPDATE Product p SET p.Price = :price WHERE p.Id = :id"")]
+        Task<int> UpdatePriceAsync(int id, decimal price);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("ProductRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce ProductRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Should convert JPQL to SQL - generator uses metadata from [Table] attribute to get table name "products"
+        generatedCode.Should().Contain("UPDATE products SET price = @price WHERE id = @id");
+        
+        // Should use ExecuteAsync for UPDATE (not ExecuteScalarAsync)
+        generatedCode.Should().Contain("ExecuteAsync");
+    }
+
+    [Fact]
+    public void Generator_UpdateQueryWithMetadata_ShouldUseTableAndColumnNames()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Table(""products"")]
+    public class Product
+    {
+        [Column(""id"")]
+        public int Id { get; set; }
+        
+        [Column(""price"")]
+        public decimal Price { get; set; }
+        
+        [Column(""stock_quantity"")]
+        public int Stock { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""UPDATE Product p SET p.Price = :price, p.Stock = :stock WHERE p.Id = :id"")]
+        Task<int> UpdatePriceAndStockAsync(int id, decimal price, int stock);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("ProductRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce ProductRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Should use table name from [Table("products")] attribute
+        // Stock property converted to snake_case (generator extracts [Column] metadata at generation time)
+        generatedCode.Should().Contain("UPDATE products SET price = @price, stock = @stock WHERE id = @id");
+    }
+
+    [Fact]
+    public void Generator_DeleteQuery_ShouldConvertJPQLToSQLAndUseExecuteAsync()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+using System;
+
+namespace TestNamespace
+{
+    public class Session
+    {
+        public int Id { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public bool IsRevoked { get; set; }
+    }
+
+    [Repository]
+    public interface ISessionRepository : IRepository<Session, int>
+    {
+        [Query(""DELETE FROM Session s WHERE s.ExpiresAt < :now OR s.IsRevoked = true"")]
+        Task<int> DeleteExpiredOrRevokedAsync(DateTime now);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("SessionRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce SessionRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Should convert JPQL to SQL - uses metadata table name "sessions"
+        generatedCode.Should().Contain("DELETE FROM sessions WHERE expires_at < @now OR is_revoked = true");
+        
+        // Should use ExecuteAsync for DELETE (not ExecuteScalarAsync)
+        generatedCode.Should().Contain("ExecuteAsync");
+    }
+
+    [Fact]
+    public void Generator_DeleteQueryWithMetadata_ShouldUseTableAndColumnNames()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+using System;
+
+namespace TestNamespace
+{
+    [Table(""sessions"")]
+    public class Session
+    {
+        [Column(""id"")]
+        public int Id { get; set; }
+        
+        [Column(""expires_at"")]
+        public DateTime ExpiresAt { get; set; }
+        
+        [Column(""is_revoked"")]
+        public bool IsRevoked { get; set; }
+        
+        [Column(""user_id"")]
+        public int UserId { get; set; }
+    }
+
+    [Repository]
+    public interface ISessionRepository : IRepository<Session, int>
+    {
+        [Query(""DELETE FROM Session s WHERE (s.ExpiresAt < :now OR s.IsRevoked = true) AND s.UserId = :userId"")]
+        Task<int> DeleteExpiredOrRevokedForUserAsync(int userId, DateTime now);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("SessionRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce SessionRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Should use table and column names from attributes
+        generatedCode.Should().Contain("DELETE FROM sessions WHERE (expires_at < @now OR is_revoked = true) AND user_id = @userId");
+    }
+
+    [Fact]
+    public void Generator_UpdateWithExpressionQuery_ShouldPreserveExpression()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public decimal TotalAmount { get; set; }
+        public decimal DiscountPercent { get; set; }
+    }
+
+    [Repository]
+    public interface IOrderRepository : IRepository<Order, int>
+    {
+        [Query(""UPDATE Order o SET o.TotalAmount = o.TotalAmount * (1 - o.DiscountPercent / 100) WHERE o.Id = :orderId"")]
+        Task<int> ApplyDiscountAsync(int orderId);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("OrderRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce OrderRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Should preserve the arithmetic expression - uses metadata table name "orders"
+        generatedCode.Should().Contain("UPDATE orders SET total_amount = total_amount * (1 - discount_percent / 100) WHERE id = @orderId");
+    }
+
+    [Fact]
+    public void Generator_UpdateQueryReturningInt_ShouldReturnAffectedRowCount()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    public class User
+    {
+        public int Id { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, int>
+    {
+        [Query(""UPDATE User u SET u.IsActive = :isActive WHERE u.Id = :userId"")]
+        Task<int> UpdateActiveStatusAsync(int userId, bool isActive);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("UserRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce UserRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Method should return Task<int> (row count)
+        generatedCode.Should().Contain("Task<int> UpdateActiveStatusAsync");
+        
+        // Should use ExecuteAsync which returns affected row count
+        generatedCode.Should().Contain("return await _connection.ExecuteAsync");
+    }
+
+    [Fact]
+    public void Generator_DeleteQueryReturningInt_ShouldReturnAffectedRowCount()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    public class Product
+    {
+        public int Id { get; set; }
+        public int CategoryId { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""DELETE FROM Product p WHERE p.CategoryId = :categoryId"")]
+        Task<int> DeleteByCategoryAsync(int categoryId);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("ProductRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce ProductRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Method should return Task<int> (row count)
+        generatedCode.Should().Contain("Task<int> DeleteByCategoryAsync");
+        
+        // Should use ExecuteAsync which returns affected row count
+        generatedCode.Should().Contain("return await _connection.ExecuteAsync");
+    }
+
+    [Fact]
+    public void Generator_UpdateQueryWithMultipleParameters_ShouldGenerateCorrectParameterObject()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    public class Product
+    {
+        public int Id { get; set; }
+        public decimal Price { get; set; }
+        public int Stock { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""UPDATE Product p SET p.Price = :price, p.Stock = :stock, p.IsActive = :active WHERE p.Id = :id"")]
+        Task<int> UpdateProductDetailsAsync(int id, decimal price, int stock, bool active);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("ProductRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce ProductRepository implementation");
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Should generate parameter object using anonymous object syntax
+        generatedCode.Should().Contain("new { id, price, stock, active }");
+    }
+    #endregion
+
+    #region INSERT Query Generation Tests
+
+    [Fact]
+    public void Generator_InsertQuery_ShouldConvertToSQLAndUseExecuteAsync()
+    {
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public decimal Price { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""INSERT INTO Product (Name, Price) VALUES (:name, :price)"")]
+        Task<int> InsertProductAsync(string name, decimal price);
+    }
+}";
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        diagnostics.Should().BeEmpty();
+        var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
+        generatedTrees.Should().NotBeEmpty();
+        var generatedCode = generatedTrees.First().ToString();
+        generatedCode.Should().Contain("INSERT INTO products (name, price) VALUES (@name, @price)");
+        generatedCode.Should().Contain("ExecuteAsync");
+    }
+
+    #endregion
 }

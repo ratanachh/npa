@@ -25,7 +25,7 @@ The sample includes an interactive menu system that auto-discovers and runs diff
 4. **Sync API Sample** - Synchronous API alternatives
 5. **Advanced Queries Sample** - Phase 2.3 CPQL with JOINs, GROUP BY, aggregates
 6. **Transaction Management Sample** - Phase 3.1 deferred execution and batching
-7. **Multi-Tenancy Sample** - Phase 5.5 automatic tenant isolation and row-level security ✨ NEW!
+7. **Multi-Tenancy Sample** - Phase 5.5 automatic tenant isolation and row-level security
 
 ### Transaction Sample Demonstrates:
 1. **Basic Transaction** - Commit with multiple operations batched together
@@ -62,14 +62,14 @@ Each sample:
   - `AdvancedQueriesSample.cs` – Phase 2.3 CPQL advanced features
   - `TransactionSample.cs` – Phase 3.1 transaction management
   - `TransactionSampleRunner.cs` – Transaction sample wrapper with DB setup
-  - `MultiTenancySample.cs` – Phase 5.5 multi-tenancy support ✨ NEW!
-  - `MultiTenancySampleRunner.cs` – Multi-tenancy sample wrapper with DB setup ✨ NEW!
+  - `MultiTenancySample.cs` – Phase 5.5 multi-tenancy support
+  - `MultiTenancySampleRunner.cs` – Multi-tenancy sample wrapper with DB setup
 - **Entities/**
   - `User.cs` – User entity with JPA-like attributes
   - `Order.cs` – Order entity with relationships
   - `OrderItem.cs` – Order item entity
-  - `Product.cs` – Product entity with [MultiTenant] attribute ✨ UPDATED!
-  - `Category.cs` – Category entity with [MultiTenant] attribute ✨ NEW!
+  - `Product.cs` – Product entity with [MultiTenant] attribute
+  - `Category.cs` – Category entity with [MultiTenant] attribute
   
 
 ## Running the Sample
