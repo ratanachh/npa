@@ -22,6 +22,13 @@ public sealed class QueryAttribute : Attribute
     public string Sql { get; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether this is a native SQL query.
+    /// When true, the query is executed as-is without CPQL to SQL conversion.
+    /// Default is false (CPQL conversion enabled).
+    /// </summary>
+    public bool NativeQuery { get; set; } = false;
+
+    /// <summary>
     /// Gets or sets the command timeout in seconds.
     /// </summary>
     public int? CommandTimeout { get; set; }

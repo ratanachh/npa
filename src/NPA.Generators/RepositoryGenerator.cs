@@ -555,6 +555,8 @@ public class RepositoryGenerator : IIncrementalGenerator
                 info.CommandTimeout = GetNamedArgument<int?>(attr, "CommandTimeout");
                 var buffered = GetNamedArgument<bool?>(attr, "Buffered");
                 info.Buffered = buffered ?? true;
+                var nativeQuery = GetNamedArgument<bool?>(attr, "NativeQuery");
+                info.NativeQuery = nativeQuery ?? false;
             }
             else if (attrName == "StoredProcedureAttribute")
             {
@@ -1184,10 +1186,20 @@ public class RepositoryGenerator : IIncrementalGenerator
         var isAsync = method.ReturnType.StartsWith("System.Threading.Tasks.Task");
         var paramObj = GenerateParameterObject(method.Parameters);
 
-        // Convert CPQL to SQL using entity metadata dictionary
-        var sql = info.EntitiesMetadata.Count > 0
-            ? CpqlToSqlConverter.ConvertToSql(attrs.QuerySql ?? string.Empty, info.EntitiesMetadata)
-            : CpqlToSqlConverter.ConvertToSql(attrs.QuerySql ?? string.Empty);
+        // Use native SQL if NativeQuery is true, otherwise convert CPQL to SQL
+        string sql;
+        if (attrs.NativeQuery)
+        {
+            // Native SQL - use as-is without conversion
+            sql = attrs.QuerySql ?? string.Empty;
+        }
+        else
+        {
+            // Convert CPQL to SQL using entity metadata dictionary
+            sql = info.EntitiesMetadata.Count > 0
+                ? CpqlToSqlConverter.ConvertToSql(attrs.QuerySql ?? string.Empty, info.EntitiesMetadata)
+                : CpqlToSqlConverter.ConvertToSql(attrs.QuerySql ?? string.Empty);
+        }
 
         if (attrs.HasMultiMapping)
         {
@@ -2231,6 +2243,7 @@ internal class MethodAttributeInfo
 {
     public bool HasQuery { get; set; }
     public string? QuerySql { get; set; }
+    public bool NativeQuery { get; set; }
     
     public bool HasStoredProcedure { get; set; }
     public string? ProcedureName { get; set; }
@@ -2418,6 +2431,7 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
     {
         return x.HasQuery == y.HasQuery &&
                x.QuerySql == y.QuerySql &&
+               x.NativeQuery == y.NativeQuery &&
                x.HasStoredProcedure == y.HasStoredProcedure &&
                x.ProcedureName == y.ProcedureName &&
                x.Schema == y.Schema &&

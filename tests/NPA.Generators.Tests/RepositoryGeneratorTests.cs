@@ -1385,4 +1385,86 @@ namespace TestNamespace
     }
 
     #endregion
+
+    #region Native Query Tests
+
+    [Fact]
+    public void Generator_NativeQuerySelect_ShouldNotConvertCPQL()
+    {
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+
+namespace TestNamespace
+{
+    [Table(""products"")]
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public decimal Price { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""SELECT * FROM products WHERE price > @minPrice ORDER BY price DESC"", NativeQuery = true)]
+        Task<IEnumerable<Product>> FindExpensiveProductsAsync(decimal minPrice);
+    }
+}";
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        diagnostics.Should().BeEmpty();
+        var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
+        generatedTrees.Should().NotBeEmpty();
+        var generatedCode = generatedTrees.First().ToString();
+        // Verify native SQL is preserved exactly as written (not converted from CPQL)
+        generatedCode.Should().Contain("SELECT * FROM products WHERE price > @minPrice ORDER BY price DESC");
+        generatedCode.Should().Contain("QueryAsync<TestNamespace.Product>");
+    }
+
+    [Fact]
+    public void Generator_NativeQueryInsert_ShouldPreserveDatabaseSpecificSyntax()
+    {
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Table(""products"")]
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, int>
+    {
+        [Query(""INSERT INTO products (name, created_at) VALUES (@name, NOW()) RETURNING id"", NativeQuery = true)]
+        Task<int> CreateProductAsync(string name);
+    }
+}";
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        diagnostics.Should().BeEmpty();
+        var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
+        generatedTrees.Should().NotBeEmpty();
+        var generatedCode = generatedTrees.First().ToString();
+        // Verify PostgreSQL-specific syntax (NOW() function and RETURNING clause) is preserved
+        generatedCode.Should().Contain("INSERT INTO products (name, created_at) VALUES (@name, NOW()) RETURNING id");
+        // For INSERT with RETURNING, ExecuteAsync is used (not ExecuteScalarAsync)
+        generatedCode.Should().Contain("ExecuteAsync");
+    }
+
+    #endregion
 }
+
