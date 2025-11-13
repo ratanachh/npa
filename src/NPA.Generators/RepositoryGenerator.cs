@@ -352,7 +352,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             TableName = GetTableNameFromAttribute(entityType),
             SchemaName = GetSchemaNameFromAttribute(entityType),
             Properties = new List<PropertyMetadataInfo>(),
-            Relationships = new List<RelationshipMetadataInfo>()
+            Relationships = new List<RelationshipMetadataInfo>(),
+            NamedQueries = ExtractNamedQueries(entityType)
         };
 
         // Extract property metadata
@@ -477,6 +478,67 @@ public class RepositoryGenerator : IIncrementalGenerator
         return property.Name;
     }
 
+    private static List<NamedQueryInfo> ExtractNamedQueries(INamedTypeSymbol entityType)
+    {
+        var namedQueries = new List<NamedQueryInfo>();
+        
+        var namedQueryAttrs = entityType.GetAttributes()
+            .Where(a => a.AttributeClass?.Name == "NamedQueryAttribute" || a.AttributeClass?.Name == "NamedQuery");
+
+        foreach (var attr in namedQueryAttrs)
+        {
+            if (attr.ConstructorArguments.Length < 2)
+                continue;
+
+            var name = attr.ConstructorArguments[0].Value?.ToString();
+            var query = attr.ConstructorArguments[1].Value?.ToString();
+            
+            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(query))
+                continue;
+
+            var nativeQuery = false;
+            int? commandTimeout = null;
+            var buffered = true;
+            string? description = null;
+
+            // Extract named arguments
+            foreach (var namedArg in attr.NamedArguments)
+            {
+                switch (namedArg.Key)
+                {
+                    case "NativeQuery":
+                        if (namedArg.Value.Value is bool nq)
+                            nativeQuery = nq;
+                        break;
+                    case "CommandTimeout":
+                        if (namedArg.Value.Value is int ct)
+                            commandTimeout = ct;
+                        break;
+                    case "Buffered":
+                        if (namedArg.Value.Value is bool b)
+                            buffered = b;
+                        break;
+                    case "Description":
+                        if (namedArg.Value.Value is string desc)
+                            description = desc;
+                        break;
+                }
+            }
+
+            namedQueries.Add(new NamedQueryInfo
+            {
+                Name = name!,
+                Query = query!,
+                NativeQuery = nativeQuery,
+                CommandTimeout = commandTimeout,
+                Buffered = buffered,
+                Description = description
+            });
+        }
+
+        return namedQueries;
+    }
+
     /// <summary>
     /// Builds a dictionary of entity metadata including the main entity and all related entities
     /// </summary>
@@ -571,6 +633,16 @@ public class RepositoryGenerator : IIncrementalGenerator
                 info.Buffered = buffered ?? true;
                 var nativeQuery = GetNamedArgument<bool?>(attr, "NativeQuery");
                 info.NativeQuery = nativeQuery ?? false;
+            }
+            else if (attrName == "NamedQueryAttribute" || attrName == "NamedQuery")
+            {
+                info.HasNamedQuery = true;
+                // Get the query name from constructor argument
+                if (attr.ConstructorArguments.Length > 0)
+                {
+                    info.NamedQueryName = attr.ConstructorArguments[0].Value?.ToString() ?? string.Empty;
+                }
+                // Note: The actual query will be looked up from entity metadata during code generation
             }
             else if (attrName == "StoredProcedureAttribute")
             {
@@ -1166,19 +1238,34 @@ public class RepositoryGenerator : IIncrementalGenerator
         var sb = new StringBuilder();
         var attrs = method.Attributes;
 
-        // Check for custom attributes first
-        if (attrs.HasQuery)
+        // Priority 1: Check if method name matches a NamedQuery (auto-detection)
+        var namedQueryName = TryFindMatchingNamedQuery(method, info);
+        if (namedQueryName != null)
+        {
+            // Use the matched named query (highest priority)
+            sb.Append(GenerateNamedQueryMethodBody(method, info, namedQueryName));
+        }
+        // Priority 2: Explicit [NamedQuery] attribute on method
+        else if (attrs.HasNamedQuery && !string.IsNullOrEmpty(attrs.NamedQueryName))
+        {
+            sb.Append(GenerateNamedQueryMethodBody(method, info, attrs.NamedQueryName!));
+        }
+        // Priority 3: [Query] attribute
+        else if (attrs.HasQuery)
         {
             sb.Append(GenerateQueryMethodBody(method, info, attrs));
         }
+        // Priority 4: [StoredProcedure] attribute
         else if (attrs.HasStoredProcedure)
         {
             sb.Append(GenerateStoredProcedureMethodBody(method, info.EntityType, attrs));
         }
+        // Priority 5: [BulkOperation] attribute
         else if (attrs.HasBulkOperation)
         {
             sb.Append(GenerateBulkOperationMethodBody(method, info.EntityType, attrs));
         }
+        // Priority 6: Convention-based generation
         else if (method.Symbol != null)
         {
             // Use convention-based generation
@@ -1192,6 +1279,63 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Tries to find a matching named query based on method name conventions.
+    /// Looks for patterns like: EntityName.MethodName or just MethodName
+    /// </summary>
+    private static string? TryFindMatchingNamedQuery(MethodInfo method, RepositoryInfo info)
+    {
+        // Get entity metadata to access named queries
+        var entityMetadata = info.EntityMetadata;
+        if (entityMetadata == null || entityMetadata.NamedQueries == null || !entityMetadata.NamedQueries.Any())
+        {
+            return null;
+        }
+
+        var methodName = method.Name;
+        var entityName = info.EntityType;
+        
+        // Extract simple entity name without namespace
+        var simpleEntityName = entityName.Contains(".") 
+            ? entityName.Substring(entityName.LastIndexOf('.') + 1) 
+            : entityName;
+
+        // Try different naming conventions:
+        // 1. EntityName.MethodName (e.g., "Order.FindRecentOrdersAsync")
+        var fullName = $"{simpleEntityName}.{methodName}";
+        if (entityMetadata.NamedQueries.Any(nq => nq.Name == fullName))
+        {
+            return fullName;
+        }
+
+        // 2. Just MethodName (e.g., "FindRecentOrdersAsync")
+        if (entityMetadata.NamedQueries.Any(nq => nq.Name == methodName))
+        {
+            return methodName;
+        }
+
+        // 3. Try without "Async" suffix if present
+        if (methodName.EndsWith("Async"))
+        {
+            var nameWithoutAsync = methodName.Substring(0, methodName.Length - 5);
+            
+            // EntityName.MethodNameWithoutAsync
+            var fullNameWithoutAsync = $"{simpleEntityName}.{nameWithoutAsync}";
+            if (entityMetadata.NamedQueries.Any(nq => nq.Name == fullNameWithoutAsync))
+            {
+                return fullNameWithoutAsync;
+            }
+            
+            // Just MethodNameWithoutAsync
+            if (entityMetadata.NamedQueries.Any(nq => nq.Name == nameWithoutAsync))
+            {
+                return nameWithoutAsync;
+            }
+        }
+
+        return null;
     }
 
     private static string GenerateQueryMethodBody(MethodInfo method, RepositoryInfo info, MethodAttributeInfo attrs)
@@ -1356,6 +1500,140 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             // Returns scalar (count, affected rows, etc.)
             // Detect if it's INSERT/UPDATE/DELETE based on SQL query
+            sb.AppendLine($"            var sql = @\"{sql}\";");
+            
+            var isModification = sql.TrimStart().StartsWith("INSERT", StringComparison.OrdinalIgnoreCase) ||
+                                sql.TrimStart().StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase) ||
+                                sql.TrimStart().StartsWith("DELETE", StringComparison.OrdinalIgnoreCase);
+            
+            if (isModification)
+            {
+                // INSERT/UPDATE/DELETE - returns affected row count
+                if (isAsync)
+                {
+                    sb.AppendLine($"            return await _connection.ExecuteAsync(sql, {paramObj});");
+                }
+                else
+                {
+                    sb.AppendLine($"            return _connection.Execute(sql, {paramObj});");
+                }
+            }
+            else
+            {
+                // SELECT COUNT, SUM, etc. - returns scalar value
+                if (isAsync)
+                {
+                    sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                }
+                else
+                {
+                    sb.AppendLine($"            return _connection.ExecuteScalar<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+                }
+            }
+        }
+        else if (method.ReturnType.Contains("bool"))
+        {
+            // Returns boolean (exists check)
+            sb.AppendLine($"            var sql = @\"{sql}\";");
+            if (isAsync)
+            {
+                sb.AppendLine($"            var result = await _connection.ExecuteScalarAsync<int>(sql, {paramObj});");
+            }
+            else
+            {
+                sb.AppendLine($"            var result = _connection.ExecuteScalar<int>(sql, {paramObj});");
+            }
+            sb.AppendLine($"            return result > 0;");
+        }
+        else
+        {
+            // Returns single entity or nullable
+            sb.AppendLine($"            var sql = @\"{sql}\";");
+            if (isAsync)
+            {
+                sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+            }
+            else
+            {
+                sb.AppendLine($"            return _connection.QueryFirstOrDefault<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string GenerateNamedQueryMethodBody(MethodInfo method, RepositoryInfo info, string namedQueryName)
+    {
+        // Find the named query from entity metadata
+        var namedQuery = info.EntityMetadata?.NamedQueries
+            ?.FirstOrDefault(nq => nq.Name == namedQueryName);
+        
+        if (namedQuery == null)
+        {
+            // Fallback to convention-based if named query not found
+            // This shouldn't happen but provides a safety net
+            return GenerateSimpleConventionBody(method, info);
+        }
+        
+        var sb = new StringBuilder();
+        
+        // Generate comment indicating this uses a named query
+        sb.AppendLine($"            // Using named query: {namedQueryName}");
+        sb.AppendLine();
+        
+        // Determine the SQL to use
+        string sql;
+        if (namedQuery.NativeQuery)
+        {
+            // Native SQL - use as-is without conversion
+            sql = namedQuery.Query;
+        }
+        else
+        {
+            // Convert CPQL to SQL using entity metadata dictionary
+            sql = info.EntitiesMetadata.Count > 0
+                ? CpqlToSqlConverter.ConvertToSql(namedQuery.Query, info.EntitiesMetadata)
+                : CpqlToSqlConverter.ConvertToSql(namedQuery.Query);
+        }
+        
+        // Generate parameter object
+        var paramObj = GenerateParameterObject(method.Parameters);
+        
+        // Execute query based on return type (same logic as GenerateQueryMethodBody)
+        var isAsync = method.ReturnType.StartsWith("System.Threading.Tasks.Task");
+        
+        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
+            method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
+            method.ReturnType.Contains("HashSet") || method.ReturnType.Contains("ISet") ||
+            method.ReturnType.Contains("IReadOnly"))
+        {
+            // Returns collection
+            sb.AppendLine($"            var sql = @\"{sql}\";");
+            if (isAsync)
+            {
+                sb.AppendLine($"            return await _connection.QueryAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+            }
+            else
+            {
+                sb.AppendLine($"            return _connection.Query<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+            }
+        }
+        else if (method.ReturnType.Contains(info.EntityType) || method.ReturnType.EndsWith("?"))
+        {
+            // Returns single entity
+            sb.AppendLine($"            var sql = @\"{sql}\";");
+            if (isAsync)
+            {
+                sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+            }
+            else
+            {
+                sb.AppendLine($"            return _connection.QueryFirstOrDefault<{GetInnerType(method.ReturnType)}>(sql, {paramObj});");
+            }
+        }
+        else if (method.ReturnType.Contains("int") || method.ReturnType.Contains("long"))
+        {
+            // Returns scalar (count, affected rows, etc.)
             sb.AppendLine($"            var sql = @\"{sql}\";");
             
             var isModification = sql.TrimStart().StartsWith("INSERT", StringComparison.OrdinalIgnoreCase) ||
@@ -2286,6 +2564,9 @@ internal class MethodAttributeInfo
     public bool HasQuery { get; set; }
     public string? QuerySql { get; set; }
     public bool NativeQuery { get; set; }
+    
+    public bool HasNamedQuery { get; set; }
+    public string? NamedQueryName { get; set; }
     
     public bool HasStoredProcedure { get; set; }
     public string? ProcedureName { get; set; }

@@ -477,6 +477,40 @@ namespace NPA.Core.Annotations
     
     [System.AttributeUsage(System.AttributeTargets.Property)]
     public sealed class UniqueAttribute : System.Attribute { }
+
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class EntityAttribute : System.Attribute { }
+
+    [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = true)]
+    public sealed class NamedQueryAttribute : System.Attribute
+    {
+        public string Name { get; }
+        public string Query { get; }
+        public bool NativeQuery { get; set; }
+        public int? CommandTimeout { get; set; }
+        public bool Buffered { get; set; } = true;
+        public string? Description { get; set; }
+        
+        public NamedQueryAttribute(string name, string query) 
+        { 
+            Name = name;
+            Query = query;
+        }
+    }
+
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public sealed class QueryAttribute : System.Attribute
+    {
+        public string Sql { get; }
+        public bool NativeQuery { get; set; }
+        public int? CommandTimeout { get; set; }
+        public bool Buffered { get; set; } = true;
+        
+        public QueryAttribute(string sql) 
+        { 
+            Sql = sql;
+        }
+    }
 }";
 
     private static Compilation CreateCompilation(string source)
@@ -1677,6 +1711,197 @@ namespace TestNamespace
         // Should use User as return type for entity queries
         generatedCode.Should().Contain("QueryFirstOrDefaultAsync<TestNamespace.User?>");
         generatedCode.Should().Contain("QueryAsync<TestNamespace.User>");
+    }
+
+    #endregion
+
+    #region NamedQuery Auto-Detection Tests
+
+    [Fact]
+    public void NamedQuery_AutoDetection_ByMethodName_ShouldGenerateCorrectCode()
+    {
+        // Arrange - Entity with NamedQuery and Repository with matching method name
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    [Table(""orders"")]
+    [NamedQuery(""Order.FindRecentOrdersAsync"", 
+                ""SELECT * FROM orders WHERE created_at > @since ORDER BY created_at DESC"",
+                NativeQuery = true,
+                Description = ""Finds orders created after a specific date"")]
+    public class Order
+    {
+        [Id]
+        public long Id { get; set; }
+        
+        [Column(""created_at"")]
+        public DateTime CreatedAt { get; set; }
+        
+        [Column(""total"")]
+        public decimal Total { get; set; }
+    }
+
+    [Repository]
+    public interface IOrderRepository : IRepository<Order, long>
+    {
+        Task<IEnumerable<Order>> FindRecentOrdersAsync(DateTime since);
+    }
+}";
+
+        // Act - Run generator
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation, 
+            out var outputCompilation, 
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        
+        var generatedTrees = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.Contains("OrderRepository"))
+            .ToList();
+        
+        generatedTrees.Should().NotBeEmpty("Generator should produce OrderRepository implementation");
+        
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Verify it uses the named query with compile-time embedded SQL
+        generatedCode.Should().Contain("// Using named query: Order.FindRecentOrdersAsync", 
+            "Should detect and use the named query automatically");
+        
+        generatedCode.Should().Contain("var sql = @\"SELECT * FROM orders WHERE created_at > @since ORDER BY created_at DESC\"", 
+            "Should embed the SQL from named query at compile time");
+        
+        generatedCode.Should().Contain("_connection.QueryAsync<TestNamespace.Order>(sql, new { since })", 
+            "Should generate Dapper query call with parameters");
+    }
+
+    [Fact]
+    public void NamedQuery_AutoDetection_WithoutAsync_ShouldMatchMethodName()
+    {
+        // Arrange - NamedQuery without "Async" suffix should still match method with "Async"
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    [Table(""products"")]
+    [NamedQuery(""Product.FindActive"", 
+                ""SELECT * FROM products WHERE is_active = 1"",
+                NativeQuery = true)]
+    public class Product
+    {
+        [Id]
+        public long Id { get; set; }
+        
+        [Column(""is_active"")]
+        public bool IsActive { get; set; }
+    }
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {
+        // Method has Async suffix, NamedQuery doesn't - should still match
+        Task<IEnumerable<Product>> FindActiveAsync();
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation, 
+            out var outputCompilation, 
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+        
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        // Should match by removing "Async" suffix
+        generatedCode.Should().Contain("// Using named query: Product.FindActive", 
+            "Should match named query even without Async suffix");
+    }
+
+    [Fact]
+    public void NamedQuery_PriorityOverQuery_ShouldUseNamedQuery()
+    {
+        // Arrange - Both NamedQuery and [Query] attribute present
+        // NamedQuery should take priority
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace TestNamespace
+{
+    [Entity]
+    [Table(""users"")]
+    [NamedQuery(""User.FindByEmail"", 
+                ""SELECT * FROM users WHERE email = @email"",
+                NativeQuery = true)]
+    public class User
+    {
+        [Id]
+        public long Id { get; set; }
+        
+        public string Email { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {
+        // Has [Query] attribute, but method name matches a NamedQuery
+        // NamedQuery should take priority
+        [Query(""SELECT * FROM users WHERE email LIKE @email || '%'"")]
+        Task<IEnumerable<User>> FindByEmail(string email);
+    }
+}";
+
+        // Act
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
+            compilation, 
+            out var outputCompilation, 
+            out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+        
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        // Should use NamedQuery, not the [Query] attribute
+        generatedCode.Should().Contain("// Using named query: User.FindByEmail", 
+            "NamedQuery should take priority over [Query] attribute");
+        
+        generatedCode.Should().NotContain("SELECT * FROM users WHERE email LIKE @email || '%'", 
+            "Should not use the SQL from [Query] attribute");
     }
 
     #endregion

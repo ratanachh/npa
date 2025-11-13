@@ -8,6 +8,21 @@ namespace ProfilerDemo.Entities;
 /// </summary>
 [Entity]
 [Table("users")]
+[NamedQuery("User.FindActiveUsersAsync",
+            "SELECT u FROM User u WHERE u.IsActive = true",
+            Description = "Finds all active users")]
+[NamedQuery("User.FindByCountryAsync",
+            "SELECT u FROM User u WHERE u.Country = :country ORDER BY u.Username",
+            Description = "Finds users by country, ordered by username")]
+[NamedQuery("User.FindHighBalanceUsersAsync",
+            "SELECT u FROM User u WHERE u.AccountBalance > :minBalance ORDER BY u.AccountBalance DESC",
+            Description = "Finds users with balance above threshold")]
+[NamedQuery("User.FindRecentlyActiveAsync",
+            "SELECT u FROM User u WHERE u.LastLogin >= :since ORDER BY u.LastLogin DESC",
+            Description = "Finds users who logged in since a specific date")]
+[NamedQuery("User.GetUserCountByCountry",
+            "SELECT u.Country, COUNT(u) FROM User u GROUP BY u.Country",
+            Description = "Gets user count grouped by country")]
 public class User
 {
     [Id]

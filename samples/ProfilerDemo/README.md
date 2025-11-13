@@ -6,6 +6,7 @@ This sample demonstrates **real-world** NPA performance monitoring and profiling
 - ✅ **Faker (Bogus)** - Realistic test data generation
 - ✅ **Dependency Injection** - Enterprise-ready architecture
 - ✅ **Repository Pattern** - Clean separation of concerns
+- ✅ **NamedQuery Support** - JPA-like auto-detected named queries
 - ✅ **Testcontainers** - Fully self-contained with PostgreSQL in Docker
 - ✅ **Performance Monitoring** - Real-time tracking and analysis
 
@@ -16,10 +17,59 @@ This sample demonstrates **real-world** NPA performance monitoring and profiling
 - **Batch inserts** for efficient bulk data loading
 - **1 million records** generated in ~30-60 seconds
 
-### 2. Performance Testing Scenarios
+### 2. Query Approaches
+
+This sample demonstrates **three different query approaches** in NPA:
+
+#### NamedQuery (Auto-Detected) - ⭐ Recommended
+Named queries defined on the entity are **automatically matched by method name**:
+
+```csharp
+// On Entity
+[NamedQuery("User.FindActiveUsersAsync", "SELECT u FROM User u WHERE u.IsActive = true")]
+public class User { ... }
+
+// In Repository - No attribute needed!
+public interface IUserRepository 
+{
+    Task<IEnumerable<User>> FindActiveUsersAsync();  // Auto-matches!
+}
+```
+
+**Benefits:**
+- Centralized query management
+- Reusable across repositories
+- JPA-compatible pattern
+- No boilerplate attributes on repository methods
+
+#### [Query] Attribute - For Repository-Specific Queries
+Inline queries directly on repository methods:
+
+```csharp
+public interface IUserRepository 
+{
+    [Query("SELECT u FROM User u WHERE u.Id = ANY(:ids)")]
+    Task<IEnumerable<User>> FindByIdsAsync(int[] ids);
+}
+```
+
+#### Convention-Based - For Simple CRUD
+Queries derived automatically from method names:
+
+```csharp
+public interface IUserRepository 
+{
+    Task<User?> FindByEmailAsync(string email);  // Generates: WHERE email = @email
+}
+```
+
+### 3. Performance Testing Scenarios
 
 #### Indexed vs Non-Indexed Queries
 Compare performance between indexed and full table scan queries
+
+#### NamedQuery Auto-Detection
+Demonstrates NamedQuery working without attributes on repository methods
 
 #### N+1 Problem Detection
 - Demonstrate the N+1 query anti-pattern (100 individual queries)
@@ -97,28 +147,40 @@ info: Generating 1,000,000 realistic user records using Faker...
 
 === Phase 2: Performance Testing ===
 
-1. Testing Indexed Queries
+1. Testing NamedQuery (Auto-Detected)
+
+   These methods use named queries defined on the User entity.
+   No [NamedQuery] attribute needed on repository methods!
+
+   FindActiveUsersAsync (NamedQuery): 45.67ms (850,000 users)
+   FindByCountryAsync (NamedQuery): 12.34ms (15,234 users)
+   FindHighBalanceUsersAsync (NamedQuery): 8.92ms (1,456 users)
+   FindRecentlyActiveAsync (NamedQuery): 34.56ms (245,678 users)
+
+   ✓ All NamedQuery methods work without attributes!
+
+2. Testing Indexed Queries
    Email lookup (indexed): 0.85ms
    Username lookup (indexed): 1.23ms
 
-2. Testing N+1 Problem (BAD)
+3. Testing N+1 Problem (BAD)
    100 individual queries: 125.45ms (1.25ms per query)
 
-3. Testing Optimized Batch Query (GOOD)
+4. Testing Optimized Batch Query (GOOD)
    Single batch query for 100 users: 2.34ms
    ✓ 54x faster than N+1!
 
-4. Testing Full Table Scan (SLOW)
-   ⚠️  Full table scan: 3,245.67ms (850,000 records)
+5. Testing Using IsActive Convention (No Index)
+   ⚠️  Query by is_active: 3,245.67ms (850,000 records)
 
-5. Testing Aggregate Queries
+6. Testing Aggregate Queries
    Aggregation by country: 1,856.23ms (195 countries)
 
-6. Testing Pagination Performance
+7. Testing Pagination Performance
    Page 1 (first 50): 1.12ms
    Page 1000 (offset 50k): 45.67ms
 
-7. Testing Bulk Operations
+8. Testing Bulk Operations
    Bulk update (45,234 records): 234.56ms
    Bulk delete (12,345 records): 156.78ms
 

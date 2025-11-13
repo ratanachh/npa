@@ -7,22 +7,44 @@ namespace ProfilerDemo.Repositories;
 /// <summary>
 /// Repository for User entity with custom query methods for performance testing.
 /// Uses NPA source generators to auto-implement repository methods.
+/// 
+/// Demonstrates three query approaches:
+/// 1. NamedQuery (auto-detected) - queries defined on entity, matched by method name
+/// 2. [Query] attribute - inline queries on repository methods
+/// 3. Convention-based - queries derived from method names
 /// </summary>
 [Repository]
 public interface IUserRepository : IRepository<User, int>
 {
-    // Convention-based queries (derived from method names - no Query attribute needed)
+    // ===== NamedQuery Examples (Auto-Detected) =====
+    // These methods automatically use named queries defined on the User entity
+    // No attributes needed - matched by method name!
+    
+    /// <summary>Auto-matches User.FindActiveUsersAsync named query</summary>
+    Task<IEnumerable<User>> FindActiveUsersAsync();
+    
+    /// <summary>Auto-matches User.FindByCountryAsync named query</summary>
+    Task<IEnumerable<User>> FindByCountryAsync(string country);
+    
+    /// <summary>Auto-matches User.FindHighBalanceUsersAsync named query</summary>
+    Task<IEnumerable<User>> FindHighBalanceUsersAsync(decimal minBalance);
+    
+    /// <summary>Auto-matches User.FindRecentlyActiveAsync named query</summary>
+    Task<IEnumerable<User>> FindRecentlyActiveAsync(DateTime since);
+    
+    // ===== Convention-Based Queries =====
+    // These are derived from method names - no Query attribute needed
     // Indexed queries - should be fast
+    
     Task<User?> FindByEmailAsync(string email);
     
     Task<User?> FindByUsernameAsync(string username);
     
     Task<IEnumerable<User>> FindByIsActiveAsync(bool isActive);
-    
-    // Method with default parameter - convention-based
-    Task<IEnumerable<User>> FindActiveUsersAsync(bool isActive = true);
 
-    // Explicit JPQL queries using [Query] attribute
+    // ===== Explicit [Query] Attribute Examples =====
+    // Use when you need fine-grained control over the SQL
+    
     // Batch query - efficient way to fetch multiple users (PostgreSQL array syntax)
     [Query("SELECT u FROM User u WHERE u.Id = ANY(:ids)")]
     Task<IEnumerable<User>> FindByIdsAsync(int[] ids);

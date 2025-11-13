@@ -57,7 +57,8 @@ public class EntityMetadataGenerator : IIncrementalGenerator
             TableName = GetTableName(classSymbol),
             SchemaName = GetSchemaName(classSymbol),
             Properties = GetProperties(classSymbol),
-            Relationships = GetRelationships(classSymbol)
+            Relationships = GetRelationships(classSymbol),
+            NamedQueries = GetNamedQueries(classSymbol)
         };
     }
 
@@ -222,6 +223,61 @@ public class EntityMetadataGenerator : IIncrementalGenerator
         }
 
         return relationships;
+    }
+
+    private static List<NamedQueryInfo> GetNamedQueries(INamedTypeSymbol classSymbol)
+    {
+        var namedQueries = new List<NamedQueryInfo>();
+
+        foreach (var attr in classSymbol.GetAttributes())
+        {
+            var attrName = attr.AttributeClass?.Name;
+            if (attrName == "NamedQueryAttribute" || attrName == "NamedQuery")
+            {
+                // Extract constructor arguments (name and query)
+                if (attr.ConstructorArguments.Length >= 2)
+                {
+                    var name = attr.ConstructorArguments[0].Value?.ToString() ?? string.Empty;
+                    var query = attr.ConstructorArguments[1].Value?.ToString() ?? string.Empty;
+
+                    if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(query))
+                    {
+                        var namedQuery = new NamedQueryInfo
+                        {
+                            Name = name,
+                            Query = query
+                        };
+
+                        // Extract named arguments (optional properties)
+                        foreach (var namedArg in attr.NamedArguments)
+                        {
+                            switch (namedArg.Key)
+                            {
+                                case "NativeQuery":
+                                    namedQuery.NativeQuery = (bool)(namedArg.Value.Value ?? false);
+                                    break;
+                                case "CommandTimeout":
+                                    if (namedArg.Value.Value is int timeout)
+                                    {
+                                        namedQuery.CommandTimeout = timeout;
+                                    }
+                                    break;
+                                case "Buffered":
+                                    namedQuery.Buffered = (bool)(namedArg.Value.Value ?? true);
+                                    break;
+                                case "Description":
+                                    namedQuery.Description = namedArg.Value.Value?.ToString();
+                                    break;
+                            }
+                        }
+
+                        namedQueries.Add(namedQuery);
+                    }
+                }
+            }
+        }
+
+        return namedQueries;
     }
 
     private static void GenerateMetadataProvider(SourceProductionContext context, ImmutableArray<EntityMetadataInfo?> entities)
@@ -414,6 +470,11 @@ public class EntityMetadataInfo
     /// Gets or sets the list of relationship metadata.
     /// </summary>
     public List<RelationshipMetadataInfo> Relationships { get; set; } = new();
+    
+    /// <summary>
+    /// Gets or sets the list of named queries defined on this entity.
+    /// </summary>
+    public List<NamedQueryInfo> NamedQueries { get; set; } = new();
 }
 
 /// <summary>
@@ -496,4 +557,40 @@ public class RelationshipMetadataInfo
     /// Gets or sets the target entity name.
     /// </summary>
     public string TargetEntity { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Contains metadata information about named queries defined on an entity.
+/// </summary>
+public class NamedQueryInfo
+{
+    /// <summary>
+    /// Gets or sets the unique name of the query.
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Gets or sets the query string (CPQL or SQL).
+    /// </summary>
+    public string Query { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Gets or sets a value indicating whether this is a native SQL query.
+    /// </summary>
+    public bool NativeQuery { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the command timeout in seconds.
+    /// </summary>
+    public int? CommandTimeout { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a value indicating whether to buffer the results.
+    /// </summary>
+    public bool Buffered { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the description of what this query does.
+    /// </summary>
+    public string? Description { get; set; }
 }

@@ -100,31 +100,75 @@ public class ProfilerDemoService
 
     private async Task RunPerformanceTestsAsync()
     {
-        // Test 1: Indexed Queries
+        // Test 1: NamedQuery Examples
+        await TestNamedQueriesAsync();
+
+        // Test 2: Indexed Queries
         await TestIndexedQueriesAsync();
 
-        // Test 2: N+1 Problem
+        // Test 3: N+1 Problem
         await TestN1ProblemAsync();
 
-        // Test 3: Optimized Batch Query
+        // Test 4: Optimized Batch Query
         await TestOptimizedBatchQueryAsync();
 
-        // Test 4: Full Table Scan
+        // Test 5: Full Table Scan
         await TestFullTableScanAsync();
 
-        // Test 5: Aggregate Queries
+        // Test 6: Aggregate Queries
         await TestAggregateQueriesAsync();
 
-        // Test 6: Pagination
+        // Test 7: Pagination
         await TestPaginationPerformanceAsync();
 
-        // Test 7: Bulk Operations
+        // Test 8: Bulk Operations
         await TestBulkOperationsAsync();
+    }
+
+    private async Task TestNamedQueriesAsync()
+    {
+        Console.WriteLine("1. Testing NamedQuery (Auto-Detected)\n");
+        Console.WriteLine("   These methods use named queries defined on the User entity.");
+        Console.WriteLine("   No [NamedQuery] attribute needed on repository methods!\n");
+
+        // Test: FindActiveUsersAsync - auto-matches User.FindActiveUsersAsync
+        var sw = Stopwatch.StartNew();
+        var activeUsers = await _userRepository.FindActiveUsersAsync();
+        var count = activeUsers.Count();
+        sw.Stop();
+        _monitor.RecordMetric("NAMED_QUERY_FIND_ACTIVE", sw.Elapsed, count);
+        Console.WriteLine($"   FindActiveUsersAsync (NamedQuery): {sw.Elapsed.TotalMilliseconds:F2}ms ({count:N0} users)");
+
+        // Test: FindByCountryAsync - auto-matches User.FindByCountryAsync
+        sw.Restart();
+        var usersInCountry = await _userRepository.FindByCountryAsync("United States");
+        count = usersInCountry.Count();
+        sw.Stop();
+        _monitor.RecordMetric("NAMED_QUERY_BY_COUNTRY", sw.Elapsed, count);
+        Console.WriteLine($"   FindByCountryAsync (NamedQuery): {sw.Elapsed.TotalMilliseconds:F2}ms ({count:N0} users)");
+
+        // Test: FindHighBalanceUsersAsync - auto-matches User.FindHighBalanceUsersAsync
+        sw.Restart();
+        var highBalanceUsers = await _userRepository.FindHighBalanceUsersAsync(5000m);
+        count = highBalanceUsers.Count();
+        sw.Stop();
+        _monitor.RecordMetric("NAMED_QUERY_HIGH_BALANCE", sw.Elapsed, count);
+        Console.WriteLine($"   FindHighBalanceUsersAsync (NamedQuery): {sw.Elapsed.TotalMilliseconds:F2}ms ({count:N0} users)");
+
+        // Test: FindRecentlyActiveAsync - auto-matches User.FindRecentlyActiveAsync
+        sw.Restart();
+        var recentlyActive = await _userRepository.FindRecentlyActiveAsync(DateTime.UtcNow.AddDays(-7));
+        count = recentlyActive.Count();
+        sw.Stop();
+        _monitor.RecordMetric("NAMED_QUERY_RECENT_ACTIVE", sw.Elapsed, count);
+        Console.WriteLine($"   FindRecentlyActiveAsync (NamedQuery): {sw.Elapsed.TotalMilliseconds:F2}ms ({count:N0} users)");
+
+        Console.WriteLine($"\n   ✓ All NamedQuery methods work without attributes!\n");
     }
 
     private async Task TestIndexedQueriesAsync()
     {
-        Console.WriteLine("1. Testing Indexed Queries");
+        Console.WriteLine("2. Testing Indexed Queries");
 
         var sw = Stopwatch.StartNew();
         var userByEmail = await _userRepository.FindByEmailAsync("test@example.com");
@@ -141,7 +185,7 @@ public class ProfilerDemoService
 
     private async Task TestN1ProblemAsync()
     {
-        Console.WriteLine("2. Testing N+1 Problem (BAD)");
+        Console.WriteLine("3. Testing N+1 Problem (BAD)");
 
         var ids = Enumerable.Range(1, 100).ToArray();
         var sw = Stopwatch.StartNew();
@@ -158,7 +202,7 @@ public class ProfilerDemoService
 
     private async Task TestOptimizedBatchQueryAsync()
     {
-        Console.WriteLine("3. Testing Optimized Batch Query (GOOD)");
+        Console.WriteLine("4. Testing Optimized Batch Query (GOOD)");
 
         var ids = Enumerable.Range(1, 100).ToArray();
         var sw = Stopwatch.StartNew();
@@ -178,20 +222,20 @@ public class ProfilerDemoService
 
     private async Task TestFullTableScanAsync()
     {
-        Console.WriteLine("4. Testing Full Table Scan (SLOW)");
+        Console.WriteLine("5. Testing Using IsActive Convention (No Index)");
 
         var sw = Stopwatch.StartNew();
-        var activeUsers = await _userRepository.FindActiveUsersAsync(true);
+        var activeUsers = await _userRepository.FindByIsActiveAsync(true);
         var count = activeUsers.Count();
         sw.Stop();
         _monitor.RecordMetric("SELECT_FULL_SCAN", sw.Elapsed, count);
 
-        Console.WriteLine($"   ⚠️  Full table scan: {sw.Elapsed.TotalMilliseconds:F2}ms ({count:N0} records)\n");
+        Console.WriteLine($"   ⚠️  Query by is_active: {sw.Elapsed.TotalMilliseconds:F2}ms ({count:N0} records)\n");
     }
 
     private async Task TestAggregateQueriesAsync()
     {
-        Console.WriteLine("5. Testing Aggregate Queries");
+        Console.WriteLine("6. Testing Aggregate Queries");
 
         var sw = Stopwatch.StartNew();
         var statistics = await _userRepository.GetUserStatisticsByCountryAsync();
@@ -204,7 +248,7 @@ public class ProfilerDemoService
 
     private async Task TestPaginationPerformanceAsync()
     {
-        Console.WriteLine("6. Testing Pagination Performance");
+        Console.WriteLine("7. Testing Pagination Performance");
 
         // Page 1 (early pagination - fast)
         var sw = Stopwatch.StartNew();
@@ -225,7 +269,7 @@ public class ProfilerDemoService
 
     private async Task TestBulkOperationsAsync()
     {
-        Console.WriteLine("7. Testing Bulk Operations");
+        Console.WriteLine("8. Testing Bulk Operations");
 
         // Bulk update using repository method with generated UPDATE query
         var sw = Stopwatch.StartNew();
@@ -253,6 +297,10 @@ public class ProfilerDemoService
         {
             "BULK_INSERT_BATCH",
             "BULK_INSERT_TOTAL",
+            "NAMED_QUERY_FIND_ACTIVE",
+            "NAMED_QUERY_BY_COUNTRY",
+            "NAMED_QUERY_HIGH_BALANCE",
+            "NAMED_QUERY_RECENT_ACTIVE",
             "SELECT_INDEXED",
             "SELECT_N1",
             "SELECT_BATCH",
