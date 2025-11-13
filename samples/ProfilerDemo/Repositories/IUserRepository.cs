@@ -17,8 +17,6 @@ namespace ProfilerDemo.Repositories;
 public interface IUserRepository : IRepository<User, int>
 {
     // ===== NamedQuery Examples (Auto-Detected) =====
-    // These methods automatically use named queries defined on the User entity
-    // No attributes needed - matched by method name!
     
     /// <summary>Auto-matches User.FindActiveUsersAsync named query</summary>
     Task<IEnumerable<User>> FindActiveUsersAsync();
@@ -33,7 +31,7 @@ public interface IUserRepository : IRepository<User, int>
     Task<IEnumerable<User>> FindRecentlyActiveAsync(DateTime since);
     
     // ===== Convention-Based Queries =====
-    // These are derived from method names - no Query attribute needed
+    // These are derived from method names
     // Indexed queries - should be fast
     
     Task<User?> FindByEmailAsync(string email);
