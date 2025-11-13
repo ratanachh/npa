@@ -359,6 +359,13 @@ public class RepositoryGenerator : IIncrementalGenerator
         foreach (var property in entityType.GetMembers().OfType<IPropertySymbol>())
         {
             var columnName = GetColumnNameFromAttribute(property);
+            
+            // Ensure ColumnName is never empty - use property name as fallback
+            if (string.IsNullOrEmpty(columnName))
+            {
+                columnName = property.Name;
+            }
+            
             var isPrimaryKey = property.GetAttributes().Any(a => a.AttributeClass?.Name == "IdAttribute");
             var isRequired = property.GetAttributes().Any(a => a.AttributeClass?.Name == "RequiredAttribute");
             var isUnique = property.GetAttributes().Any(a => a.AttributeClass?.Name == "UniqueAttribute");
@@ -451,16 +458,23 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GetColumnNameFromAttribute(IPropertySymbol property)
     {
         var columnAttr = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute");
+            .FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || 
+                               a.AttributeClass?.Name == "Column" ||
+                               a.AttributeClass?.ToDisplayString() == "NPA.Core.Annotations.ColumnAttribute" ||
+                               (a.AttributeClass?.ToDisplayString()?.Contains("Column") ?? false));
 
         if (columnAttr != null && columnAttr.ConstructorArguments.Length > 0)
         {
-            if (columnAttr.ConstructorArguments[0].Value is string columnName)
+            var firstArg = columnAttr.ConstructorArguments[0];
+            // Try to get the value - it should be a string
+            if (firstArg.Value is string columnName && !string.IsNullOrEmpty(columnName))
+            {
                 return columnName;
+            }
         }
 
-        // Default: convert property name to snake_case
-        return MethodConventionAnalyzer.ToSnakeCase(property.Name);
+        // No [Column] attribute or couldn't read value: use property name as-is (preserve exact casing)
+        return property.Name;
     }
 
     /// <summary>
@@ -1169,12 +1183,12 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             // Use convention-based generation
             var convention = MethodConventionAnalyzer.AnalyzeMethod(method.Symbol);
-            sb.Append(GenerateConventionBasedMethodBody(method, info.EntityType, convention));
+            sb.Append(GenerateConventionBasedMethodBody(method, info, convention));
         }
         else
         {
             // Fallback to simple conventions
-            sb.Append(GenerateSimpleConventionBody(method, info.EntityType));
+            sb.Append(GenerateSimpleConventionBody(method, info));
         }
 
         return sb.ToString();
@@ -1528,29 +1542,29 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string GenerateConventionBasedMethodBody(MethodInfo method, string entityType, MethodConvention convention)
+    private static string GenerateConventionBasedMethodBody(MethodInfo method, RepositoryInfo info, MethodConvention convention)
     {
         var sb = new StringBuilder();
         var isAsync = method.ReturnType.StartsWith("System.Threading.Tasks.Task");
-        var tableName = GetTableName(entityType);
+        var tableName = GetTableName(info.EntityType);
 
         switch (convention.QueryType)
         {
             case QueryType.Select:
-                sb.Append(GenerateSelectQuery(method, entityType, tableName, convention, isAsync));
+                sb.Append(GenerateSelectQuery(method, info, tableName, convention, isAsync));
                 break;
             case QueryType.Count:
-                sb.Append(GenerateCountQuery(method, entityType, tableName, convention, isAsync));
+                sb.Append(GenerateCountQuery(method, info, tableName, convention, isAsync));
                 break;
             case QueryType.Exists:
-                sb.Append(GenerateExistsQuery(method, entityType, tableName, convention, isAsync));
+                sb.Append(GenerateExistsQuery(method, info, tableName, convention, isAsync));
                 break;
             case QueryType.Delete:
-                sb.Append(GenerateDeleteQuery(method, entityType, tableName, convention, isAsync));
+                sb.Append(GenerateDeleteQuery(method, info, tableName, convention, isAsync));
                 break;
             case QueryType.Update:
             case QueryType.Insert:
-                sb.Append(GenerateModificationQuery(method, entityType, convention, isAsync));
+                sb.Append(GenerateModificationQuery(method, info.EntityType, convention, isAsync));
                 break;
             default:
                 sb.AppendLine($"            throw new NotImplementedException(\"Method {method.Name} requires manual implementation\");");
@@ -1560,11 +1574,16 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string GenerateSelectQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
+    private static string GenerateSelectQuery(MethodInfo method, RepositoryInfo info, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
-        var orderByClause = BuildOrderByClause(convention.OrderByProperties);
+        
+        // Determine the actual return type - use method return type if different from entity
+        var returnType = GetInnerType(method.ReturnType);
+        var queryType = string.IsNullOrEmpty(returnType) ? info.EntityType : returnType;
+        
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters, info.EntityMetadata);
+        var orderByClause = BuildOrderByClause(convention.OrderByProperties, info.EntityMetadata);
         var paramObj = GenerateParameterObject(convention.Parameters);
         var hasParameters = !string.IsNullOrEmpty(paramObj) && paramObj != "null";
 
@@ -1599,22 +1618,22 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 if (isAsync)
                 {
-                    sb.AppendLine($"            return await _connection.QueryAsync<{entityType}>(sql);");
+                    sb.AppendLine($"            return await _connection.QueryAsync<{queryType}>(sql);");
                 }
                 else
                 {
-                    sb.AppendLine($"            return _connection.Query<{entityType}>(sql);");
+                    sb.AppendLine($"            return _connection.Query<{queryType}>(sql);");
                 }
             }
             else
             {
                 if (isAsync)
                 {
-                    sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{entityType}>(sql);");
+                    sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{queryType}>(sql);");
                 }
                 else
                 {
-                    sb.AppendLine($"            return _connection.QueryFirstOrDefault<{entityType}>(sql);");
+                    sb.AppendLine($"            return _connection.QueryFirstOrDefault<{queryType}>(sql);");
                 }
             }
         }
@@ -1625,22 +1644,22 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 if (isAsync)
                 {
-                    sb.AppendLine($"            return await _connection.QueryAsync<{entityType}>(sql, {paramObj});");
+                    sb.AppendLine($"            return await _connection.QueryAsync<{queryType}>(sql, {paramObj});");
                 }
                 else
                 {
-                    sb.AppendLine($"            return _connection.Query<{entityType}>(sql, {paramObj});");
+                    sb.AppendLine($"            return _connection.Query<{queryType}>(sql, {paramObj});");
                 }
             }
             else
             {
                 if (isAsync)
                 {
-                    sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{entityType}>(sql, {paramObj});");
+                    sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{queryType}>(sql, {paramObj});");
                 }
                 else
                 {
-                    sb.AppendLine($"            return _connection.QueryFirstOrDefault<{entityType}>(sql, {paramObj});");
+                    sb.AppendLine($"            return _connection.QueryFirstOrDefault<{queryType}>(sql, {paramObj});");
                 }
             }
         }
@@ -1648,10 +1667,10 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string GenerateCountQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
+    private static string GenerateCountQuery(MethodInfo method, RepositoryInfo info, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters, info.EntityMetadata);
         var paramObj = GenerateParameterObject(convention.Parameters);
         
         // Handle DISTINCT for COUNT queries
@@ -1685,13 +1704,13 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string GenerateExistsQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
+    private static string GenerateExistsQuery(MethodInfo method, RepositoryInfo info, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters, info.EntityMetadata);
         var paramObj = GenerateParameterObject(convention.Parameters);
 
-        sb.AppendLine($"            var sql = \"SELECT COUNT(1) FROM {tableName} WHERE {whereClause}\";");
+        sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {tableName} WHERE {whereClause}\";");
         if (isAsync)
         {
             sb.AppendLine($"            var count = await _connection.ExecuteScalarAsync<int>(sql, {paramObj});");
@@ -1705,10 +1724,10 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string GenerateDeleteQuery(MethodInfo method, string entityType, string tableName, MethodConvention convention, bool isAsync)
+    private static string GenerateDeleteQuery(MethodInfo method, RepositoryInfo info, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters);
+        var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters, info.EntityMetadata);
         var paramObj = GenerateParameterObject(convention.Parameters);
 
         // Special handling for id parameter when convention doesn't extract it
@@ -1783,7 +1802,26 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string BuildWhereClause(List<string> propertyNames, List<string> separators, List<ParameterInfo> parameters)
+    private static string GetColumnNameForProperty(string propertyName, EntityMetadataInfo? entityMetadata)
+    {
+        // Check if we have metadata and the property exists
+        if (entityMetadata != null)
+        {
+            var propertyMetadata = entityMetadata.Properties
+                .FirstOrDefault(p => p.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase));
+            
+            if (propertyMetadata != null && !string.IsNullOrEmpty(propertyMetadata.ColumnName))
+            {
+                // Return the column name from metadata (either from [Column] attribute or property name as-is)
+                return propertyMetadata.ColumnName;
+            }
+        }
+        
+        // No metadata found: use property name as-is (preserve exact casing)
+        return propertyName;
+    }
+
+    private static string BuildWhereClause(List<string> propertyNames, List<string> separators, List<ParameterInfo> parameters, EntityMetadataInfo? entityMetadata)
     {
         if (propertyNames.Count == 0)
             return string.Empty;
@@ -1801,7 +1839,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 var parts = propExpression.Split(':');
                 var propertyName = parts[0];
                 var keyword = parts[1];
-                var columnName = MethodConventionAnalyzer.ToSnakeCase(propertyName);
+                var columnName = GetColumnNameForProperty(propertyName, entityMetadata);
                 
                 switch (keyword)
                 {
@@ -2006,7 +2044,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             else
             {
                 // Simple property without keyword - use equality
-                var columnName = MethodConventionAnalyzer.ToSnakeCase(propExpression);
+                var columnName = GetColumnNameForProperty(propExpression, entityMetadata);
                 if (paramIndex < parameters.Count)
                 {
                     clauses.Add($"{columnName} = @{parameters[paramIndex].Name}");
@@ -2034,7 +2072,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         return result.ToString();
     }
 
-    private static string BuildOrderByClause(List<OrderByInfo> orderByProperties)
+    private static string BuildOrderByClause(List<OrderByInfo> orderByProperties, EntityMetadataInfo? entityMetadata)
     {
         if (orderByProperties.Count == 0)
             return string.Empty;
@@ -2042,7 +2080,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var clauses = new List<string>();
         foreach (var orderBy in orderByProperties)
         {
-            var columnName = MethodConventionAnalyzer.ToSnakeCase(orderBy.PropertyName);
+            var columnName = GetColumnNameForProperty(orderBy.PropertyName, entityMetadata);
             var direction = orderBy.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
             clauses.Add($"{columnName} {direction}");
         }
@@ -2146,20 +2184,24 @@ public class RepositoryGenerator : IIncrementalGenerator
         return text;
     }
 
-    private static string GenerateSimpleConventionBody(MethodInfo method, string entityType)
+    private static string GenerateSimpleConventionBody(MethodInfo method, RepositoryInfo info)
     {
         var sb = new StringBuilder();
+        
+        // Determine the actual return type - use method return type if different from entity
+        var returnType = GetInnerType(method.ReturnType);
+        var queryType = string.IsNullOrEmpty(returnType) ? info.EntityType : returnType;
 
         // Simple convention analysis (fallback)
         if (method.Name.StartsWith("GetAll") || method.Name.StartsWith("FindAll"))
         {
-            sb.AppendLine($"            var sql = \"SELECT * FROM {GetTableName(entityType)}\";");
-            sb.AppendLine($"            return await _connection.QueryAsync<{entityType}>(sql);");
+            sb.AppendLine($"            var sql = \"SELECT * FROM {GetTableName(info.EntityType)}\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{queryType}>(sql);");
         }
         else if (method.Name.StartsWith("GetById") || method.Name.StartsWith("FindById"))
         {
-            sb.AppendLine($"            var sql = \"SELECT * FROM {GetTableName(entityType)} WHERE id = @id\";");
-            sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{entityType}>(sql, new {{ id }});");
+            sb.AppendLine($"            var sql = \"SELECT * FROM {GetTableName(info.EntityType)} WHERE id = @id\";");
+            sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{queryType}>(sql, new {{ id }});");
         }
         else
         {

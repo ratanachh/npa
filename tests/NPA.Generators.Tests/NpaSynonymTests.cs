@@ -247,9 +247,49 @@ namespace TestNamespace
     
     #region Helper Methods
     
+    // Include NPA attribute sources so Roslyn can read constructor arguments during source generation
+    private const string NPA_ANNOTATIONS_SOURCE = @"
+namespace NPA.Core.Annotations
+{
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class ColumnAttribute : System.Attribute
+    {
+        public string Name { get; }
+        public string? TypeName { get; set; }
+        public int? Length { get; set; }
+        public int? Precision { get; set; }
+        public int? Scale { get; set; }
+        public bool IsNullable { get; set; } = true;
+        public bool IsUnique { get; set; } = false;
+        public ColumnAttribute(string name) { Name = name; }
+    }
+    
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class TableAttribute : System.Attribute
+    {
+        public string Name { get; }
+        public string? Schema { get; set; }
+        public TableAttribute(string name) { Name = name; }
+    }
+    
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class IdAttribute : System.Attribute { }
+    
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class RequiredAttribute : System.Attribute { }
+    
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class UniqueAttribute : System.Attribute { }
+}";
+
     private static GeneratorRunResult RunGenerator(string source)
     {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        // Include both annotation definitions AND user source
+        var syntaxTrees = new[]
+        {
+            CSharpSyntaxTree.ParseText(NPA_ANNOTATIONS_SOURCE),
+            CSharpSyntaxTree.ParseText(source)
+        };
 
         var references = new[]
         {
@@ -262,7 +302,7 @@ namespace TestNamespace
 
         var compilation = CSharpCompilation.Create(
             "TestAssembly",
-            new[] { syntaxTree },
+            syntaxTrees,
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 

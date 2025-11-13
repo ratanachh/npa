@@ -11,22 +11,23 @@ namespace ProfilerDemo.Repositories;
 [Repository]
 public interface IUserRepository : IRepository<User, int>
 {
+    // Convention-based queries (derived from method names - no Query attribute needed)
     // Indexed queries - should be fast
-    [Query("SELECT u FROM User u WHERE u.Email = :email")]
     Task<User?> FindByEmailAsync(string email);
-
-    [Query("SELECT u FROM User u WHERE u.Username = :username")]
+    
     Task<User?> FindByUsernameAsync(string username);
+    
+    Task<IEnumerable<User>> FindByIsActiveAsync(bool isActive);
+    
+    // Method with default parameter - convention-based
+    Task<IEnumerable<User>> FindActiveUsersAsync(bool isActive = true);
 
+    // Explicit JPQL queries using [Query] attribute
     // Batch query - efficient way to fetch multiple users (PostgreSQL array syntax)
     [Query("SELECT u FROM User u WHERE u.Id = ANY(:ids)")]
     Task<IEnumerable<User>> FindByIdsAsync(int[] ids);
 
-    // Full table scan - intentionally slow for comparison
-    [Query("SELECT u FROM User u WHERE u.IsActive = :isActive")]
-    Task<IEnumerable<User>> FindActiveUsersAsync(bool isActive = true);
-
-    // Aggregate query
+    // Aggregate query returning DTO
     [Query("SELECT u.Country, COUNT(u), AVG(u.AccountBalance), SUM(u.AccountBalance) FROM User u GROUP BY u.Country")]
     Task<IEnumerable<UserStatistics>> GetUserStatisticsByCountryAsync();
 
@@ -34,6 +35,7 @@ public interface IUserRepository : IRepository<User, int>
     [Query("SELECT u FROM User u ORDER BY u.Id LIMIT :pageSize OFFSET :offset")]
     Task<IEnumerable<User>> GetUsersPageAsync(int offset, int pageSize);
 
+    // Modifying queries (UPDATE/DELETE)
     // Bulk update - using JPQL-style query
     [Query("UPDATE User u SET u.AccountBalance = u.AccountBalance + :amount WHERE u.Country = :country")]
     Task<int> BulkUpdateAccountBalanceAsync(string country, decimal amount);
@@ -41,6 +43,9 @@ public interface IUserRepository : IRepository<User, int>
     // Bulk delete - using JPQL-style query
     [Query("DELETE FROM User u WHERE u.IsActive = false AND u.CreatedAt < :date")]
     Task<int> DeleteInactiveUsersOlderThanAsync(DateTime date);
+    
+    // Derived delete query (convention-based)
+    Task DeleteByIsActiveAsync(bool isActive);
 }
 
 /// <summary>

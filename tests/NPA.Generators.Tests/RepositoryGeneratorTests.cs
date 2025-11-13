@@ -352,7 +352,7 @@ namespace TestNamespace
             .ToString();
         
         // Should use convention analysis to extract "Email" from "DeleteByEmailAsync"
-        generatedCode.Should().Contain("email = @email", 
+        generatedCode.Should().Contain("Email = @email", 
             "Should generate WHERE clause based on method name convention");
     }
 
@@ -439,13 +439,55 @@ namespace TestNamespace
             .First()
             .ToString();
         
-        generatedCode.Should().Contain("id = @id AND tenant_id = @tenantId", 
+        generatedCode.Should().Contain("Id = @id AND TenantId = @tenantId", 
             "Should generate AND clause for multiple parameters");
     }
 
+    // Include NPA attribute sources so Roslyn can read constructor arguments during source generation
+    private const string NPA_ANNOTATIONS_SOURCE = @"
+namespace NPA.Core.Annotations
+{
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class ColumnAttribute : System.Attribute
+    {
+        public string Name { get; }
+        public string? TypeName { get; set; }
+        public int? Length { get; set; }
+        public int? Precision { get; set; }
+        public int? Scale { get; set; }
+        public bool IsNullable { get; set; } = true;
+        public bool IsUnique { get; set; } = false;
+        public ColumnAttribute(string name) { Name = name; }
+    }
+    
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class TableAttribute : System.Attribute
+    {
+        public string Name { get; }
+        public string? Schema { get; set; }
+        public TableAttribute(string name) { Name = name; }
+    }
+    
+    // Add other commonly used attributes for completeness
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class IdAttribute : System.Attribute { }
+    
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class RequiredAttribute : System.Attribute { }
+    
+    [System.AttributeUsage(System.AttributeTargets.Property)]
+    public sealed class UniqueAttribute : System.Attribute { }
+}";
+
     private static Compilation CreateCompilation(string source)
     {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        // Include both annotation definitions AND user source
+        // This allows Roslyn to read attribute constructor arguments
+        var syntaxTrees = new[]
+        {
+            CSharpSyntaxTree.ParseText(NPA_ANNOTATIONS_SOURCE),
+            CSharpSyntaxTree.ParseText(source)
+        };
         
         var references = new[]
         {
@@ -457,7 +499,7 @@ namespace TestNamespace
 
         return CSharpCompilation.Create(
             "TestAssembly",
-            new[] { syntaxTree },
+            syntaxTrees,
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
@@ -970,7 +1012,7 @@ namespace TestNamespace
         var generatedCode = generatedTrees.First().ToString();
         
         // Should convert JPQL to SQL - generator uses metadata from [Table] attribute to get table name "products"
-        generatedCode.Should().Contain("UPDATE products SET price = @price WHERE id = @id");
+        generatedCode.Should().Contain("UPDATE products SET Price = @price WHERE Id = @id");
         
         // Should use ExecuteAsync for UPDATE (not ExecuteScalarAsync)
         generatedCode.Should().Contain("ExecuteAsync");
@@ -1028,8 +1070,8 @@ namespace TestNamespace
         var generatedCode = generatedTrees.First().ToString();
         
         // Should use table name from [Table("products")] attribute
-        // Stock property converted to snake_case (generator extracts [Column] metadata at generation time)
-        generatedCode.Should().Contain("UPDATE products SET price = @price, stock = @stock WHERE id = @id");
+        // Stock property uses [Column("stock_quantity")] attribute
+        generatedCode.Should().Contain("UPDATE products SET price = @price, stock_quantity = @stock WHERE id = @id");
     }
 
     [Fact]
@@ -1079,7 +1121,7 @@ namespace TestNamespace
         var generatedCode = generatedTrees.First().ToString();
         
         // Should convert JPQL to SQL - uses metadata table name "sessions"
-        generatedCode.Should().Contain("DELETE FROM sessions WHERE expires_at < @now OR is_revoked = true");
+        generatedCode.Should().Contain("DELETE FROM sessions WHERE ExpiresAt < @now OR IsRevoked = true");
         
         // Should use ExecuteAsync for DELETE (not ExecuteScalarAsync)
         generatedCode.Should().Contain("ExecuteAsync");
@@ -1155,10 +1197,16 @@ using System.Threading.Tasks;
 
 namespace TestNamespace
 {
+    [Table(""orders"")]
     public class Order
     {
+        [Column(""id"")]
         public int Id { get; set; }
+        
+        [Column(""total_amount"")]
         public decimal TotalAmount { get; set; }
+        
+        [Column(""discount_percent"")]
         public decimal DiscountPercent { get; set; }
     }
 
@@ -1380,7 +1428,7 @@ namespace TestNamespace
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
         var generatedCode = generatedTrees.First().ToString();
-        generatedCode.Should().Contain("INSERT INTO products (name, price) VALUES (@name, @price)");
+        generatedCode.Should().Contain("INSERT INTO products (Name, Price) VALUES (@name, @price)");
         generatedCode.Should().Contain("ExecuteAsync");
     }
 
@@ -1466,5 +1514,172 @@ namespace TestNamespace
     }
 
     #endregion
+
+    #region DTO Return Type Tests
+
+    [Fact]
+    public void Generator_ConventionMethodReturningDTO_ShouldUseCorrectReturnType()
+    {
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+
+namespace TestNamespace
+{
+    [Table(""users"")]
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string Country { get; set; }
+        public decimal AccountBalance { get; set; }
+    }
+
+    public class UserStatistics
+    {
+        public string Country { get; set; }
+        public long UserCount { get; set; }
+        public decimal AverageBalance { get; set; }
+        public decimal TotalBalance { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, int>
+    {
+        Task<IEnumerable<UserStatistics>> GetUserStatisticsByCountryAsync();
+    }
+}";
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        diagnostics.Should().BeEmpty();
+        var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("UserRepository")).ToList();
+        generatedTrees.Should().NotBeEmpty();
+        var generatedCode = generatedTrees.First().ToString();
+        // Should use UserStatistics as the generic type parameter, not User
+        generatedCode.Should().Contain("QueryAsync<TestNamespace.UserStatistics>");
+        generatedCode.Should().NotContain("QueryAsync<TestNamespace.User>(sql);");
+    }
+
+    [Fact]
+    public void Generator_QueryAttributeReturningDTO_ShouldUseCorrectReturnType()
+    {
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+
+namespace TestNamespace
+{
+    [Table(""users"")]
+    public class User
+    {
+        [Column(""id"")]
+        public int Id { get; set; }
+        
+        [Column(""name"")]
+        public string Name { get; set; }
+        
+        [Column(""country"")]
+        public string Country { get; set; }
+        
+        [Column(""account_balance"")]
+        public decimal AccountBalance { get; set; }
+    }
+
+    public class UserStatistics
+    {
+        public string Country { get; set; }
+        public long UserCount { get; set; }
+        public decimal AverageBalance { get; set; }
+        public decimal TotalBalance { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, int>
+    {
+        [Query(""SELECT u.Country, COUNT(u), AVG(u.AccountBalance), SUM(u.AccountBalance) FROM User u GROUP BY u.Country"")]
+        Task<IEnumerable<UserStatistics>> GetUserStatisticsByCountryAsync();
+    }
+}";
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        diagnostics.Should().BeEmpty();
+        var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("UserRepository")).ToList();
+        generatedTrees.Should().NotBeEmpty();
+        var generatedCode = generatedTrees.First().ToString();
+        // Should use UserStatistics as the generic type parameter, not User
+        generatedCode.Should().Contain("QueryAsync<TestNamespace.UserStatistics>");
+        // Verify CPQL conversion happened (User -> users table, properties converted to snake_case)
+        generatedCode.Should().Contain("FROM users");
+        generatedCode.Should().Contain("account_balance");
+    }
+
+    [Fact]
+    public void Generator_ConventionBasedFindBy_ShouldGenerateCorrectQuery()
+    {
+        var source = @"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+
+namespace TestNamespace
+{
+    [Table(""users"")]
+    public class User
+    {
+        [Column(""id"")]
+        public int Id { get; set; }
+        
+        [Column(""email"")]
+        public string Email { get; set; }
+        
+        [Column(""user_name"")]
+        public string Username { get; set; }
+        
+        [Column(""status"")]
+        public string Status { get; set; }
+        public string FullName { get; set; }
+    }
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, int>
+    {
+        Task<User?> FindByEmailAsync(string email);
+        Task<User?> FindByUsernameAsync(string username);
+        Task<IEnumerable<User>> FindByStatusAsync(string status);
+        Task<User?> FindByFullNameAsync(string fullName);
+    }
+}";
+        var compilation = CreateCompilation(source);
+        var generator = new RepositoryGenerator();
+        var driver = CSharpGeneratorDriver.Create(generator);
+        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        diagnostics.Should().BeEmpty();
+        var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("UserRepository")).ToList();
+        generatedTrees.Should().NotBeEmpty();
+        var generatedCode = generatedTrees.First().ToString();
+        
+        // Convention-based FindBy methods should use property names as column names
+        // This behavior matches how properties without [Column] attributes are handled.
+        generatedCode.Should().Contain("WHERE email = @email", "Email property generates email column");
+        generatedCode.Should().Contain("WHERE user_name = @username", "Username property generates user_name column");
+        generatedCode.Should().Contain("WHERE status = @status", "Status property generates status column");
+        generatedCode.Should().Contain("WHERE FullName = @fullName", "FullName property generates FullName column there is no [Column] attribute");
+        
+        // Should use User as return type for entity queries
+        generatedCode.Should().Contain("QueryFirstOrDefaultAsync<TestNamespace.User?>");
+        generatedCode.Should().Contain("QueryAsync<TestNamespace.User>");
+    }
+
+    #endregion
 }
+
 

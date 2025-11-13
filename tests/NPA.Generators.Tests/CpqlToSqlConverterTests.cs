@@ -32,11 +32,10 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves Price property casing
         sql.Should().Contain("WHERE");
-        sql.Should().Contain("price > @price");
+        sql.Should().Contain("Price > @price");
         sql.Should().NotContain("p.Price");
-        sql.Should().NotContain("p.price");
     }
 
     [Fact]
@@ -92,10 +91,9 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Contain("SELECT AVG(price)");
+        // Assert - preserves Price property casing
+        sql.Should().Contain("SELECT AVG(Price)");
         sql.Should().NotContain("p.Price");
-        sql.Should().NotContain("p.price");
     }
 
     [Fact]
@@ -107,10 +105,10 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Contain("SELECT SUM(quantity)");
+        // Assert - preserves Quantity and Category property casing
+        sql.Should().Contain("SELECT SUM(Quantity)");
         sql.Should().Contain("WHERE");
-        sql.Should().Contain("category = @category");
+        sql.Should().Contain("Category = @category");
     }
 
     [Fact]
@@ -122,8 +120,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Contain("SELECT MAX(price)");
+        // Assert - preserves Price property casing
+        sql.Should().Contain("SELECT MAX(Price)");
     }
 
     [Fact]
@@ -135,8 +133,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Contain("SELECT MIN(price)");
+        // Assert - preserves Price property casing
+        sql.Should().Contain("SELECT MIN(Price)");
     }
 
     [Fact]
@@ -150,7 +148,7 @@ public class CpqlToSqlConverterTests
 
         // Assert
         sql.Should().Contain("ORDER BY");
-        sql.Should().Contain("price DESC");
+        sql.Should().Contain("Price DESC");
         sql.Should().NotContain("p.Price");
         sql.Should().NotContain("p.price");
         sql.Should().NotContain("p.IsActive");
@@ -180,13 +178,13 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves property casing
         sql.Should().Contain("WHERE");
-        sql.Should().Contain("price > @minPrice");
-        sql.Should().Contain("price < @maxPrice");
-        sql.Should().Contain("is_active = true");
+        sql.Should().Contain("Price > @minPrice");
+        sql.Should().Contain("Price < @maxPrice");
+        sql.Should().Contain("IsActive = true");
         sql.Should().Contain("ORDER BY");
-        sql.Should().Contain("created_at DESC");
+        sql.Should().Contain("CreatedAt DESC");
         sql.Should().NotContain("p.Price");
         sql.Should().NotContain("p.IsActive");
         sql.Should().NotContain("p.CreatedAt");
@@ -215,9 +213,9 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves Email property casing
         sql.Should().Contain("SELECT * FROM students");
-        sql.Should().Contain("WHERE email = @email");
+        sql.Should().Contain("WHERE Email = @email");
         sql.Should().NotContain("s.Email");
     }
 
@@ -230,9 +228,9 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves Price property casing
         sql.Should().Contain("SELECT * FROM products");
-        sql.Should().Contain("WHERE price > @price");
+        sql.Should().Contain("WHERE Price > @price");
         sql.Should().NotContain("pr.Price");
     }
 
@@ -245,9 +243,9 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves Name property casing
         sql.Should().Contain("SELECT * FROM categories");
-        sql.Should().Contain("WHERE name = @name");
+        sql.Should().Contain("WHERE Name = @name");
         sql.Should().NotContain("cat.Name");
     }
 
@@ -287,9 +285,9 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves Category property casing
         sql.Should().Contain("GROUP BY");
-        sql.Should().Contain("category");
+        sql.Should().Contain("Category");
         sql.Should().Contain("COUNT(*)");
     }
 
@@ -334,7 +332,7 @@ public class CpqlToSqlConverterTests
 
         // Assert
         sql.Should().Contain("SELECT * FROM products");
-        sql.Should().Contain("WHERE price > @price");
+        sql.Should().Contain("WHERE Price > @price");
     }
 
     [Fact]
@@ -374,8 +372,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("SELECT * FROM students WHERE email = @email");
+        // Assert - preserves Email property casing
+        sql.Should().Be("SELECT * FROM students WHERE Email = @email");
     }
 
     [Fact]
@@ -387,9 +385,9 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
+        // Assert - preserves EnrolledCoursesCount property casing
         sql.Should().Contain("SELECT * FROM students");
-        sql.Should().Contain("ORDER BY enrolled_courses_count DESC");
+        sql.Should().Contain("ORDER BY EnrolledCoursesCount DESC");
         sql.Should().Contain("LIMIT @limit");
     }
 
@@ -415,10 +413,10 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Contain("SELECT AVG(rating)");
+        // Assert - preserves Rating and CourseId property casing
+        sql.Should().Contain("SELECT AVG(Rating)");
         sql.Should().Contain("FROM reviews");
-        sql.Should().Contain("WHERE course_id = @courseId");
+        sql.Should().Contain("WHERE CourseId = @courseId");
     }
 
     [Fact]
@@ -504,7 +502,7 @@ public class CpqlToSqlConverterTests
 
         // Assert
         sql.Should().Contain("FROM products");
-        sql.Should().Contain("name=@name");
+        sql.Should().Contain("Name=@name");
     }
 
     [Fact]
@@ -519,8 +517,8 @@ public class CpqlToSqlConverterTests
         // Assert
         sql.Should().NotContain("p.CategoryId");
         sql.Should().NotContain("p.Price");
-        sql.Should().Contain("category_id = @catId");
-        sql.Should().Contain("price > @price");
+        sql.Should().Contain("CategoryId = @catId");
+        sql.Should().Contain("Price > @price");
     }
 
     [Fact]
@@ -714,7 +712,8 @@ public class CpqlToSqlConverterTests
 
         // Assert
         sql.Should().Contain("SELECT * FROM students");
-        sql.Should().Contain("WHERE email = @email");
+        // Without metadata, property names are preserved as-is (not converted to snake_case)
+        sql.Should().Contain("WHERE Email = @email");
     }
 
     [Fact]
@@ -760,8 +759,8 @@ public class CpqlToSqlConverterTests
         sql.Should().Contain("SELECT p.product_id AS Id, p.product_name AS Name, p.category_id AS CategoryId");
         sql.Should().Contain("FROM products p"); // Should preserve alias when we have metadata
         sql.Should().Contain("INNER JOIN categories c");
-        sql.Should().Contain("ON category_id = id"); // Both aliases removed (falls back to snake_case conversion)
-        sql.Should().Contain("WHERE name = @categoryName"); // c.Name converted to snake_case 'name'
+        sql.Should().Contain("ON category_id = Id"); // Both aliases removed (falls back to preserved casing)
+        sql.Should().Contain("WHERE Name = @categoryName"); // c.Name converted to preserved casing 'Name'
     }
 
     [Fact]
@@ -974,7 +973,7 @@ public class CpqlToSqlConverterTests
         sql.Should().Contain("SELECT p.id AS Id, p.product_name AS Name, p.unit_price AS Price, p.category_id AS CategoryId");
         sql.Should().Contain("FROM products p");
         sql.Should().Contain("WHERE unit_price >");
-        sql.Should().Contain("SELECT AVG(price) FROM products"); // p2 alias removed, but inner references not fully converted
+        sql.Should().Contain("SELECT AVG(Price) FROM products"); // p2 alias removed, but inner references not fully converted
         sql.Should().Contain("ORDER BY unit_price DESC");
     }
 
@@ -1475,8 +1474,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("UPDATE product SET price = @price WHERE id = @id");
+        // Assert - preserves property casing
+        sql.Should().Be("UPDATE product SET Price = @price WHERE Id = @id");
     }
 
     [Fact]
@@ -1560,8 +1559,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("DELETE FROM product WHERE id = @id");
+        // Assert - preserves property casing
+        sql.Should().Be("DELETE FROM product WHERE Id = @id");
     }
 
     [Fact]
@@ -1741,8 +1740,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("INSERT INTO product (name, price) VALUES (@name, @price)");
+        // Assert - preserves Name and Price property casing
+        sql.Should().Be("INSERT INTO product (Name, Price) VALUES (@name, @price)");
     }
 
     [Fact]
@@ -1778,8 +1777,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("INSERT INTO user (username, email, first_name, last_name, is_active) VALUES (@username, @email, @firstName, @lastName, @isActive)");
+        // Assert - preserves property casing
+        sql.Should().Be("INSERT INTO user (Username, Email, FirstName, LastName, IsActive) VALUES (@username, @email, @firstName, @lastName, @isActive)");
     }
 
     [Fact]
@@ -1791,8 +1790,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("INSERT INTO order (total_amount, discount_percent, order_date, customer_id) VALUES (@totalAmount, @discountPercent, @orderDate, @customerId)");
+        // Assert - preserves property casing (no longer converts to snake_case)
+        sql.Should().Be("INSERT INTO order (TotalAmount, DiscountPercent, OrderDate, CustomerId) VALUES (@totalAmount, @discountPercent, @orderDate, @customerId)");
     }
 
     [Fact]
@@ -1804,8 +1803,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("INSERT INTO category (name) VALUES (@name)");
+        // Assert - preserves Name property casing
+        sql.Should().Be("INSERT INTO category (Name) VALUES (@name)");
     }
 
     [Fact]
@@ -1828,8 +1827,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql, metadata);
 
-        // Assert
-        sql.Should().Be("INSERT INTO products (product_name, unit_price, stock) VALUES (@name, @price, @stock)");
+        // Assert - uses Column names from metadata, preserves Stock casing when not in metadata
+        sql.Should().Be("INSERT INTO products (product_name, unit_price, Stock) VALUES (@name, @price, @stock)");
     }
 
     [Fact]
@@ -1865,8 +1864,8 @@ public class CpqlToSqlConverterTests
         // Act
         var sql = CpqlToSqlConverter.ConvertToSql(cpql);
 
-        // Assert
-        sql.Should().Be("INSERT INTO feature (name, is_enabled, is_public) VALUES (@name, @isEnabled, @isPublic)");
+        // Assert - preserves property casing
+        sql.Should().Be("INSERT INTO feature (Name, IsEnabled, IsPublic) VALUES (@name, @isEnabled, @isPublic)");
     }
 
     [Fact]

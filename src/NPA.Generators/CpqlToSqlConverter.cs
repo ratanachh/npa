@@ -199,24 +199,24 @@ public static class CpqlToSqlConverter
                     var prop = metadata.Properties.FirstOrDefault(p => 
                         p.Name.Equals(column, StringComparison.OrdinalIgnoreCase));
                     
-                    if (prop != null)
+                    if (prop != null && !string.IsNullOrEmpty(prop.ColumnName))
                     {
                         convertedColumns.Add(prop.ColumnName);
                     }
                     else
                     {
-                        // Fallback: convert to snake_case
-                        convertedColumns.Add(ToSnakeCase(column));
+                        // Fallback: use property name as-is (preserve exact casing)
+                        convertedColumns.Add(column);
                     }
                 }
                 
                 return $"INSERT INTO {tableName} ({string.Join(", ", convertedColumns)})";
             }
             
-            // Fallback: convert entity name to lowercase and columns to snake_case
+            // Fallback: convert entity name to lowercase and preserve column casing
             tableName = entityName.ToLowerInvariant();
             var fallbackColumns = columnsList.Split(',')
-                .Select(c => ToSnakeCase(c.Trim()));
+                .Select(c => c.Trim());
             
             return $"INSERT INTO {tableName} ({string.Join(", ", fallbackColumns)})";
         }, RegexOptions.IgnoreCase);
@@ -543,7 +543,7 @@ public static class CpqlToSqlConverter
     }
     
     /// <summary>
-    /// Gets the column name for a property, using metadata if available or falling back to snake_case conversion
+    /// Gets the column name for a property, using metadata if available or falling back to property name as-is
     /// </summary>
     private static string GetColumnName(string propertyName, EntityMetadataInfo? metadata)
     {
@@ -558,8 +558,8 @@ public static class CpqlToSqlConverter
             }
         }
         
-        // Fall back to snake_case conversion
-        return ToSnakeCase(propertyName);
+        // Fall back to using property name as-is (preserve exact casing)
+        return propertyName;
     }
     
     /// <summary>
