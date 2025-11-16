@@ -9,6 +9,7 @@ using NPA.Providers.PostgreSql;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
+using Dapper;
 
 namespace NPA.Core.Tests.Core;
 
@@ -424,5 +425,80 @@ public class EntityManagerTests : IAsyncLifetime
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await _entityManager.RemoveAsync(user));
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await _entityManager.FlushAsync());
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await _entityManager.ClearAsync());
+    }
+
+    [Fact]
+    public async Task PersistAsync_MultipleEntities_WithFlush_ShouldInsertAllEntities()
+    {
+        // Arrange
+        await ClearTestData();
+        
+        var users = new[]
+        {
+            new User { Username = "user1", Email = "user1@test.com", CreatedAt = DateTime.UtcNow, IsActive = true },
+            new User { Username = "user2", Email = "user2@test.com", CreatedAt = DateTime.UtcNow, IsActive = true },
+            new User { Username = "user3", Email = "user3@test.com", CreatedAt = DateTime.UtcNow, IsActive = true }
+        };
+
+        // Act - Track entities without transaction (should use change tracker)
+        foreach (var user in users)
+        {
+            await _entityManager.PersistAsync(user);
+        }
+        
+        // Verify entities are tracked
+        users.All(u => _entityManager.Contains(u)).Should().BeTrue();
+        
+        // Flush should execute the pending inserts via CallGenericMethodAsync
+        await _entityManager.FlushAsync();
+
+        // Assert - All users should have generated IDs
+        users.All(u => u.Id > 0).Should().BeTrue();
+        
+        // Verify in database
+        var savedUsers = await _connection.QueryAsync<User>("SELECT * FROM public.users ORDER BY id");
+        savedUsers.Should().HaveCount(3);
+        savedUsers.Should().Contain(u => u.Username == "user1");
+        savedUsers.Should().Contain(u => u.Username == "user2");
+        savedUsers.Should().Contain(u => u.Username == "user3");
+    }
+
+    [Fact]
+    public async Task FlushAsync_WithMixedOperations_ShouldExecuteAllPendingChanges()
+    {
+        // Arrange
+        await ClearTestData();
+        
+        // Insert initial user
+        var user1 = new User 
+        { 
+            Username = "original", 
+            Email = "original@test.com", 
+            CreatedAt = DateTime.UtcNow, 
+            IsActive = true 
+        };
+        await _entityManager.PersistAsync(user1);
+        await _entityManager.FlushAsync();
+
+        var user2 = new User 
+        { 
+            Username = "new", 
+            Email = "new@test.com", 
+            CreatedAt = DateTime.UtcNow, 
+            IsActive = true 
+        };
+        
+        // Act - Queue mixed operations
+        user1.Username = "modified";
+        await _entityManager.MergeAsync(user1); // Update
+        await _entityManager.PersistAsync(user2); // Insert
+        
+        await _entityManager.FlushAsync(); // Should call CallGenericMethodAsync for both
+
+        // Assert
+        var users = await _connection.QueryAsync<User>("SELECT * FROM public.users ORDER BY id");
+        users.Should().HaveCount(2);
+        users.First().Username.Should().Be("modified");
+        users.Last().Username.Should().Be("new");
     }
 }

@@ -134,19 +134,27 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
 
         try
         {
+            // Ensure we have an NpgsqlConnection for temp table operations
+            if (connection is not NpgsqlConnection npgsqlConnection)
+                throw new InvalidOperationException("Bulk update requires an NpgsqlConnection");
+
+            // Ensure connection is open
+            if (npgsqlConnection.State != ConnectionState.Open)
+                await npgsqlConnection.OpenAsync(cancellationToken);
+
             // Create temporary table
             var createTempTableSql = GenerateCreateTempTableSql(metadata, tempTableName);
-            await connection.ExecuteAsync(createTempTableSql);
+            await npgsqlConnection.ExecuteAsync(createTempTableSql);
 
             // Bulk insert into temp table
-            await BulkInsertToTempTableAsync(connection, entityList, metadata, tempTableName, cancellationToken);
+            await BulkInsertToTempTableAsync(npgsqlConnection, entityList, metadata, tempTableName, cancellationToken);
 
             // Perform UPDATE using temp table
             var updateSql = GenerateUpdateFromTempTableSql(metadata, tempTableName, primaryKey);
-            var rowsAffected = await connection.ExecuteAsync(updateSql);
+            var rowsAffected = await npgsqlConnection.ExecuteAsync(updateSql);
 
-            // Drop temporary table
-            await connection.ExecuteAsync($"DROP TABLE IF EXISTS {tempTableName}");
+            // Drop temporary table (don't escape - safe GUID-based name)
+            await npgsqlConnection.ExecuteAsync($"DROP TABLE IF EXISTS {tempTableName}");
 
             return rowsAffected;
         }
@@ -155,7 +163,10 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
             // Clean up temp table on error
             try
             {
-                await connection.ExecuteAsync($"DROP TABLE IF EXISTS {tempTableName}");
+                if (connection is NpgsqlConnection npgsqlConnection && npgsqlConnection.State == ConnectionState.Open)
+                {
+                    await npgsqlConnection.ExecuteAsync($"DROP TABLE IF EXISTS {tempTableName}");
+                }
             }
             catch
             {
@@ -186,12 +197,14 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
         var tableName = GetTableName(metadata);
         var pkColumn = _dialect.EscapeIdentifier(primaryKey.ColumnName);
 
-        // Use ANY array operator for bulk delete
-        var sql = $"DELETE FROM {tableName} WHERE {pkColumn} = ANY(@ids)";
-
         try
         {
-            var rowsAffected = await connection.ExecuteAsync(sql, new { ids = idList.ToArray() });
+            // Convert object array to typed array for PostgreSQL
+            var typedArray = ConvertToTypedArray(idList, primaryKey.PropertyType);
+            
+            // Use ANY array operator for bulk delete
+            var sql = $"DELETE FROM {tableName} WHERE {pkColumn} = ANY(@ids)";
+            var rowsAffected = await connection.ExecuteAsync(sql, new { ids = typedArray });
             return rowsAffected;
         }
         catch (Exception ex)
@@ -352,19 +365,19 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
         return parameters;
     }
 
-    private async Task BulkInsertToTempTableAsync<T>(IDbConnection connection, IList<T> entities, EntityMetadata metadata, string tempTableName, CancellationToken cancellationToken)
+    private async Task BulkInsertToTempTableAsync<T>(NpgsqlConnection npgsqlConnection, IList<T> entities, EntityMetadata metadata, string tempTableName, CancellationToken cancellationToken)
     {
-        if (connection is NpgsqlConnection npgsqlConnection)
-        {
-            // Use COPY for temp table insert
-            var columns = metadata.Properties.Values.ToList();
-            var columnNames = string.Join(", ", columns.Select(p => _dialect.EscapeIdentifier(p.ColumnName)));
-            var copyCommand = $"COPY {tempTableName} ({columnNames}) FROM STDIN (FORMAT BINARY)";
+        // Use COPY for temp table insert
+        var columns = metadata.Properties.Values.ToList();
+        var columnNames = string.Join(", ", columns.Select(p => _dialect.EscapeIdentifier(p.ColumnName)));
+        // Don't escape temp table name - it's safe (GUID-based) and escaping causes case-sensitivity issues
+        var copyCommand = $"COPY {tempTableName} ({columnNames}) FROM STDIN (FORMAT BINARY)";
 
-            if (npgsqlConnection.State != ConnectionState.Open)
-                await npgsqlConnection.OpenAsync(cancellationToken);
+        // Connection should already be open from BulkUpdateAsync
+        if (npgsqlConnection.State != ConnectionState.Open)
+            await npgsqlConnection.OpenAsync(cancellationToken);
 
-            using var writer = await npgsqlConnection.BeginBinaryImportAsync(copyCommand, cancellationToken);
+        using var writer = await npgsqlConnection.BeginBinaryImportAsync(copyCommand, cancellationToken);
 
             foreach (var entity in entities)
             {
@@ -385,12 +398,6 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
             }
 
             await writer.CompleteAsync(cancellationToken);
-        }
-        else
-        {
-            // Fallback to batch insert
-            await BatchInsertAsync(connection, entities, metadata, cancellationToken);
-        }
     }
 
     private string GenerateCreateTempTableSql(EntityMetadata metadata, string tempTableName)
@@ -399,15 +406,19 @@ public class PostgreSqlBulkOperationProvider : IBulkOperationProvider
             .Select(p => $"{_dialect.EscapeIdentifier(p.ColumnName)} {_dialect.GetDataTypeMapping(p.PropertyType)}")
             .ToList();
 
+        // Don't escape temp table name - it's safe (GUID-based) and escaping causes case-sensitivity issues
+        // Don't use ON COMMIT DROP - we'll explicitly drop the table when done
+
         return $@"CREATE TEMP TABLE {tempTableName} (
     {string.Join(",\n    ", columns)}
-) ON COMMIT DROP";
+)";
     }
 
     private string GenerateUpdateFromTempTableSql(EntityMetadata metadata, string tempTableName, PropertyMetadata primaryKey)
     {
         var tableName = GetTableName(metadata);
         var pkColumn = _dialect.EscapeIdentifier(primaryKey.ColumnName);
+        // Don't escape temp table name
 
         var updateColumns = metadata.Properties.Values
             .Where(p => !p.IsPrimaryKey)
@@ -530,6 +541,17 @@ WHERE target.{pkColumn} = temp.{pkColumn}";
             return $"{metadata.SchemaName}.{metadata.TableName}";
         
         return metadata.TableName;
+    }
+
+    private Array ConvertToTypedArray(List<object> objects, Type targetType)
+    {
+        // Create a typed array based on the target type
+        var array = Array.CreateInstance(targetType, objects.Count);
+        for (int i = 0; i < objects.Count; i++)
+        {
+            array.SetValue(Convert.ChangeType(objects[i], targetType), i);
+        }
+        return array;
     }
 }
 

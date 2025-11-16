@@ -90,8 +90,11 @@ public class AdvancedQueriesSample : ISample
             );
             CREATE TABLE IF NOT EXISTS products (
                 id BIGSERIAL PRIMARY KEY,
+                tenant_id VARCHAR(255) NOT NULL DEFAULT '',
                 name VARCHAR(255) NOT NULL,
+                description TEXT NULL,
                 category_name VARCHAR(255) NOT NULL,
+                category_id BIGINT NULL,
                 price DECIMAL(10, 2) NOT NULL,
                 stock_quantity INT NOT NULL,
                 is_active BOOLEAN NOT NULL DEFAULT true,

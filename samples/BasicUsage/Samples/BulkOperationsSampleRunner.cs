@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using NPA.Core.Core;
 using NPA.Providers.PostgreSql.Extensions;
@@ -18,7 +19,32 @@ public class BulkOperationsSampleRunner : ISample
 
     public async Task RunAsync()
     {
-        // Start PostgreSQL container
+        Console.WriteLine("\n" + new string('=', 70));
+        Console.WriteLine("NPA ORM - Bulk Operations Performance Demonstration");
+        Console.WriteLine(new string('=', 70));
+
+        // Run each demo with its own isolated container
+        await RunDemoAsync("Demo 1: Bulk Insert", async (sample) => await sample.Demo1_BulkInsert());
+        await RunDemoAsync("Demo 2: Bulk Update", async (sample) => await sample.Demo2_BulkUpdate());
+        await RunDemoAsync("Demo 3: Bulk Delete", async (sample) => await sample.Demo3_BulkDelete());
+        await RunDemoAsync("Demo 4: Performance Comparison", async (sample) => await sample.Demo4_PerformanceComparison());
+        await RunDemoAsync("Demo 5: Large Dataset", async (sample) => await sample.Demo5_LargeDataset());
+        await RunDemoAsync("Demo 6: Complex Data", async (sample) => await sample.Demo6_ComplexData());
+
+        Console.WriteLine("\n" + new string('=', 70));
+        Console.WriteLine("✓ All bulk operation demos completed successfully!");
+        Console.WriteLine(new string('=', 70));
+
+        // Wait for user input before returning to menu
+        Console.WriteLine("\nPress any key to return to the menu...");
+        Console.ReadKey();
+    }
+
+    private async Task RunDemoAsync(string demoName, Func<BulkOperationsSample, Task> demoAction)
+    {
+        Console.WriteLine($"\n[Container] Starting new PostgreSQL container for {demoName}...");
+        
+        // Create a fresh PostgreSQL container for this demo
         var postgres = new PostgreSqlBuilder()
             .WithImage("postgres:17-alpine")
             .WithDatabase("npa_bulk_demo")
@@ -29,55 +55,35 @@ public class BulkOperationsSampleRunner : ISample
 
         await using (postgres)
         {
-            Console.WriteLine("Starting PostgreSQL container...");
             await postgres.StartAsync();
-            Console.WriteLine("PostgreSQL container started.");
-
             var connectionString = postgres.GetConnectionString();
+            Console.WriteLine($"[Container] Container started. Connection: {connectionString}");
 
-            // Setup dependency injection
+            // Setup dependency injection with fresh services
             var services = new ServiceCollection();
             services.AddPostgreSqlProvider(connectionString);
-
             var serviceProvider = services.BuildServiceProvider();
             var entityManager = serviceProvider.GetRequiredService<IEntityManager>();
 
             // Initialize database schema
             await InitializeDatabaseAsync(connectionString);
 
-            // Run bulk operation demos
+            // Verify database is empty
+            await using (var conn = new NpgsqlConnection(connectionString))
+            {
+                await conn.OpenAsync();
+                var count = await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM bulk_products");
+                Console.WriteLine($"[Container] Database initialized. Record count: {count}");
+            }
+
+            // Run the demo
             var sample = new BulkOperationsSample(entityManager);
+            await demoAction(sample);
 
-            Console.WriteLine("\n" + new string('=', 70));
-            Console.WriteLine("NPA ORM - Bulk Operations Performance Demonstration");
-            Console.WriteLine(new string('=', 70));
-
-            await sample.Demo1_BulkInsert();
-            await CleanupAsync(connectionString);
-
-            await sample.Demo2_BulkUpdate();
-            await CleanupAsync(connectionString);
-
-            await sample.Demo3_BulkDelete();
-            await CleanupAsync(connectionString);
-
-            await sample.Demo4_PerformanceComparison();
-            await CleanupAsync(connectionString);
-
-            await sample.Demo5_LargeDataset();
-            await CleanupAsync(connectionString);
-
-            await sample.Demo6_ComplexData();
-            await CleanupAsync(connectionString);
-
-            Console.WriteLine("\n" + new string('=', 70));
-            Console.WriteLine("✓ All bulk operation demos completed successfully!");
-            Console.WriteLine(new string('=', 70));
-
-            // Wait for user input before returning to menu
-            Console.WriteLine("\nPress any key to return to the menu...");
-            Console.ReadKey();
+            Console.WriteLine($"[Container] Demo completed. Stopping container...");
         }
+        
+        Console.WriteLine($"[Container] Container disposed for {demoName}");
     }
 
     private async Task InitializeDatabaseAsync(string connectionString)
@@ -121,19 +127,5 @@ public class BulkOperationsSampleRunner : ISample
 
         await command.ExecuteNonQueryAsync();
         Console.WriteLine("Database schema initialized with indexes");
-    }
-
-    private async Task CleanupAsync(string connectionString)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = @"
-            TRUNCATE TABLE bulk_products RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE bulk_categories RESTART IDENTITY CASCADE;
-        ";
-
-        await command.ExecuteNonQueryAsync();
     }
 }

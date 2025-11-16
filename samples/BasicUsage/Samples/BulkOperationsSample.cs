@@ -116,7 +116,7 @@ public class BulkOperationsSample
     }
 
     /// <summary>
-    /// Demo 4: Performance Comparison - Bulk vs Individual Operations
+    /// Demo 4: Performance Comparison
     /// 
     /// Compares bulk insert vs individual PersistAsync calls.
     /// Demonstrates dramatic performance improvement.
@@ -127,10 +127,11 @@ public class BulkOperationsSample
         Console.WriteLine("Comparing bulk operations vs individual operations");
 
         const int recordCount = 1000; // Use smaller count for individual operations
+        const int skuOffset = 50000; // Use offset to avoid any potential SKU conflicts
 
         // Test 1: Individual inserts
         Console.WriteLine($"\n1. Individual inserts ({recordCount:N0} records)...");
-        var individualProducts = GenerateBulkProducts(recordCount);
+        var individualProducts = GenerateBulkProducts(recordCount, skuOffset);
 
         var individualStopwatch = Stopwatch.StartNew();
         foreach (var product in individualProducts)
@@ -143,13 +144,13 @@ public class BulkOperationsSample
         Console.WriteLine($"   Time: {individualStopwatch.ElapsedMilliseconds:N0} ms");
         Console.WriteLine($"   Records/sec: {(recordCount / individualStopwatch.Elapsed.TotalSeconds):N0}");
 
-        // Clean up
-        var individualIds = Enumerable.Range(1, recordCount).Select(i => (object)(long)i).ToList();
+        // Clean up individual insert records
+        var individualIds = individualProducts.Select(p => (object)p.Id).ToList();
         await _entityManager.BulkDeleteAsync<BulkProduct>(individualIds);
 
         // Test 2: Bulk insert
         Console.WriteLine($"\n2. Bulk insert ({recordCount:N0} records)...");
-        var bulkProducts = GenerateBulkProducts(recordCount);
+        var bulkProducts = GenerateBulkProducts(recordCount, skuOffset + recordCount);
 
         var bulkStopwatch = Stopwatch.StartNew();
         await _entityManager.BulkInsertAsync(bulkProducts);

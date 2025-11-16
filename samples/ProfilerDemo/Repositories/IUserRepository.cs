@@ -17,7 +17,6 @@ namespace ProfilerDemo.Repositories;
 public interface IUserRepository : IRepository<User, int>
 {
     // ===== NamedQuery Examples (Auto-Detected) =====
-    
     /// <summary>Auto-matches User.FindActiveUsersAsync named query</summary>
     Task<IEnumerable<User>> FindActiveUsersAsync();
     

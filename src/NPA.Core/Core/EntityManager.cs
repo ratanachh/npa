@@ -747,19 +747,45 @@ public sealed class EntityManager : IEntityManager
 
     private async Task CallGenericMethodAsync(string methodName, object entity)
     {
-        var method = GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { entity.GetType(), typeof(EntityMetadata) }, null);
-        if (method == null) throw new InvalidOperationException($"Method {methodName} not found.");
-        var genericMethod = method.MakeGenericMethod(entity.GetType());
-        var task = (Task)genericMethod.Invoke(this, new[] { entity, _metadataProvider.GetEntityMetadata(entity.GetType()) })!;
+        var entityType = entity.GetType();
+        var metadata = _metadataProvider.GetEntityMetadata(entityType);
+        
+        // Find the generic method definition
+        var method = GetType()
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(m => 
+                m.Name == methodName && 
+                m.IsGenericMethodDefinition && 
+                m.GetParameters().Length == 2 &&
+                m.GetParameters()[1].ParameterType == typeof(EntityMetadata));
+        
+        if (method == null) 
+            throw new InvalidOperationException($"Method {methodName} not found.");
+        
+        var genericMethod = method.MakeGenericMethod(entityType);
+        var task = (Task)genericMethod.Invoke(this, new[] { entity, metadata })!;
         await task;
     }
 
     private void CallGenericMethod(string methodName, object entity)
     {
-        var method = GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { entity.GetType(), typeof(EntityMetadata) }, null);
-        if (method == null) throw new InvalidOperationException($"Method {methodName} not found.");
-        var genericMethod = method.MakeGenericMethod(entity.GetType());
-        genericMethod.Invoke(this, new[] { entity, _metadataProvider.GetEntityMetadata(entity.GetType()) });
+        var entityType = entity.GetType();
+        var metadata = _metadataProvider.GetEntityMetadata(entityType);
+        
+        // Find the generic method definition
+        var method = GetType()
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+            .FirstOrDefault(m => 
+                m.Name == methodName && 
+                m.IsGenericMethodDefinition && 
+                m.GetParameters().Length == 2 &&
+                m.GetParameters()[1].ParameterType == typeof(EntityMetadata));
+        
+        if (method == null) 
+            throw new InvalidOperationException($"Method {methodName} not found.");
+        
+        var genericMethod = method.MakeGenericMethod(entityType);
+        genericMethod.Invoke(this, new[] { entity, metadata });
     }
 
     /// <inheritdoc />
