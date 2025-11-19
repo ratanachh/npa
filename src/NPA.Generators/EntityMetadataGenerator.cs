@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
+using NPA.Generators.Shared;
 
 namespace NPA.Generators;
 
@@ -49,109 +50,25 @@ public class EntityMetadataGenerator : IIncrementalGenerator
         if (classSymbol == null || !classSymbol.GetAttributes().Any(a => a.AttributeClass?.Name is "EntityAttribute" or "Entity"))
             return null;
 
+        // Use shared metadata extractor for basic entity metadata (table, schema, properties)
+        var basicInfo = MetadataExtractor.ExtractEntityMetadata(classSymbol);
+        if (basicInfo == null) return null;
+        
+        // Use local complex relationship extraction (includes JoinColumn, JoinTable, MappedBy)
+        var relationships = GetRelationships(classSymbol);
+        
+        // Return combined metadata
         return new EntityMetadataInfo
         {
-            Name = classSymbol.Name,
-            Namespace = classSymbol.ContainingNamespace.ToDisplayString(),
-            FullName = classSymbol.ToDisplayString(),
-            TableName = GetTableName(classSymbol),
-            SchemaName = GetSchemaName(classSymbol),
-            Properties = GetProperties(classSymbol),
-            Relationships = GetRelationships(classSymbol),
-            NamedQueries = GetNamedQueries(classSymbol)
+            Name = basicInfo.Name,
+            Namespace = basicInfo.Namespace,
+            FullName = basicInfo.FullName, // Important: include FullName for code generation
+            TableName = basicInfo.TableName,
+            SchemaName = basicInfo.SchemaName,
+            Properties = basicInfo.Properties,
+            Relationships = relationships, // Use complex extraction instead
+            NamedQueries = basicInfo.NamedQueries
         };
-    }
-
-    private static string GetTableName(INamedTypeSymbol classSymbol)
-    {
-        var tableAttribute = classSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "TableAttribute" or "Table");
-        return tableAttribute?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? classSymbol.Name.ToLowerInvariant() + "s";
-    }
-
-    private static string? GetSchemaName(INamedTypeSymbol classSymbol)
-    {
-        var tableAttribute = classSymbol.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "TableAttribute" or "Table");
-        return tableAttribute?.NamedArguments.FirstOrDefault(na => na.Key == "Schema").Value.Value?.ToString();
-    }
-
-    private static List<PropertyMetadataInfo> GetProperties(INamedTypeSymbol classSymbol)
-    {
-        var properties = new List<PropertyMetadataInfo>();
-
-        foreach (var member in classSymbol.GetMembers().OfType<IPropertySymbol>())
-        {
-            if (member.IsStatic || member.GetAttributes().Any(a => RelationshipAttributeNames.Contains(a.AttributeClass?.Name ?? "")))
-                continue;
-
-            // For typeof(), we need to strip nullable annotation from reference types
-            var typeName = member.Type.ToDisplayString();
-            if (member.Type.IsReferenceType && member.NullableAnnotation == NullableAnnotation.Annotated)
-            {
-                // Strip trailing '?' for nullable reference types (typeof doesn't support it)
-                typeName = typeName.TrimEnd('?');
-            }
-            
-            properties.Add(new PropertyMetadataInfo
-            {
-                Name = member.Name,
-                TypeName = typeName,
-                IsNullable = member.NullableAnnotation == NullableAnnotation.Annotated,
-                IsPrimaryKey = HasAttribute(member, "IdAttribute", "Id"),
-                IsIdentity = HasGeneratedValueAttribute(member),
-                ColumnName = GetColumnName(member),
-                IsRequired = HasAttribute(member, "RequiredAttribute", "Required") || !member.NullableAnnotation.Equals(NullableAnnotation.Annotated),
-                IsUnique = GetIsUnique(member),
-                Length = GetLength(member),
-                Precision = GetPrecision(member),
-                Scale = GetScale(member)
-            });
-        }
-
-        return properties;
-    }
-
-    private static string GetColumnName(IPropertySymbol property)
-    {
-        var columnAttribute = property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || a.AttributeClass?.Name == "Column");
-        return columnAttribute?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? ToSnakeCase(property.Name);
-    }
-
-    private static bool HasAttribute(IPropertySymbol property, params string[] attributeNames)
-    {
-        return property.GetAttributes().Any(a => attributeNames.Contains(a.AttributeClass?.Name));
-    }
-
-    private static bool HasGeneratedValueAttribute(IPropertySymbol property)
-    {
-        return property.GetAttributes().Any(a => a.AttributeClass?.Name == "GeneratedValueAttribute" || a.AttributeClass?.Name == "GeneratedValue");
-    }
-
-    private static bool GetIsUnique(IPropertySymbol property)
-    {
-        var columnAttribute = property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || a.AttributeClass?.Name == "Column");
-        var uniqueArg = columnAttribute?.NamedArguments.FirstOrDefault(na => na.Key == "IsUnique" || na.Key == "Unique");
-        return uniqueArg?.Value.Value is bool isUnique && isUnique;
-    }
-
-    private static int? GetLength(IPropertySymbol property)
-    {
-        var columnAttribute = property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || a.AttributeClass?.Name == "Column");
-        var lengthArg = columnAttribute?.NamedArguments.FirstOrDefault(na => na.Key == "Length");
-        return lengthArg?.Value.Value as int?;
-    }
-
-    private static int? GetPrecision(IPropertySymbol property)
-    {
-        var columnAttribute = property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || a.AttributeClass?.Name == "Column");
-        var precisionArg = columnAttribute?.NamedArguments.FirstOrDefault(na => na.Key == "Precision");
-        return precisionArg?.Value.Value as int?;
-    }
-
-    private static int? GetScale(IPropertySymbol property)
-    {
-        var columnAttribute = property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || a.AttributeClass?.Name == "Column");
-        var scaleArg = columnAttribute?.NamedArguments.FirstOrDefault(na => na.Key == "Scale");
-        return scaleArg?.Value.Value as int?;
     }
 
     private static string? GetCollectionElementTypeSymbol(ITypeSymbol typeSymbol)
@@ -630,61 +547,6 @@ public class EntityMetadataGenerator : IIncrementalGenerator
         }
 
         return relationships;
-    }
-
-    private static List<NamedQueryInfo> GetNamedQueries(INamedTypeSymbol classSymbol)
-    {
-        var namedQueries = new List<NamedQueryInfo>();
-
-        foreach (var attr in classSymbol.GetAttributes())
-        {
-            var attrName = attr.AttributeClass?.Name;
-            if (attrName == "NamedQueryAttribute" || attrName == "NamedQuery")
-            {
-                // Extract constructor arguments (name and query)
-                if (attr.ConstructorArguments.Length >= 2)
-                {
-                    var name = attr.ConstructorArguments[0].Value?.ToString() ?? string.Empty;
-                    var query = attr.ConstructorArguments[1].Value?.ToString() ?? string.Empty;
-
-                    if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(query))
-                    {
-                        var namedQuery = new NamedQueryInfo
-                        {
-                            Name = name,
-                            Query = query
-                        };
-
-                        // Extract named arguments (optional properties)
-                        foreach (var namedArg in attr.NamedArguments)
-                        {
-                            switch (namedArg.Key)
-                            {
-                                case "NativeQuery":
-                                    namedQuery.NativeQuery = (bool)(namedArg.Value.Value ?? false);
-                                    break;
-                                case "CommandTimeout":
-                                    if (namedArg.Value.Value is int timeout)
-                                    {
-                                        namedQuery.CommandTimeout = timeout;
-                                    }
-                                    break;
-                                case "Buffered":
-                                    namedQuery.Buffered = (bool)(namedArg.Value.Value ?? true);
-                                    break;
-                                case "Description":
-                                    namedQuery.Description = namedArg.Value.Value?.ToString();
-                                    break;
-                            }
-                        }
-
-                        namedQueries.Add(namedQuery);
-                    }
-                }
-            }
-        }
-
-        return namedQueries;
     }
 
     private static void GenerateMetadataProvider(SourceProductionContext context, ImmutableArray<EntityMetadataInfo?> entities)

@@ -9,7 +9,7 @@ namespace NPA.Generators.Tests;
 /// <summary>
 /// Tests for the EntityMetadataGenerator source generator.
 /// </summary>
-public class EntityMetadataGeneratorTests
+public class EntityMetadataGeneratorTests : GeneratorTestBase
 {
     [Fact]
     public void EntityMetadataGenerator_ShouldGenerateMetadataProvider_WhenEntityExists()
@@ -39,7 +39,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -73,7 +73,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -104,7 +104,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -142,7 +142,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -174,7 +174,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -204,7 +204,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -248,7 +248,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -275,7 +275,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         var sourceText = result.GeneratedSources[0].SourceText.ToString();
@@ -301,7 +301,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         var sourceText = result.GeneratedSources[0].SourceText.ToString();
@@ -342,7 +342,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -382,7 +382,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -426,7 +426,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -469,7 +469,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -511,7 +511,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -559,7 +559,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<EntityMetadataGenerator>(source);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -569,31 +569,5 @@ namespace TestNamespace
         sourceText.Should().Contain("RelationshipType.ManyToMany");
         sourceText.Should().Contain("JoinTable = new JoinTableMetadata");
     }
-
-    private static GeneratorRunResult RunGenerator(string source)
-    {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
-
-        // Add reference to the assembly containing the attributes
-        var references = new[]
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(EntityAttribute).Assembly.Location), // Important!
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location)
-        };
-
-        var compilation = CSharpCompilation.Create(
-            "TestAssembly",
-            new[] { syntaxTree },
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        var generator = new EntityMetadataGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
-
-        var runResult = driver.GetRunResult();
-        
-        return runResult.Results[0];
-    }
 }
+

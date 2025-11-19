@@ -8,7 +8,7 @@ namespace NPA.Generators.Tests;
 /// <summary>
 /// Tests for result limiting keywords (First, Top).
 /// </summary>
-public class ResultLimitingTests
+public class ResultLimitingTests : GeneratorTestBase
 {
     #region Integration Tests - Verify Generated SQL
     
@@ -47,7 +47,7 @@ namespace TestNamespace
 }}";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: false);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -87,7 +87,7 @@ namespace TestNamespace
 }}";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: false);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -124,7 +124,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: false);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -161,7 +161,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var result = RunGenerator(source);
+        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: false);
 
         // Assert
         result.Diagnostics.Should().BeEmpty();
@@ -171,44 +171,5 @@ namespace TestNamespace
     }
     
     #endregion
-    
-    #region Helper Methods
-    
-    private static GeneratorRunResult RunGenerator(string source)
-    {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
-
-        var references = new[]
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.EntityAttribute).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Repositories.IRepository<,>).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location)
-        };
-
-        var compilation = CSharpCompilation.Create(
-            "TestAssembly",
-            new[] { syntaxTree },
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
-
-        var runResult = driver.GetRunResult();
-        
-        return runResult.Results[0];
-    }
-    
-    private static string GetGeneratedCode(GeneratorRunResult result)
-    {
-        if (result.GeneratedSources.Length == 0)
-            return string.Empty;
-            
-        return result.GeneratedSources[0].SourceText.ToString();
-    }
-    
-    #endregion
 }
+

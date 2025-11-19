@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
+using NPA.Generators.Shared;
 
 namespace NPA.Generators;
 
@@ -344,199 +345,8 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (entityType == null)
             return null;
 
-        var metadata = new EntityMetadataInfo
-        {
-            Name = entityType.Name,
-            Namespace = entityType.ContainingNamespace?.ToDisplayString() ?? string.Empty,
-            FullName = entityType.ToDisplayString(),
-            TableName = GetTableNameFromAttribute(entityType),
-            SchemaName = GetSchemaNameFromAttribute(entityType),
-            Properties = new List<PropertyMetadataInfo>(),
-            Relationships = new List<RelationshipMetadataInfo>(),
-            NamedQueries = ExtractNamedQueries(entityType)
-        };
-
-        // Extract property metadata
-        foreach (var property in entityType.GetMembers().OfType<IPropertySymbol>())
-        {
-            var columnName = GetColumnNameFromAttribute(property);
-            
-            // Ensure ColumnName is never empty - use property name as fallback
-            if (string.IsNullOrEmpty(columnName))
-            {
-                columnName = property.Name;
-            }
-            
-            var isPrimaryKey = property.GetAttributes().Any(a => a.AttributeClass?.Name == "IdAttribute");
-            var isRequired = property.GetAttributes().Any(a => a.AttributeClass?.Name == "RequiredAttribute");
-            var isUnique = property.GetAttributes().Any(a => a.AttributeClass?.Name == "UniqueAttribute");
-
-            metadata.Properties.Add(new PropertyMetadataInfo
-            {
-                Name = property.Name,
-                TypeName = property.Type.ToDisplayString(),
-                ColumnName = columnName,
-                IsNullable = property.NullableAnnotation == NullableAnnotation.Annotated,
-                IsPrimaryKey = isPrimaryKey,
-                IsRequired = isRequired,
-                IsUnique = isUnique
-            });
-            
-            // Extract relationship metadata from ManyToOne and OneToMany attributes
-            var manyToOneAttr = property.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "ManyToOneAttribute");
-            var oneToManyAttr = property.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "OneToManyAttribute");
-            var oneToOneAttr = property.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "OneToOneAttribute");
-            
-            if (manyToOneAttr != null && property.Type is INamedTypeSymbol relatedType)
-            {
-                metadata.Relationships.Add(new RelationshipMetadataInfo
-                {
-                    PropertyName = property.Name,
-                    Type = "ManyToOne",
-                    TargetEntity = relatedType.Name
-                });
-            }
-            else if (oneToManyAttr != null && property.Type is INamedTypeSymbol { TypeArguments.Length: > 0 } collectionType)
-            {
-                var targetType = collectionType.TypeArguments[0] as INamedTypeSymbol;
-                if (targetType != null)
-                {
-                    metadata.Relationships.Add(new RelationshipMetadataInfo
-                    {
-                        PropertyName = property.Name,
-                        Type = "OneToMany",
-                        TargetEntity = targetType.Name
-                    });
-                }
-            }
-            else if (oneToOneAttr != null && property.Type is INamedTypeSymbol oneToOneRelatedType)
-            {
-                metadata.Relationships.Add(new RelationshipMetadataInfo
-                {
-                    PropertyName = property.Name,
-                    Type = "OneToOne",
-                    TargetEntity = oneToOneRelatedType.Name
-                });
-            }
-        }
-
-        return metadata;
-    }
-
-    private static string GetTableNameFromAttribute(INamedTypeSymbol entityType)
-    {
-        var tableAttr = entityType.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "TableAttribute");
-
-        if (tableAttr != null && tableAttr.ConstructorArguments.Length > 0)
-        {
-            if (tableAttr.ConstructorArguments[0].Value is string tableName)
-                return tableName;
-        }
-
-        // Default: pluralize entity name and convert to snake_case
-        return MethodConventionAnalyzer.ToSnakeCase(entityType.Name) + "s";
-    }
-
-    private static string? GetSchemaNameFromAttribute(INamedTypeSymbol entityType)
-    {
-        var tableAttr = entityType.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "TableAttribute");
-
-        if (tableAttr != null)
-        {
-            var schemaArg = tableAttr.NamedArguments.FirstOrDefault(a => a.Key == "Schema");
-            if (schemaArg.Value.Value is string schema)
-                return schema;
-        }
-
-        return null;
-    }
-
-    private static string GetColumnNameFromAttribute(IPropertySymbol property)
-    {
-        var columnAttr = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "ColumnAttribute" || 
-                               a.AttributeClass?.Name == "Column" ||
-                               a.AttributeClass?.ToDisplayString() == "NPA.Core.Annotations.ColumnAttribute" ||
-                               (a.AttributeClass?.ToDisplayString()?.Contains("Column") ?? false));
-
-        if (columnAttr != null && columnAttr.ConstructorArguments.Length > 0)
-        {
-            var firstArg = columnAttr.ConstructorArguments[0];
-            // Try to get the value - it should be a string
-            if (firstArg.Value is string columnName && !string.IsNullOrEmpty(columnName))
-            {
-                return columnName;
-            }
-        }
-
-        // No [Column] attribute or couldn't read value: use property name as-is (preserve exact casing)
-        return property.Name;
-    }
-
-    private static List<NamedQueryInfo> ExtractNamedQueries(INamedTypeSymbol entityType)
-    {
-        var namedQueries = new List<NamedQueryInfo>();
-        
-        var namedQueryAttrs = entityType.GetAttributes()
-            .Where(a => a.AttributeClass?.Name == "NamedQueryAttribute" || a.AttributeClass?.Name == "NamedQuery");
-
-        foreach (var attr in namedQueryAttrs)
-        {
-            if (attr.ConstructorArguments.Length < 2)
-                continue;
-
-            var name = attr.ConstructorArguments[0].Value?.ToString();
-            var query = attr.ConstructorArguments[1].Value?.ToString();
-            
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(query))
-                continue;
-
-            var nativeQuery = false;
-            int? commandTimeout = null;
-            var buffered = true;
-            string? description = null;
-
-            // Extract named arguments
-            foreach (var namedArg in attr.NamedArguments)
-            {
-                switch (namedArg.Key)
-                {
-                    case "NativeQuery":
-                        if (namedArg.Value.Value is bool nq)
-                            nativeQuery = nq;
-                        break;
-                    case "CommandTimeout":
-                        if (namedArg.Value.Value is int ct)
-                            commandTimeout = ct;
-                        break;
-                    case "Buffered":
-                        if (namedArg.Value.Value is bool b)
-                            buffered = b;
-                        break;
-                    case "Description":
-                        if (namedArg.Value.Value is string desc)
-                            description = desc;
-                        break;
-                }
-            }
-
-            namedQueries.Add(new NamedQueryInfo
-            {
-                Name = name!,
-                Query = query!,
-                NativeQuery = nativeQuery,
-                CommandTimeout = commandTimeout,
-                Buffered = buffered,
-                Description = description
-            });
-        }
-
-        return namedQueries;
+        // Use shared metadata extractor for consistency
+        return MetadataExtractor.ExtractEntityMetadata(entityType);
     }
 
     /// <summary>
@@ -1866,7 +1676,8 @@ public class RepositoryGenerator : IIncrementalGenerator
         var hasParameters = !string.IsNullOrEmpty(paramObj) && paramObj != "null";
 
         // Build the full SQL query with optional DISTINCT and LIMIT
-        var selectClause = convention.HasDistinct ? "SELECT DISTINCT *" : "SELECT *";
+        var columnList = BuildColumnList(info.EntityMetadata);
+        var selectClause = convention.HasDistinct ? $"SELECT DISTINCT {columnList}" : $"SELECT {columnList}";
         var sqlBuilder = new StringBuilder($"{selectClause} FROM {tableName}");
         
         if (!string.IsNullOrEmpty(whereClause))
@@ -2473,12 +2284,14 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Simple convention analysis (fallback)
         if (method.Name.StartsWith("GetAll") || method.Name.StartsWith("FindAll"))
         {
-            sb.AppendLine($"            var sql = \"SELECT * FROM {GetTableName(info.EntityType)}\";");
+            var columnList = BuildColumnList(info.EntityMetadata);
+            sb.AppendLine($"            var sql = \"SELECT {columnList} FROM {GetTableName(info.EntityType)}\";");
             sb.AppendLine($"            return await _connection.QueryAsync<{queryType}>(sql);");
         }
         else if (method.Name.StartsWith("GetById") || method.Name.StartsWith("FindById"))
         {
-            sb.AppendLine($"            var sql = \"SELECT * FROM {GetTableName(info.EntityType)} WHERE id = @id\";");
+            var columnList = BuildColumnList(info.EntityMetadata);
+            sb.AppendLine($"            var sql = \"SELECT {columnList} FROM {GetTableName(info.EntityType)} WHERE id = @id\";");
             sb.AppendLine($"            return await _connection.QueryFirstOrDefaultAsync<{queryType}>(sql, new {{ id }});");
         }
         else
@@ -2495,6 +2308,20 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Simple pluralization: User -> users
         var simpleName = entityType.Split('.').Last();
         return MethodConventionAnalyzer.ToSnakeCase(simpleName) + "s";
+    }
+
+    private static string BuildColumnList(EntityMetadataInfo? metadata)
+    {
+        if (metadata == null || metadata.Properties == null || metadata.Properties.Count == 0)
+        {
+            return "*";
+        }
+
+        var columns = metadata.Properties
+            .Select(p => p.ColumnName)
+            .Where(c => !string.IsNullOrEmpty(c));
+
+        return string.Join(", ", columns);
     }
 }
 

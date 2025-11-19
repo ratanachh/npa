@@ -9,7 +9,7 @@ using FluentAssertions;
 
 namespace NPA.Generators.Tests;
 
-public class MultiTenantRepositoryGeneratorTests
+public class MultiTenantRepositoryGeneratorTests : GeneratorTestBase
 {
     [Fact]
     public void Generate_ShouldIncludeTenantProviderParameter_WhenEntityIsMultiTenant()
@@ -188,39 +188,10 @@ namespace TestNamespace
 
     private (ImmutableArray<Diagnostic> Diagnostics, string Output) GetGeneratedOutput(string source)
     {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
-
-        // Reference assemblies including NPA.Core
-        var references = new List<MetadataReference>
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
-            MetadataReference.CreateFromFile(Assembly.Load("netstandard").Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),
-            // Add NPA.Core reference
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.EntityAttribute).Assembly.Location),
-        };
-
-        var compilation = CSharpCompilation.Create(
-            assemblyName: "Tests",
-            syntaxTrees: new[] { syntaxTree },
-            references: references);
-
-        var generator = new RepositoryGenerator();
-
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGenerators(compilation);
-
-        var runResult = driver.GetRunResult();
-
-        var diagnostics = runResult.Diagnostics;
-        var generatedTrees = runResult.GeneratedTrees;
-
-        // Get all generated code (there might be multiple files)
-        var output = generatedTrees.Length > 0
-            ? string.Join("\n\n", generatedTrees.Select(t => t.ToString()))
+        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: false);
+        var output = result.GeneratedSources.Length > 0
+            ? string.Join("\n\n", result.GeneratedSources.Select(s => s.SourceText.ToString()))
             : string.Empty;
-
-        return (diagnostics, output);
+        return (result.Diagnostics, output);
     }
 }

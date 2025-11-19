@@ -9,24 +9,6 @@ namespace NPA.Generators.Tests;
 
 public class ColumnAttributeTest
 {
-    private static Compilation CreateCompilation(string source)
-    {
-        var syntaxTree = CSharpSyntaxTree.ParseText(source);
-        
-        var references = new[]
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.RepositoryAttribute).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Repositories.IRepository<,>).Assembly.Location),
-        };
-
-        return CSharpCompilation.Create(
-            "TestAssembly",
-            new[] { syntaxTree },
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-    }
 
     [Fact]
     public void CanReadColumnAttributeFromSource()

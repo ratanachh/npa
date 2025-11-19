@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace NPA.Generators.Tests;
 
-public class ManyToManyRepositoryGeneratorTests
+public class ManyToManyRepositoryGeneratorTests : GeneratorTestBase
 {
     [Fact]
     public void DetectManyToManyRelationships_FindsRelationships()
@@ -384,22 +384,4 @@ namespace TestApp.Entities
         return property!.GetValue(obj);
     }
 
-    private Compilation CreateCompilation(string code)
-    {
-        var syntaxTree = CSharpSyntaxTree.ParseText(code);
-        
-        var references = new[]
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.IdAttribute).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Runtime.AssemblyTargetedPatchBandAttribute).Assembly.Location),
-            MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),
-        };
-
-        return CSharpCompilation.Create(
-            "TestAssembly",
-            new[] { syntaxTree },
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-    }
 }

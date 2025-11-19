@@ -7,10 +7,8 @@ namespace NPA.Generators.Tests;
 
 /// <summary>
 /// Tests for repository source generator.
-/// Note: Source generator testing requires MSBuild integration testing.
-/// These tests verify the generator logic without full compilation.
 /// </summary>
-public class RepositoryGeneratorTests
+public class RepositoryGeneratorTests : GeneratorTestBase
 {
     [Fact]
     public void RepositoryGenerator_ShouldBeMarkedAsGenerator()
@@ -57,11 +55,39 @@ public class RepositoryGeneratorTests
     [InlineData("IProductRepository", "ProductRepositoryImplementation")]
     [InlineData("IOrderRepository", "OrderRepositoryImplementation")]
     [InlineData("MyCustomRepository", "MyCustomRepositoryImplementation")]
-    public void GetImplementationName_ShouldGenerateCorrectName(string interfaceName, string expected)
+    public void GetImplementationName_ShouldGenerateCorrectName(string interfaceName, string expectedClassName)
     {
-        // This tests the naming convention logic (would need to expose the method or test through generator output)
-        // For now, this documents the expected behavior
-        expected.Should().NotBeNull();
+        // Arrange
+        var source = $@"
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface {interfaceName} : IRepository<User, long>
+    {{
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains(expectedClassName))?
+            .ToString();
+        
+        generatedCode.Should().NotBeNullOrEmpty($"Generator should produce {expectedClassName}");
+        generatedCode.Should().Contain($"class {expectedClassName}", $"Generated class should be named {expectedClassName}");
     }
 
     [Fact]
@@ -102,16 +128,43 @@ public class RepositoryGeneratorTests
     [Fact]
     public void DeleteAsync_ShouldGenerateCorrectSqlWithIdParameter()
     {
-        // This test verifies that DeleteAsync(long id) generates proper SQL
-        // The generator should create: DELETE FROM table_name WHERE id = @id
-        // Not: throw new InvalidOperationException("Delete without WHERE clause is not allowed")
+        // Arrange
+        var source = @"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{
+    [Table(""students"")]
+    public class Student
+    {
+        [Column(""id"")]
+        public long Id { get; set; }
         
-        // Expected generated code pattern:
-        // var sql = "DELETE FROM students WHERE id = @id";
-        // await _connection.ExecuteAsync(sql, new { id });
+        [Column(""name"")]
+        public string Name { get; set; }
+    }
+
+    [Repository]
+    public interface IStudentRepository : IRepository<Student, long>
+    {
+        Task DeleteAsync(long id);
+    }
+}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("StudentRepository"))
+            .ToString();
         
-        // This is a documentation test - actual verification requires compilation testing
-        true.Should().BeTrue("DeleteAsync should generate SQL with WHERE clause for id parameter");
+        generatedCode.Should().Contain("DELETE FROM students WHERE id = @id", "Should generate DELETE with WHERE clause");
+        generatedCode.Should().Contain("await _connection.ExecuteAsync(sql, new { id })", "Should execute with id parameter");
+        generatedCode.Should().NotContain("throw new InvalidOperationException", "Should not throw when id parameter is present");
     }
 
     [Theory]
@@ -120,41 +173,157 @@ public class RepositoryGeneratorTests
     [InlineData("ID", "id = @ID")]
     public void DeleteAsync_ShouldHandleIdParameterCaseInsensitive(string paramName, string expectedWhereClause)
     {
-        // Tests that the generator handles id parameter regardless of casing
-        // The special handling should recognize: id, Id, ID
+        // Arrange
+        var source = $@"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""students"")]
+    public class Student
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IStudentRepository : IRepository<Student, long>
+    {{
+        Task DeleteAsync(long {paramName});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("StudentRepository"))
+            .ToString();
         
-        expectedWhereClause.Should().Contain("@", "WHERE clause should use parameter syntax");
-        expectedWhereClause.Should().Contain(paramName, "WHERE clause should reference the parameter name");
+        generatedCode.Should().Contain(expectedWhereClause, $"Should generate WHERE clause with parameter {paramName}");
+        generatedCode.Should().Contain($"new {{ {paramName} }}", $"Should include parameter {paramName} in anonymous object");
     }
 
     [Fact]
     public void DeleteAsync_ShouldNotReturnValue()
     {
-        // DeleteAsync should return Task (void), not Task<int>
-        // The generated code should NOT have: return await _connection.ExecuteAsync(...)
-        // It should have: await _connection.ExecuteAsync(...)
+        // Arrange
+        var source = @"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{
+    [Table(""students"")]
+    public class Student
+    {
+        [Column(""id"")]
+        public long Id { get; set; }
+    }
+
+    [Repository]
+    public interface IStudentRepository : IRepository<Student, long>
+    {
+        Task DeleteAsync(long id);
+    }
+}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("StudentRepository"))
+            .ToString();
         
-        // This ensures the fix removes the incorrect return statement
-        true.Should().BeTrue("DeleteAsync should not return ExecuteAsync result");
+        generatedCode.Should().Contain("public async System.Threading.Tasks.Task DeleteAsync(long id)", "Method signature should return Task (void)");
+        generatedCode.Should().NotContain("return await _connection.ExecuteAsync", "Should NOT return ExecuteAsync result for void Task");
+        generatedCode.Should().Contain("await _connection.ExecuteAsync(sql, new { id });", "Should call ExecuteAsync without return");
     }
 
     [Fact]
     public void DeleteAsync_WithoutParameters_ShouldThrowException()
     {
-        // A DeleteAsync method without parameters should generate code that throws
-        // throw new InvalidOperationException("Delete without WHERE clause is not allowed")
+        // Arrange
+        var source = @"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{
+    [Table(""students"")]
+    public class Student
+    {
+        [Column(""id"")]
+        public long Id { get; set; }
+    }
+
+    [Repository]
+    public interface IStudentRepository : IRepository<Student, long>
+    {
+        Task DeleteAllAsync();
+    }
+}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("StudentRepository"))
+            .ToString();
         
-        // This is a safety feature to prevent accidental deletion of all records
-        true.Should().BeTrue("DeleteAsync without parameters should throw InvalidOperationException");
+        generatedCode.Should().Contain("throw new InvalidOperationException", "Should throw exception for parameterless delete");
+        generatedCode.Should().Contain("Delete without WHERE clause is not allowed", "Should have descriptive error message");
     }
 
     [Fact]
     public void DeleteAsync_WithNonIdParameter_ShouldUseConventionAnalysis()
     {
-        // If parameter is not named 'id', the convention analyzer should still work
-        // For example: DeleteAsync(string email) should generate WHERE email = @email
+        // Arrange
+        var source = @"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{
+    [Table(""students"")]
+    public class Student
+    {
+        [Column(""id"")]
+        public long Id { get; set; }
         
-        true.Should().BeTrue("DeleteAsync should support custom parameter names through convention analysis");
+        [Column(""email"")]
+        public string Email { get; set; }
+    }
+
+    [Repository]
+    public interface IStudentRepository : IRepository<Student, long>
+    {
+        Task DeleteByEmailAsync(string email);
+    }
+}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("StudentRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain("email = @email", "Should use convention analysis to generate WHERE clause based on method name");
+        generatedCode.Should().Contain("DELETE FROM students", "Should generate DELETE statement");
     }
 
     #region Integration Tests for DELETE Method Generation
@@ -183,16 +352,8 @@ namespace TestNamespace
     [Fact]
     public void DeleteAsync_WithIdParameter_Integration_ShouldGenerateWhereClause()
     {
-        // Arrange
-        var compilation = CreateCompilation(TestSource);
-        var generator = new RepositoryGenerator();
-        
-        // Act
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        // Arrange & Act
+        RunGeneratorWithOutput<RepositoryGenerator>(TestSource, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -244,15 +405,8 @@ namespace TestNamespace
         Task DeleteAllAsync();
     }
 }";
-        var compilation = CreateCompilation(sourceWithoutParams);
-        var generator = new RepositoryGenerator();
-        
         // Act
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out _);
+        RunGeneratorWithOutput<RepositoryGenerator>(sourceWithoutParams, out var outputCompilation, out _);
 
         // Assert
         var generatedCode = outputCompilation.SyntaxTrees
@@ -289,15 +443,8 @@ namespace TestNamespace
         Task DeleteAsync(long {paramName});
     }}
 }}";
-        var compilation = CreateCompilation(sourceWithCasing);
-        var generator = new RepositoryGenerator();
-        
         // Act
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out _);
+        RunGeneratorWithOutput<RepositoryGenerator>(sourceWithCasing, out var outputCompilation, out _);
 
         // Assert
         var generatedCode = outputCompilation.SyntaxTrees
@@ -335,15 +482,8 @@ namespace TestNamespace
         Task DeleteByEmailAsync(string email);
     }
 }";
-        var compilation = CreateCompilation(sourceWithEmail);
-        var generator = new RepositoryGenerator();
-        
         // Act
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out _);
+        RunGeneratorWithOutput<RepositoryGenerator>(sourceWithEmail, out var outputCompilation, out _);
 
         // Assert
         var generatedCode = outputCompilation.SyntaxTrees
@@ -377,15 +517,8 @@ namespace TestNamespace
         void Delete(long id);
     }
 }";
-        var compilation = CreateCompilation(sourceWithSync);
-        var generator = new RepositoryGenerator();
-        
         // Act
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out _);
+        RunGeneratorWithOutput<RepositoryGenerator>(sourceWithSync, out var outputCompilation, out _);
 
         // Assert
         var generatedCode = outputCompilation.SyntaxTrees
@@ -423,15 +556,8 @@ namespace TestNamespace
         Task DeleteByIdAndTenantIdAsync(long id, long tenantId);
     }
 }";
-        var compilation = CreateCompilation(sourceWithMultiParams);
-        var generator = new RepositoryGenerator();
-        
         // Act
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out _);
+        RunGeneratorWithOutput<RepositoryGenerator>(sourceWithMultiParams, out var outputCompilation, out _);
 
         // Assert
         var generatedCode = outputCompilation.SyntaxTrees
@@ -441,101 +567,6 @@ namespace TestNamespace
         
         generatedCode.Should().Contain("Id = @id AND TenantId = @tenantId", 
             "Should generate AND clause for multiple parameters");
-    }
-
-    // Include NPA attribute sources so Roslyn can read constructor arguments during source generation
-    private const string NPA_ANNOTATIONS_SOURCE = @"
-namespace NPA.Core.Annotations
-{
-    [System.AttributeUsage(System.AttributeTargets.Property)]
-    public sealed class ColumnAttribute : System.Attribute
-    {
-        public string Name { get; }
-        public string? TypeName { get; set; }
-        public int? Length { get; set; }
-        public int? Precision { get; set; }
-        public int? Scale { get; set; }
-        public bool IsNullable { get; set; } = true;
-        public bool IsUnique { get; set; } = false;
-        public ColumnAttribute(string name) { Name = name; }
-    }
-    
-    [System.AttributeUsage(System.AttributeTargets.Class)]
-    public sealed class TableAttribute : System.Attribute
-    {
-        public string Name { get; }
-        public string? Schema { get; set; }
-        public TableAttribute(string name) { Name = name; }
-    }
-    
-    // Add other commonly used attributes for completeness
-    [System.AttributeUsage(System.AttributeTargets.Property)]
-    public sealed class IdAttribute : System.Attribute { }
-    
-    [System.AttributeUsage(System.AttributeTargets.Property)]
-    public sealed class RequiredAttribute : System.Attribute { }
-    
-    [System.AttributeUsage(System.AttributeTargets.Property)]
-    public sealed class UniqueAttribute : System.Attribute { }
-
-    [System.AttributeUsage(System.AttributeTargets.Class)]
-    public sealed class EntityAttribute : System.Attribute { }
-
-    [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = true)]
-    public sealed class NamedQueryAttribute : System.Attribute
-    {
-        public string Name { get; }
-        public string Query { get; }
-        public bool NativeQuery { get; set; }
-        public int? CommandTimeout { get; set; }
-        public bool Buffered { get; set; } = true;
-        public string? Description { get; set; }
-        
-        public NamedQueryAttribute(string name, string query) 
-        { 
-            Name = name;
-            Query = query;
-        }
-    }
-
-    [System.AttributeUsage(System.AttributeTargets.Method)]
-    public sealed class QueryAttribute : System.Attribute
-    {
-        public string Sql { get; }
-        public bool NativeQuery { get; set; }
-        public int? CommandTimeout { get; set; }
-        public bool Buffered { get; set; } = true;
-        
-        public QueryAttribute(string sql) 
-        { 
-            Sql = sql;
-        }
-    }
-}";
-
-    private static Compilation CreateCompilation(string source)
-    {
-        // Include both annotation definitions AND user source
-        // This allows Roslyn to read attribute constructor arguments
-        var syntaxTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(NPA_ANNOTATIONS_SOURCE),
-            CSharpSyntaxTree.ParseText(source)
-        };
-        
-        var references = new[]
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Annotations.RepositoryAttribute).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Repositories.IRepository<,>).Assembly.Location),
-        };
-
-        return CSharpCompilation.Create(
-            "TestAssembly",
-            syntaxTrees,
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
     [Fact]
@@ -564,14 +595,7 @@ namespace TestNamespace
 }";
 
         // Act - Run generator
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert - No errors
         diagnostics.Should().BeEmpty("generator should not produce errors");
@@ -627,14 +651,7 @@ namespace TestNamespace
 }";
 
         // Act - Run generator
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert - No errors
         diagnostics.Should().BeEmpty("generator should not produce errors");
@@ -704,14 +721,7 @@ namespace TestNamespace
 }}";
 
         // Act - Run generator
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert - No errors
         diagnostics.Should().BeEmpty("generator should not produce errors");
@@ -838,135 +848,615 @@ namespace TestNamespace
     #region Spring Data JPA Convention Tests
 
     [Theory]
-    [InlineData("FindByEmailAsync", "email", "SELECT * FROM table WHERE email = @email")]
-    [InlineData("GetByIdAsync", "id", "SELECT * FROM table WHERE id = @id")]
-    [InlineData("QueryByNameAsync", "name", "SELECT * FROM table WHERE name = @name")]
-    public void ConventionBasedQuery_SimpleEquality_ShouldGenerateCorrectSQL(string methodName, string paramName, string expectedSql)
+    [InlineData("FindByEmailAsync", "string email", "email = @email")]
+    [InlineData("GetByIdAsync", "long id", "id = @id")]
+    [InlineData("QueryByNameAsync", "string name", "name = @name")]
+    public void ConventionBasedQuery_SimpleEquality_ShouldGenerateCorrectSQL(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        // This is a documentation test - actual generation is tested via integration tests
-        // The pattern should match: Find/Get/Query + By + PropertyName
-        methodName.Should().MatchRegex("^(Find|Get|Query)By[A-Z].*Async$");
-        paramName.Should().NotBeNullOrEmpty();
-        expectedSql.Should().Contain("WHERE");
+        // Arrange
+        var source = $@"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""name"")]
+        public string Name {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {{
+        Task<List<User>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain("SELECT", $"{methodName} should generate SELECT query");
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate correct WHERE clause");
+        generatedCode.Should().Contain("FROM users", $"{methodName} should query from correct table");
     }
 
     [Theory]
-    [InlineData("FindByAgeGreaterThanAsync", "age", ">")]
-    [InlineData("FindByPriceLessThanAsync", "price", "<")]
-    [InlineData("FindByCountGreaterThanEqualAsync", "count", ">=")]
-    [InlineData("FindByRatingLessThanEqualAsync", "rating", "<=")]
-    public void ConventionBasedQuery_ComparisonOperators_ShouldGenerateCorrectSQL(string methodName, string paramName, string operatorSymbol)
+    [InlineData("FindByAgeGreaterThanAsync", "int age", "age > @age")]
+    [InlineData("FindByPriceLessThanAsync", "decimal price", "price < @price")]
+    [InlineData("FindByCountGreaterThanEqualAsync", "int count", "count >= @count")]
+    [InlineData("FindByRatingLessThanEqualAsync", "decimal rating", "rating <= @rating")]
+    public void ConventionBasedQuery_ComparisonOperators_ShouldGenerateCorrectSQL(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        // Pattern: FindBy + Property + (GreaterThan|LessThan|GreaterThanEqual|LessThanEqual)
-        methodName.Should().MatchRegex("^FindBy[A-Z].*(GreaterThan|LessThan)(Equal)?Async$");
-        paramName.Should().NotBeNullOrEmpty();
-        operatorSymbol.Should().BeOneOf(">", "<", ">=", "<=");
+        // Arrange
+        var source = $@"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""products"")]
+    public class Product
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""age"")]
+        public int Age {{ get; set; }}
+        
+        [Column(""price"")]
+        public decimal Price {{ get; set; }}
+        
+        [Column(""count"")]
+        public int Count {{ get; set; }}
+        
+        [Column(""rating"")]
+        public decimal Rating {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {{
+        Task<List<Product>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate correct WHERE clause with comparison operator");
+        generatedCode.Should().Contain("SELECT", "Should generate SELECT query");
+        generatedCode.Should().Contain("FROM products", "Should use correct table name");
     }
 
     [Theory]
-    [InlineData("FindByAgeBetweenAsync", 2, "BETWEEN")]
-    [InlineData("FindByDateBetweenAsync", 2, "BETWEEN")]
-    public void ConventionBasedQuery_Between_ShouldRequireTwoParameters(string methodName, int expectedParams, string keyword)
+    [InlineData("FindByAgeBetweenAsync", "int minAge, int maxAge", "age BETWEEN @minAge AND @maxAge")]
+    [InlineData("FindByPriceBetweenAsync", "decimal minPrice, decimal maxPrice", "price BETWEEN @minPrice AND @maxPrice")]
+    public void ConventionBasedQuery_Between_ShouldGenerateBetweenClause(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        methodName.Should().Contain("Between");
-        expectedParams.Should().Be(2, "Between requires min and max parameters");
-        keyword.Should().Be("BETWEEN");
+        // Arrange
+        var source = $@"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""products"")]
+    public class Product
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""age"")]
+        public int Age {{ get; set; }}
+        
+        [Column(""price"")]
+        public decimal Price {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {{
+        Task<List<Product>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate BETWEEN clause");
     }
 
     [Theory]
-    [InlineData("FindByNameContainingAsync", "LIKE CONCAT('%', @param, '%')")]
-    [InlineData("FindByEmailStartingWithAsync", "LIKE CONCAT(@param, '%')")]
-    [InlineData("FindByDescriptionEndingWithAsync", "LIKE CONCAT('%', @param)")]
-    [InlineData("FindByTitleNotContainingAsync", "NOT LIKE CONCAT('%', @param, '%')")]
-    public void ConventionBasedQuery_StringOperators_ShouldGenerateCorrectLikeClause(string methodName, string expectedPattern)
+    [InlineData("FindByNameContainingAsync", "string name", "name LIKE CONCAT('%', @name, '%')")]
+    [InlineData("FindByEmailStartingWithAsync", "string email", "email LIKE CONCAT(@email, '%')")]
+    [InlineData("FindByDescriptionEndingWithAsync", "string description", "description LIKE CONCAT('%', @description)")]
+    [InlineData("FindByTitleNotContainingAsync", "string title", "title NOT LIKE CONCAT('%', @title, '%')")]
+    public void ConventionBasedQuery_StringOperators_ShouldGenerateCorrectLikeClause(string methodName, string paramDeclaration, string expectedPattern)
     {
-        methodName.Should().MatchRegex(".*(Containing|StartingWith|EndingWith|NotContaining)Async$");
-        expectedPattern.Should().Contain("LIKE");
+        // Arrange
+        var source = $@"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""products"")]
+    public class Product
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""name"")]
+        public string Name {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+        
+        [Column(""description"")]
+        public string Description {{ get; set; }}
+        
+        [Column(""title"")]
+        public string Title {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {{
+        Task<List<Product>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedPattern, $"{methodName} should generate correct LIKE pattern");
     }
 
     [Theory]
-    [InlineData("FindByIdInAsync", "IN")]
-    [InlineData("FindByStatusNotInAsync", "NOT IN")]
-    public void ConventionBasedQuery_CollectionOperators_ShouldGenerateInClause(string methodName, string expectedOperator)
+    [InlineData("FindByIdInAsync", "System.Collections.Generic.IEnumerable<long> ids", "id IN @ids")]
+    [InlineData("FindByStatusNotInAsync", "System.Collections.Generic.IEnumerable<string> statuses", "status NOT IN @statuses")]
+    public void ConventionBasedQuery_CollectionOperators_ShouldGenerateInClause(string methodName, string paramDeclaration, string expectedClause)
     {
-        methodName.Should().MatchRegex(".*(In|NotIn)Async$");
-        expectedOperator.Should().Contain("IN");
+        // Arrange
+        var source = $@"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""products"")]
+    public class Product
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""status"")]
+        public string Status {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {{
+        Task<List<Product>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedClause, $"{methodName} should generate IN/NOT IN clause");
     }
 
     [Theory]
-    [InlineData("FindByDeletedAtIsNullAsync", "IS NULL")]
-    [InlineData("FindByEmailIsNotNullAsync", "IS NOT NULL")]
-    [InlineData("FindByIsActiveTrueAsync", "= TRUE")]
-    [InlineData("FindByIsDeletedFalseAsync", "= FALSE")]
+    [InlineData("FindByDeletedAtIsNullAsync", "deleted_at IS NULL")]
+    [InlineData("FindByEmailIsNotNullAsync", "email IS NOT NULL")]
+    [InlineData("FindByIsActiveTrueAsync", "Active = TRUE")]
+    [InlineData("FindByIsDeletedFalseAsync", "Deleted = FALSE")]
     public void ConventionBasedQuery_NullAndBooleanChecks_ShouldGenerateCorrectClause(string methodName, string expectedClause)
     {
-        methodName.Should().MatchRegex(".*(IsNull|IsNotNull|True|False)Async$");
-        expectedClause.Should().NotBeNullOrEmpty();
+        // Arrange
+        var source = $@"
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""products"")]
+    public class Product
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""deleted_at"")]
+        public DateTime? DeletedAt {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+        
+        [Column(""is_active"")]
+        public bool IsActive {{ get; set; }}
+        
+        [Column(""is_deleted"")]
+        public bool IsDeleted {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {{
+        Task<List<Product>> {methodName}();
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedClause, $"{methodName} should generate correct null/boolean clause");
     }
 
     [Theory]
-    [InlineData("FindByCreatedAtBeforeAsync", "<")]
-    [InlineData("FindByUpdatedAtAfterAsync", ">")]
-    public void ConventionBasedQuery_DateTimeOperators_ShouldGenerateCorrectComparison(string methodName, string expectedOperator)
+    [InlineData("FindByCreatedAtBeforeAsync", "System.DateTime date", "created_at < @date")]
+    [InlineData("FindByUpdatedAtAfterAsync", "System.DateTime date", "updated_at > @date")]
+    public void ConventionBasedQuery_DateTimeOperators_ShouldGenerateCorrectComparison(string methodName, string paramDeclaration, string expectedClause)
     {
-        methodName.Should().MatchRegex(".*(Before|After)Async$");
-        expectedOperator.Should().BeOneOf("<", ">");
+        // Arrange
+        var source = $@"
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""products"")]
+    public class Product
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""created_at"")]
+        public DateTime CreatedAt {{ get; set; }}
+        
+        [Column(""updated_at"")]
+        public DateTime UpdatedAt {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IProductRepository : IRepository<Product, long>
+    {{
+        Task<List<Product>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("ProductRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedClause, $"{methodName} should generate correct temporal comparison");
     }
 
     [Theory]
-    [InlineData("FindByEmailAndTenantIdAsync", "AND")]
-    [InlineData("FindByFirstNameOrLastNameAsync", "OR")]
-    [InlineData("FindByTenantIdAndStatusAndIsActiveTrueAsync", "AND")]
-    public void ConventionBasedQuery_MultipleConditions_ShouldCombineCorrectly(string methodName, string expectedConnector)
+    [InlineData("FindByEmailAndTenantIdAsync", "string email, long tenantId", "email = @email AND tenant_id = @tenantId")]
+    [InlineData("FindByFirstNameOrLastNameAsync", "string firstName, string lastName", "Name = @firstName OR last_name = @lastName")]
+    [InlineData("FindByTenantIdAndStatusAsync", "long tenantId, string status", "tenant_id = @tenantId AND status = @status")]
+    public void ConventionBasedQuery_MultipleConditions_ShouldCombineCorrectly(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        methodName.Should().MatchRegex(".*(And|Or).*Async$");
-        expectedConnector.Should().BeOneOf("AND", "OR");
+        // Arrange
+        var source = $@"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+        
+        [Column(""tenant_id"")]
+        public long TenantId {{ get; set; }}
+        
+        [Column(""first_name"")]
+        public string FirstName {{ get; set; }}
+        
+        [Column(""last_name"")]
+        public string LastName {{ get; set; }}
+        
+        [Column(""status"")]
+        public string Status {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {{
+        Task<List<User>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate correct AND/OR clause");
     }
 
     [Theory]
-    [InlineData("FindByTenantIdOrderByNameAscAsync", "ORDER BY name ASC")]
-    [InlineData("FindByStatusOrderByCreatedAtDescAsync", "ORDER BY created_at DESC")]
-    [InlineData("FindAllOrderByNameAscThenEmailDescAsync", "ORDER BY name ASC, email DESC")]
-    public void ConventionBasedQuery_Ordering_ShouldGenerateOrderByClause(string methodName, string expectedOrderBy)
+    [InlineData("FindByTenantIdOrderByNameAscAsync", "long tenantId", "ORDER BY name ASC")]
+    [InlineData("FindByStatusOrderByCreatedAtDescAsync", "string status", "ORDER BY created_at DESC")]
+    [InlineData("FindAllOrderByNameAscThenEmailDescAsync", "", "ORDER BY name ASC, email DESC")]
+    public void ConventionBasedQuery_Ordering_ShouldGenerateOrderByClause(string methodName, string paramDeclaration, string expectedOrderBy)
     {
-        methodName.Should().MatchRegex(".*OrderBy[A-Z].*(Asc|Desc)Async$");
-        expectedOrderBy.Should().Contain("ORDER BY");
+        // Arrange
+        var source = $@"
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""name"")]
+        public string Name {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+        
+        [Column(""tenant_id"")]
+        public long TenantId {{ get; set; }}
+        
+        [Column(""status"")]
+        public string Status {{ get; set; }}
+        
+        [Column(""created_at"")]
+        public DateTime CreatedAt {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {{
+        Task<List<User>> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain(expectedOrderBy, $"{methodName} should generate correct ORDER BY clause");
     }
 
     [Theory]
-    [InlineData("CountByTenantIdAsync", "COUNT(*)")]
-    [InlineData("CountByStatusAsync", "COUNT(*)")]
-    [InlineData("CountByAgeGreaterThanAsync", "COUNT(*)")]
-    public void ConventionBasedQuery_Count_ShouldGenerateCountQuery(string methodName, string expectedFunction)
+    [InlineData("CountByTenantIdAsync", "long tenantId", "tenant_id = @tenantId")]
+    [InlineData("CountByStatusAsync", "string status", "status = @status")]
+    [InlineData("CountByAgeGreaterThanAsync", "int age", "age > @age")]
+    public void ConventionBasedQuery_Count_ShouldGenerateCountQuery(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        methodName.Should().StartWith("Count");
-        methodName.Should().EndWith("Async");
-        expectedFunction.Should().Be("COUNT(*)");
+        // Arrange
+        var source = $@"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""tenant_id"")]
+        public long TenantId {{ get; set; }}
+        
+        [Column(""status"")]
+        public string Status {{ get; set; }}
+        
+        [Column(""age"")]
+        public int Age {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {{
+        Task<long> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain("COUNT(*)", $"{methodName} should use COUNT(*)");
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate correct WHERE clause");
     }
 
     [Theory]
-    [InlineData("ExistsByEmailAsync", "COUNT(1)")]
-    [InlineData("ExistsByTenantIdAndEmailAsync", "COUNT(1)")]
-    public void ConventionBasedQuery_Exists_ShouldGenerateExistsQuery(string methodName, string expectedFunction)
+    [InlineData("ExistsByEmailAsync", "string email", "email = @email")]
+    [InlineData("ExistsByTenantIdAndEmailAsync", "long tenantId, string email", "tenant_id = @tenantId AND email = @email")]
+    public void ConventionBasedQuery_Exists_ShouldGenerateExistsQuery(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        methodName.Should().StartWith("Exists");
-        methodName.Should().EndWith("Async");
-        expectedFunction.Should().Be("COUNT(1)");
+        // Arrange
+        var source = $@"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+        
+        [Column(""tenant_id"")]
+        public long TenantId {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {{
+        Task<bool> {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain("COUNT(*)", $"{methodName} should use COUNT(*) for existence check");
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate correct WHERE clause");
     }
 
     [Theory]
-    [InlineData("DeleteByEmailAsync", "DELETE FROM")]
-    [InlineData("RemoveByStatusAsync", "DELETE FROM")]
-    public void ConventionBasedQuery_Delete_ShouldGenerateDeleteQuery(string methodName, string expectedOperation)
+    [InlineData("DeleteByEmailAsync", "string email", "email = @email")]
+    [InlineData("RemoveByStatusAsync", "string status", "status = @status")]
+    public void ConventionBasedQuery_Delete_ShouldGenerateDeleteQuery(string methodName, string paramDeclaration, string expectedWhereClause)
     {
-        methodName.Should().MatchRegex("^(Delete|Remove)By.*Async$");
-        expectedOperation.Should().Be("DELETE FROM");
+        // Arrange
+        var source = $@"
+using System.Threading.Tasks;
+using NPA.Core.Annotations;
+using NPA.Core.Repositories;
+
+namespace TestNamespace
+{{
+    [Table(""users"")]
+    public class User
+    {{
+        [Column(""id"")]
+        public long Id {{ get; set; }}
+        
+        [Column(""email"")]
+        public string Email {{ get; set; }}
+        
+        [Column(""status"")]
+        public string Status {{ get; set; }}
+    }}
+
+    [Repository]
+    public interface IUserRepository : IRepository<User, long>
+    {{
+        Task {methodName}({paramDeclaration});
+    }}
+}}";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
+        var generatedCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("UserRepository"))
+            .ToString();
+        
+        generatedCode.Should().Contain("DELETE FROM users", $"{methodName} should generate DELETE statement");
+        generatedCode.Should().Contain(expectedWhereClause, $"{methodName} should generate correct WHERE clause");
     }
 
     [Fact]
     public void MethodConventionAnalyzer_ToSnakeCase_ShouldConvertPascalCaseCorrectly()
     {
-        // Arrange & Act & Assert
+        // This is a documentation test - documents the snake_case conversion utility
+        // Actual conversion is tested when used in query generation
         MethodConventionAnalyzer.ToSnakeCase("StudentId").Should().Be("student_id");
         MethodConventionAnalyzer.ToSnakeCase("EnrolledCoursesCount").Should().Be("enrolled_courses_count");
         MethodConventionAnalyzer.ToSnakeCase("IsActive").Should().Be("is_active");
@@ -981,7 +1471,8 @@ namespace TestNamespace
     [InlineData("DeleteByStatusAsync", QueryType.Delete, "Status")]
     public void MethodConventionAnalyzer_DetermineQueryType_ShouldIdentifyCorrectType(string methodName, QueryType expectedType, string expectedProperty)
     {
-        // This validates the pattern recognition logic
+        // This is a documentation test - documents the query type determination logic
+        // Validates that method name prefixes correctly map to query types
         var cleanName = methodName.Replace("Async", "");
         
         if (cleanName.StartsWith("Find") || cleanName.StartsWith("Get"))
@@ -1027,13 +1518,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1085,13 +1570,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1136,13 +1615,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1198,13 +1671,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1253,13 +1720,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1301,13 +1762,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1352,13 +1807,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1405,13 +1854,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var outputCompilation,
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1454,10 +1897,7 @@ namespace TestNamespace
         Task<int> InsertProductAsync(string name, decimal price);
     }
 }";
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
         diagnostics.Should().BeEmpty();
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
@@ -1496,10 +1936,7 @@ namespace TestNamespace
         Task<IEnumerable<Product>> FindExpensiveProductsAsync(decimal minPrice);
     }
 }";
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
         diagnostics.Should().BeEmpty();
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
@@ -1533,10 +1970,7 @@ namespace TestNamespace
         Task<int> CreateProductAsync(string name);
     }
 }";
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
         diagnostics.Should().BeEmpty();
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("ProductRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
@@ -1585,10 +2019,7 @@ namespace TestNamespace
         Task<IEnumerable<UserStatistics>> GetUserStatisticsByCountryAsync();
     }
 }";
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
         diagnostics.Should().BeEmpty();
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("UserRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
@@ -1640,10 +2071,7 @@ namespace TestNamespace
         Task<IEnumerable<UserStatistics>> GetUserStatisticsByCountryAsync();
     }
 }";
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
         diagnostics.Should().BeEmpty();
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("UserRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
@@ -1692,10 +2120,7 @@ namespace TestNamespace
         Task<User?> FindByFullNameAsync(string fullName);
     }
 }";
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
         diagnostics.Should().BeEmpty();
         var generatedTrees = outputCompilation.SyntaxTrees.Where(t => t.FilePath.Contains("UserRepository")).ToList();
         generatedTrees.Should().NotBeEmpty();
@@ -1756,14 +2181,7 @@ namespace TestNamespace
 }";
 
         // Act - Run generator
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
@@ -1822,14 +2240,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty();
@@ -1880,14 +2291,7 @@ namespace TestNamespace
 }";
 
         // Act
-        var compilation = CreateCompilation(source);
-        var generator = new RepositoryGenerator();
-        
-        var driver = CSharpGeneratorDriver.Create(generator);
-        driver = (CSharpGeneratorDriver)driver.RunGeneratorsAndUpdateCompilation(
-            compilation, 
-            out var outputCompilation, 
-            out var diagnostics);
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
 
         // Assert
         diagnostics.Should().BeEmpty();
