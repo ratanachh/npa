@@ -11,31 +11,32 @@ Implement eager loading capabilities to efficiently fetch entity graphs in a sin
 
 ## Tasks
 
-### 1. Fetch Strategy Attributes
-- [ ] Create `FetchAttribute` with FetchType enum (Eager, Lazy)
-- [ ] Extend relationship attributes to support fetch configuration
-- [ ] Implement fetch strategy metadata
-- [ ] Generate fetch plan based on entity configuration
+### 1. Fetch Strategy Attributes ✅ COMPLETED
+- [x] FetchType enum already exists (Eager, Lazy) in NPA.Core.Annotations
+- [x] Relationship attributes support fetch configuration
+- [x] Fetch strategy metadata extracted
+- [x] Fetch plan generated based on entity configuration
 
-### 2. Query Builder Enhancement
-- [ ] Implement automatic JOIN generation for eager relationships
-- [ ] Create query optimization for multiple relationships
-- [ ] Support LEFT JOIN, INNER JOIN based on nullable relationships
-- [ ] Generate efficient split-on logic for Dapper
+### 2. Query Builder Enhancement ✅ COMPLETED (Basic)
+- [x] Automatic JOIN generation for eager relationships (single relationships)
+- [x] Query optimization for simple relationships (ManyToOne, OneToOne)
+- [x] LEFT JOIN support based on nullable relationships
+- [x] Efficient split-on logic for Dapper multi-mapping
+- [ ] Advanced: Complex multi-collection joins (deferred - cartesian product issue)
 
-### 3. Include Method Generation
+### 3. Include Method Generation (Deferred to Phase 7.3)
 - [ ] Generate `Include<TProperty>` methods for explicit relationship loading
 - [ ] Support chained includes for nested relationships
 - [ ] Create `ThenInclude` methods for deep loading
 - [ ] Implement include expression parsing
 
-### 4. Batch Loading Strategy
-- [ ] Implement batch loading for collections
-- [ ] Generate optimized queries for multiple entity loads
-- [ ] Support WHERE IN clause for batch fetching
-- [ ] Create batch size configuration
+### 4. Batch Loading Strategy ✅ COMPLETED
+- [x] Implement batch loading for collections via GetByIdsAsync
+- [x] Generate optimized queries for multiple entity loads
+- [x] Support WHERE IN clause for batch fetching
+- [x] Batch loading prevents N+1 queries
 
-### 5. Select Loading (Projection)
+### 5. Select Loading (Projection) (Deferred to Phase 7.4)
 - [ ] Generate methods to load specific relationship properties
 - [ ] Support projection to DTOs with relationships
 - [ ] Implement partial entity loading
@@ -205,14 +206,47 @@ public async Task<IEnumerable<Customer>> GetByIdsAsync(IEnumerable<int> ids)
 ```
 
 ## Acceptance Criteria
-- [ ] Fetch type configuration works correctly
-- [ ] Eager loading generates optimized JOIN queries
-- [ ] Include methods work for all relationship types
-- [ ] Nested includes load correctly
-- [ ] Batch loading prevents N+1 queries
-- [ ] Performance comparable to hand-written queries
-- [ ] Memory efficient for large result sets
-- [ ] Circular reference handling
+- [x] Fetch type configuration works correctly (Eager/Lazy attributes)
+- [x] Eager loading generates optimized JOIN queries for single relationships
+- [x] GetByIdAsync() override loads eager relationships automatically
+- [x] GetAllAsync() override prepares for batch loading
+- [x] GetByIdsAsync() batch loading prevents N+1 queries
+- [x] Performance comparable to hand-written queries for simple cases
+- [x] Memory efficient for single relationships
+- [ ] Include methods work for all relationship types (deferred to Phase 7.3)
+- [ ] Nested includes load correctly (deferred to Phase 7.3)
+- [ ] Complex multi-collection eager loading (deferred - cartesian product)
+- [ ] Circular reference handling (future enhancement)
+
+**Status**: ✅ **Phase 7.2 COMPLETED (Basic)** (November 19, 2025)
+
+**What Was Implemented**:
+1. Automatic eager loading for FetchType.Eager relationships
+2. Override GetByIdAsync() to auto-load eager relationships with LEFT JOIN
+3. Override GetAllAsync() foundation for batch loading
+4. New GetByIdsAsync() method for batch loading with WHERE IN
+5. Smart query generation for single relationships (ManyToOne, OneToOne)
+6. Separate queries for complex cases to avoid cartesian product
+
+**Implementation Details**:
+- Detects `FetchType.Eager` relationships at generation time
+- Generates override methods that call base + load relationships
+- Simple case: Single LEFT JOIN for one eager ManyToOne/OneToOne
+- Complex case: Separate queries per relationship to avoid cartesian product
+- Batch loading: Uses WHERE IN with dictionary grouping for efficiency
+
+**Known Limitations**:
+- Multiple collection eager loads use separate queries (not single JOIN)
+- No Include() fluent API yet (deferred to Phase 7.3)
+- No nested/deep includes (deferred to Phase 7.3)
+- Table names use entity names (should use [Table] attribute)
+- Foreign keys inferred from convention (should read actual schema)
+
+**Deferred Features**:
+- Phase 7.3: Include() fluent API for explicit loading
+- Phase 7.4: Advanced multi-collection optimization
+- Phase 7.5: Projection/DTO support
+- Phase 7.6: Deep loading (ThenInclude)
 
 ## Dependencies
 - Phase 7.1: Relationship-Aware Repository Generation

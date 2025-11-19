@@ -259,7 +259,16 @@ internal static class MetadataExtractor
     /// </summary>
     public static string? ExtractCollectionElementType(ITypeSymbol typeSymbol)
     {
-        return (typeSymbol as INamedTypeSymbol)?.TypeArguments.FirstOrDefault()?.ToDisplayString();
+        var elementType = (typeSymbol as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
+        if (elementType == null)
+            return null;
+            
+        // Return fully qualified name for nested types
+        if (elementType is INamedTypeSymbol namedType && namedType.IsReferenceType)
+        {
+            return namedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
+        }
+        return elementType.ToDisplayString();
     }
 
     /// <summary>

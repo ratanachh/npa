@@ -47,6 +47,37 @@ This application acts as a host for all feature demonstrations, from basic CRUD 
 
 ## Individual Sample Projects
 
+### Phase7Demo
+
+**NEWLY CONSOLIDATED** - Comprehensive demonstration of Phase 7: Advanced Relationship Management features.
+
+**Location**: `samples/Phase7Demo/`
+
+**Features**:
+- **Phase 7.1**: Relationship-Aware Repository Generation
+  - Automatic GetByIdWith{Property}Async() methods
+  - Load{Property}Async() for lazy loading
+  - SQL JOIN generation with Dapper multi-mapping
+- **Phase 7.2**: Eager Loading Support
+  - FetchType.Eager automatic loading
+  - GetByIdsAsync() batch loading (N+1 prevention)
+- **Phase 7.3**: Cascade Operations Enhancement
+  - AddWithCascadeAsync() - parent-first/child-after strategy
+  - UpdateWithCascadeAsync() - with orphan removal
+  - DeleteWithCascadeAsync() - children-first deletion
+- **Phase 7.4**: Bidirectional Relationship Management (70% complete)
+  - Static helper classes for synchronization
+  - OneToMany/ManyToOne bidirectional sync
+  - OneToOne bidirectional sync
+
+**Run**:
+```sh
+cd samples/Phase7Demo
+dotnet run
+```
+
+Check `samples/Phase7Demo/obj/generated/` folder after running to see all generated code!
+
 ### ProfilerDemo
 
 A standalone sample demonstrating NPA's performance monitoring and profiling capabilities.
@@ -76,6 +107,7 @@ See `samples/ProfilerDemo/README.md` for detailed usage and profiler tool comman
 ```
 samples/
 ├── BasicUsage/              # Consolidated sample runner (all core features)
+├── Phase7Demo/              # Phase 7: Advanced Relationship Management (ALL features)
 ├── ProfilerDemo/            # Performance profiling sample
 ├── UdemyCloneSaaS/          # Real-world SaaS application example
 └── UdemyCloneSaaS.Api/      # API layer for SaaS example

@@ -1,0 +1,322 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using NPA.Generators.Shared;
+
+namespace NPA.Generators;
+
+/// <summary>
+/// Generator for bidirectional relationship synchronization helper methods.
+/// Generates static helper classes that maintain consistency between both sides of relationships.
+/// </summary>
+[Generator]
+public class BidirectionalRelationshipGenerator : IIncrementalGenerator
+{
+    /// <inheritdoc/>
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        // Find all entity classes with [Entity] attribute
+        var entityProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => s is ClassDeclarationSyntax c && c.AttributeLists.Count > 0,
+                transform: static (ctx, _) => GetEntityIfHasBidirectionalRelationships(ctx))
+            .Where(static m => m is not null);
+
+        // Combine and generate
+        context.RegisterSourceOutput(entityProvider.Collect(), (spc, entities) =>
+        {
+            var entitiesWithRelationships = entities.Where(e => e != null).ToList();
+            if (entitiesWithRelationships.Count == 0)
+                return;
+
+            // Generate helper classes for each entity with bidirectional relationships
+            foreach (var entity in entitiesWithRelationships)
+            {
+                if (entity == null) continue;
+
+                var source = GenerateHelperClass(entity);
+                spc.AddSource($"{entity.EntityName}RelationshipHelper.g.cs", SourceText.From(source, Encoding.UTF8));
+            }
+        });
+    }
+
+    private static EntityRelationshipInfo? GetEntityIfHasBidirectionalRelationships(GeneratorSyntaxContext context)
+    {
+        var classDecl = (ClassDeclarationSyntax)context.Node;
+        var model = context.SemanticModel;
+        var classSymbol = model.GetDeclaredSymbol(classDecl) as INamedTypeSymbol;
+
+        if (classSymbol == null)
+            return null;
+
+        // Skip nested classes - they're edge cases that need special handling
+        if (classSymbol.ContainingType != null)
+            return null;
+
+        // Check if it has [Entity] attribute
+        if (!classSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == "EntityAttribute" || a.AttributeClass?.Name == "Entity"))
+            return null;
+
+        // Extract all relationships
+        var relationships = MetadataExtractor.ExtractRelationships(classSymbol);
+        
+        // Find bidirectional relationships (those with mappedBy or those that are referenced by mappedBy)
+        var bidirectionalRelationships = new List<BidirectionalRelationship>();
+
+        foreach (var rel in relationships)
+        {
+            // Check if this is the inverse side (has mappedBy)
+            if (!string.IsNullOrEmpty(rel.MappedBy))
+            {
+                bidirectionalRelationships.Add(new BidirectionalRelationship
+                {
+                    PropertyName = rel.PropertyName,
+                    PropertyType = rel.Type == "OneToMany" || rel.Type == "ManyToMany" ? $"ICollection<{rel.TargetEntity}>" : rel.TargetEntity,
+                    TargetEntity = rel.TargetEntity,
+                    RelationshipType = rel.Type,
+                    MappedBy = rel.MappedBy,
+                    IsInverseSide = true,
+                    IsOwnerSide = false,
+                    IsCollection = rel.Type == "OneToMany" || rel.Type == "ManyToMany"
+                });
+            }
+            // Check if this is the owner side (ManyToOne or OneToOne without mappedBy)
+            else if (rel.Type == "ManyToOne" || rel.Type == "OneToOne")
+            {
+                bidirectionalRelationships.Add(new BidirectionalRelationship
+                {
+                    PropertyName = rel.PropertyName,
+                    PropertyType = rel.TargetEntity,
+                    TargetEntity = rel.TargetEntity,
+                    RelationshipType = rel.Type,
+                    MappedBy = null,
+                    IsInverseSide = false,
+                    IsOwnerSide = true,
+                    IsCollection = false
+                });
+            }
+        }
+
+        if (bidirectionalRelationships.Count == 0)
+            return null;
+
+        // Extract foreign key properties
+        var fkProperties = new Dictionary<string, string>();
+        foreach (var member in classSymbol.GetMembers().OfType<IPropertySymbol>())
+        {
+            if (member.Type.SpecialType == SpecialType.System_Int32 && member.Name.EndsWith("Id"))
+            {
+                fkProperties[member.Name] = member.Type.ToString();
+            }
+        }
+
+        return new EntityRelationshipInfo
+        {
+            EntityName = classSymbol.Name,
+            Namespace = classSymbol.ContainingNamespace.ToDisplayString(),
+            BidirectionalRelationships = bidirectionalRelationships,
+            ForeignKeyProperties = fkProperties
+        };
+    }
+
+    private static string GenerateHelperClass(EntityRelationshipInfo entity)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine($"namespace {entity.Namespace};");
+        sb.AppendLine();
+        sb.AppendLine("/// <summary>");
+        sb.AppendLine($"/// Helper class for managing bidirectional relationships on {entity.EntityName}.");
+        sb.AppendLine("/// Ensures both sides of relationships are automatically synchronized.");
+        sb.AppendLine("/// </summary>");
+        sb.AppendLine($"public static class {entity.EntityName}RelationshipHelper");
+        sb.AppendLine("{");
+
+        foreach (var rel in entity.BidirectionalRelationships)
+        {
+            if (rel.IsOwnerSide)
+            {
+                // Generate Set method for owner side (e.g., SetCustomer for Order.Customer)
+                GenerateOwnerSideSetMethod(sb, entity, rel);
+            }
+            else if (rel.IsInverseSide && rel.IsCollection)
+            {
+                // Generate AddTo/RemoveFrom methods for collection inverse side (e.g., AddToOrders for Customer.Orders)
+                GenerateInverseSideAddMethod(sb, entity, rel);
+                GenerateInverseSideRemoveMethod(sb, entity, rel);
+            }
+        }
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    private static void GenerateOwnerSideSetMethod(StringBuilder sb, EntityRelationshipInfo entity, BidirectionalRelationship rel)
+    {
+        var fkProperty = $"{rel.PropertyName}Id";
+        var hasFk = entity.ForeignKeyProperties.ContainsKey(fkProperty);
+        
+        // Use fully qualified names for parameters
+        var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
+        var targetFullName = rel.TargetEntity; // Already fully qualified from extraction
+
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine($"    /// Sets the {rel.PropertyName} relationship and synchronizes the inverse side.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    public static void Set{rel.PropertyName}({entityFullName} entity, {targetFullName}? value)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (entity == null) throw new System.ArgumentNullException(nameof(entity));");
+        sb.AppendLine();
+        sb.AppendLine($"        var oldValue = entity.{rel.PropertyName};");
+        sb.AppendLine("        if (oldValue == value) return; // No change");
+        sb.AppendLine();
+        sb.AppendLine("        // Remove from old parent's collection");
+        sb.AppendLine("        if (oldValue != null)");
+        sb.AppendLine("        {");
+        
+        // Find the inverse property name
+        // For ManyToOne, the inverse is typically a collection (OneToMany)
+        // We need to infer the collection property name
+        var inverseCollectionName = $"{entity.EntityName}s"; // Pluralize entity name
+        
+        sb.AppendLine($"            // Assuming inverse collection is named {inverseCollectionName}");
+        sb.AppendLine($"            var inverseCollection = oldValue.GetType().GetProperty(\"{inverseCollectionName}\")?.GetValue(oldValue) as System.Collections.IList;");
+        sb.AppendLine("            inverseCollection?.Remove(entity);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        // Set new value");
+        sb.AppendLine($"        entity.{rel.PropertyName} = value;");
+        
+        if (hasFk)
+        {
+            sb.AppendLine($"        entity.{fkProperty} = value?.Id ?? 0;");
+        }
+        
+        sb.AppendLine();
+        sb.AppendLine("        // Add to new parent's collection");
+        sb.AppendLine("        if (value != null)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var inverseCollection = value.GetType().GetProperty(\"{inverseCollectionName}\")?.GetValue(value) as System.Collections.IList;");
+        sb.AppendLine("            if (inverseCollection != null && !inverseCollection.Contains(entity))");
+        sb.AppendLine("            {");
+        sb.AppendLine("                inverseCollection.Add(entity);");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+    }
+
+    private static void GenerateInverseSideAddMethod(StringBuilder sb, EntityRelationshipInfo entity, BidirectionalRelationship rel)
+    {
+        var targetEntityName = rel.TargetEntity.Split('.').Last();
+        var mappedByProperty = rel.MappedBy ?? entity.EntityName;
+        
+        // Use fully qualified names for parameters
+        var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
+        var targetFullName = rel.TargetEntity;
+
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine($"    /// Adds an item to {rel.PropertyName} collection and synchronizes the inverse side.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    public static void AddTo{rel.PropertyName}({entityFullName} entity, {targetFullName} item)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (entity == null) throw new System.ArgumentNullException(nameof(entity));");
+        sb.AppendLine("        if (item == null) throw new System.ArgumentNullException(nameof(item));");
+        sb.AppendLine();
+        sb.AppendLine($"        entity.{rel.PropertyName} ??= new System.Collections.Generic.List<{rel.TargetEntity}>();");
+        sb.AppendLine();
+        sb.AppendLine("        // Add to collection if not already present");
+        sb.AppendLine($"        if (!entity.{rel.PropertyName}.Contains(item))");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            entity.{rel.PropertyName}.Add(item);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        // Set inverse side using reflection to avoid circular dependency");
+        sb.AppendLine($"        var inverseProp = item.GetType().GetProperty(\"{mappedByProperty}\");");
+        sb.AppendLine("        if (inverseProp != null)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var currentValue = inverseProp.GetValue(item);");
+        sb.AppendLine("            if (currentValue != entity)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                inverseProp.SetValue(item, entity);");
+        sb.AppendLine();
+        sb.AppendLine("                // Also set FK if exists");
+        sb.AppendLine($"                var fkProp = item.GetType().GetProperty(\"{mappedByProperty}Id\");");
+        sb.AppendLine("                if (fkProp != null)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    fkProp.SetValue(item, entity.Id);");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+    }
+
+    private static void GenerateInverseSideRemoveMethod(StringBuilder sb, EntityRelationshipInfo entity, BidirectionalRelationship rel)
+    {
+        var targetEntityName = rel.TargetEntity.Split('.').Last();
+        var mappedByProperty = rel.MappedBy ?? entity.EntityName;
+        
+        // Use fully qualified names for parameters
+        var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
+        var targetFullName = rel.TargetEntity;
+
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine($"    /// Removes an item from {rel.PropertyName} collection and synchronizes the inverse side.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    public static void RemoveFrom{rel.PropertyName}({entityFullName} entity, {targetFullName} item)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (entity == null) throw new System.ArgumentNullException(nameof(entity));");
+        sb.AppendLine("        if (item == null) throw new System.ArgumentNullException(nameof(item));");
+        sb.AppendLine();
+        sb.AppendLine($"        if (entity.{rel.PropertyName}?.Contains(item) == true)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            entity.{rel.PropertyName}.Remove(item);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        // Clear inverse side using reflection");
+        sb.AppendLine($"        var inverseProp = item.GetType().GetProperty(\"{mappedByProperty}\");");
+        sb.AppendLine("        if (inverseProp != null)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var currentValue = inverseProp.GetValue(item);");
+        sb.AppendLine("            if (currentValue == entity)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                inverseProp.SetValue(item, null);");
+        sb.AppendLine();
+        sb.AppendLine("                // Also clear FK if exists");
+        sb.AppendLine($"                var fkProp = item.GetType().GetProperty(\"{mappedByProperty}Id\");");
+        sb.AppendLine("                if (fkProp != null)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    fkProp.SetValue(item, 0);");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+    }
+}
+
+internal class EntityRelationshipInfo
+{
+    public string EntityName { get; set; } = string.Empty;
+    public string Namespace { get; set; } = string.Empty;
+    public List<BidirectionalRelationship> BidirectionalRelationships { get; set; } = new();
+    public Dictionary<string, string> ForeignKeyProperties { get; set; } = new();
+}
+
+internal class BidirectionalRelationship
+{
+    public string PropertyName { get; set; } = string.Empty;
+    public string PropertyType { get; set; } = string.Empty;
+    public string TargetEntity { get; set; } = string.Empty;
+    public string RelationshipType { get; set; } = string.Empty;
+    public string? MappedBy { get; set; }
+    public bool IsInverseSide { get; set; }
+    public bool IsOwnerSide { get; set; }
+    public bool IsCollection { get; set; }
+}

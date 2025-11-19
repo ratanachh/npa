@@ -91,16 +91,46 @@ namespace NPA.Core.Annotations
     public sealed class OneToOneAttribute : System.Attribute
     {
         public string? MappedBy { get; set; }
+        public FetchType Fetch { get; set; } = FetchType.Eager;
     }
     
     [System.AttributeUsage(System.AttributeTargets.Property)]
     public sealed class OneToManyAttribute : System.Attribute
     {
         public string? MappedBy { get; set; }
+        public CascadeType Cascade { get; set; } = CascadeType.None;
+        public FetchType Fetch { get; set; } = FetchType.Lazy;
+        public bool OrphanRemoval { get; set; } = false;
+        
+        public OneToManyAttribute() { }
+        public OneToManyAttribute(string mappedBy) { MappedBy = mappedBy; }
+    }
+    
+    public enum FetchType
+    {
+        Eager = 0,
+        Lazy = 1
+    }
+    
+    [System.Flags]
+    public enum CascadeType
+    {
+        None = 0,
+        Persist = 1 << 0,  // 1
+        Merge = 1 << 1,    // 2
+        Remove = 1 << 2,   // 4
+        Refresh = 1 << 3,  // 8
+        Detach = 1 << 4,   // 16
+        All = Persist | Merge | Remove | Refresh | Detach  // 31
     }
     
     [System.AttributeUsage(System.AttributeTargets.Property)]
-    public sealed class ManyToOneAttribute : System.Attribute { }
+    public sealed class ManyToOneAttribute : System.Attribute
+    {
+        public CascadeType Cascade { get; set; } = CascadeType.None;
+        public FetchType Fetch { get; set; } = FetchType.Eager;
+        public bool Optional { get; set; } = true;
+    }
     
     [System.AttributeUsage(System.AttributeTargets.Property)]
     public sealed class ManyToManyAttribute : System.Attribute

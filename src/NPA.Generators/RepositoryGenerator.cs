@@ -108,6 +108,9 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Build dictionary of all entity metadata (main + related entities)
         var entitiesMetadata = BuildEntityMetadataDictionary(semanticModel.Compilation, entityMetadata);
 
+        // Phase 7.1: Extract relationship metadata
+        var relationships = ExtractRelationships(semanticModel.Compilation, entityType);
+
         return new RepositoryInfo
         {
             InterfaceName = interfaceSymbol.Name,
@@ -121,7 +124,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             ManyToManyRelationships = manyToManyRelationships,
             MultiTenantInfo = multiTenantInfo,
             EntityMetadata = entityMetadata,
-            EntitiesMetadata = entitiesMetadata
+            EntitiesMetadata = entitiesMetadata,
+            Relationships = relationships
         };
     }
 
@@ -823,6 +827,24 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (info.ManyToManyRelationships.Count > 0)
         {
             sb.AppendLine(GenerateManyToManyMethods(info));
+        }
+
+        // Generate relationship-aware methods
+        if (info.Relationships != null && info.Relationships.Count > 0)
+        {
+            sb.AppendLine(GenerateRelationshipAwareMethods(info));
+        }
+
+        // Generate eager loading overrides (Phase 7.2)
+        if (info.HasEagerRelationships)
+        {
+            sb.AppendLine(GenerateEagerLoadingOverrides(info));
+        }
+
+        // Generate cascade operation overrides (Phase 7.3)
+        if (info.HasCascadeRelationships)
+        {
+            sb.AppendLine(GenerateCascadeOperationOverrides(info));
         }
 
         sb.AppendLine("    }");
@@ -2309,6 +2331,17 @@ public class RepositoryGenerator : IIncrementalGenerator
         var simpleName = entityType.Split('.').Last();
         return MethodConventionAnalyzer.ToSnakeCase(simpleName) + "s";
     }
+    
+    private static string? GetTableNameFromMetadata(RepositoryInfo info, string entityType)
+    {
+        // Try to find the entity in the metadata dictionary
+        var simpleName = entityType.Split('.').Last();
+        if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var metadata))
+        {
+            return metadata.TableName;
+        }
+        return null;
+    }
 
     private static string BuildColumnList(EntityMetadataInfo? metadata)
     {
@@ -2322,6 +2355,759 @@ public class RepositoryGenerator : IIncrementalGenerator
             .Where(c => !string.IsNullOrEmpty(c));
 
         return string.Join(", ", columns);
+    }
+
+    // Phase 7.1: Relationship extraction and code generation
+    private static List<Models.RelationshipMetadata> ExtractRelationships(Compilation compilation, string entityTypeName)
+    {
+        var relationships = new List<Models.RelationshipMetadata>();
+        
+        // Find the entity type symbol
+        var entityType = compilation.GetTypeByMetadataName(entityTypeName);
+        if (entityType == null)
+        {
+            entityType = compilation.GetSymbolsWithName(entityTypeName.Split('.').Last(), SymbolFilter.Type)
+                .OfType<INamedTypeSymbol>()
+                .FirstOrDefault();
+        }
+
+        if (entityType == null)
+            return relationships;
+
+        // Extract relationships from all properties
+        foreach (var member in entityType.GetMembers().OfType<IPropertySymbol>())
+        {
+            var relationshipMetadata = Shared.RelationshipExtractor.ExtractRelationshipMetadata(member);
+            if (relationshipMetadata != null)
+            {
+                relationships.Add(relationshipMetadata);
+            }
+        }
+
+        return relationships;
+    }
+
+    private static string GenerateRelationshipAwareMethods(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("        #region Relationship-Aware Methods");
+        sb.AppendLine();
+
+        var entityName = info.EntityType.Split('.').Last();
+
+        foreach (var relationship in info.Relationships)
+        {
+            // Skip inverse side of bidirectional relationships
+            if (!relationship.IsOwner && !string.IsNullOrEmpty(relationship.MappedBy))
+            {
+                continue;
+            }
+
+            var relatedTypeName = relationship.TargetEntityType;
+            var relatedTypeFullName = relationship.TargetEntityFullType;
+            var propertyName = relationship.PropertyName;
+
+            // Generate GetByIdWith{Property}Async method
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets a {entityName} by its ID with {propertyName} loaded asynchronously.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"id\">The {entityName} identifier.</param>");
+            sb.AppendLine($"        /// <returns>The {entityName} with {propertyName} loaded if found; otherwise, null.</returns>");
+            sb.AppendLine($"        public async Task<{info.EntityType}?> GetByIdWith{propertyName}Async({info.KeyType} id)");
+            sb.AppendLine("        {");
+            
+            if (relationship.IsCollection)
+            {
+                GenerateOneToManyLoadSQL(sb, info, relationship, entityName, relatedTypeName);
+            }
+            else if (relationship.Type == Models.RelationshipType.ManyToOne)
+            {
+                GenerateManyToOneLoadSQL(sb, info, relationship, entityName, relatedTypeName);
+            }
+            else if (relationship.Type == Models.RelationshipType.OneToOne)
+            {
+                GenerateOneToOneLoadSQL(sb, info, relationship, entityName, relatedTypeName);
+            }
+
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate Load{Property}Async for lazy loading
+            if (relationship.FetchType == 1) // Lazy
+            {
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Loads {propertyName} for an existing {entityName} entity asynchronously.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        /// <param name=\"entity\">The {entityName} entity.</param>");
+                
+                if (relationship.IsCollection)
+                {
+                    sb.AppendLine($"        /// <returns>A collection of {relatedTypeName} entities.</returns>");
+                    sb.AppendLine($"        public async Task<IEnumerable<{relatedTypeFullName}>> Load{propertyName}Async({info.EntityType} entity)");
+                }
+                else
+                {
+                    sb.AppendLine($"        /// <returns>The loaded {relatedTypeName} entity if found; otherwise, null.</returns>");
+                    // Remove trailing ? if already present to avoid double nullable marker
+                    var returnType = relatedTypeFullName.TrimEnd('?');
+                    sb.AppendLine($"        public async Task<{returnType}?> Load{propertyName}Async({info.EntityType} entity)");
+                }
+                
+                sb.AppendLine("        {");
+                sb.AppendLine("            if (entity == null) throw new ArgumentNullException(nameof(entity));");
+                sb.AppendLine();
+
+                if (relationship.IsCollection)
+                {
+                    GenerateLazyLoadCollectionSQL(sb, info, relationship, relatedTypeName);
+                }
+                else
+                {
+                    GenerateLazyLoadSingleSQL(sb, info, relationship, relatedTypeName);
+                }
+
+                sb.AppendLine("        }");
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine("        #endregion");
+        return sb.ToString();
+    }
+
+    private static void GenerateManyToOneLoadSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName, string relatedTypeName)
+    {
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+        
+        // Get actual table names from metadata
+        var entityTableName = info.EntityMetadata?.TableName ?? entityName;
+        var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        
+        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.Id WHERE e.Id = @Id\";");
+        sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"Id\");");
+        sb.AppendLine("            return result.FirstOrDefault();");
+    }
+
+    private static void GenerateOneToOneLoadSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName, string relatedTypeName)
+    {
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+        
+        // Get actual table names from metadata
+        var entityTableName = info.EntityMetadata?.TableName ?? entityName;
+        var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        
+        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.Id WHERE e.Id = @Id\";");
+        sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"Id\");");
+        sb.AppendLine("            return result.FirstOrDefault();");
+    }
+
+    private static void GenerateOneToManyLoadSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName, string relatedTypeName)
+    {
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{entityName}Id";
+        
+        // Get actual table names from metadata
+        var entityTableName = info.EntityMetadata?.TableName ?? entityName;
+        var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        
+        sb.AppendLine($"            var entityDict = new Dictionary<{info.KeyType}, {info.EntityType}>();");
+        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.Id = r.{foreignKeyColumn} WHERE e.Id = @Id\";");
+        sb.AppendLine($"            await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{");
+        sb.AppendLine($"                if (!entityDict.TryGetValue(entity.Id, out var existingEntity)) {{");
+        sb.AppendLine($"                    existingEntity = entity;");
+        sb.AppendLine($"                    existingEntity.{relationship.PropertyName} = new List<{relationship.TargetEntityFullType}>();");
+        sb.AppendLine($"                    entityDict[entity.Id] = existingEntity;");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"                if (related != null) ((List<{relationship.TargetEntityFullType}>)existingEntity.{relationship.PropertyName}).Add(related);");
+        sb.AppendLine($"                return existingEntity;");
+        sb.AppendLine($"            }}, new {{ Id = id }}, splitOn: \"Id\");");
+        sb.AppendLine("            return entityDict.Values.FirstOrDefault();");
+    }
+
+    private static void GenerateLazyLoadCollectionSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string relatedTypeName)
+    {
+        // Get actual table name from metadata
+        var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        
+        sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {relationship.JoinColumn?.Name ?? "OwnerId"} = @Id\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.Id }});");
+    }
+
+    private static void GenerateLazyLoadSingleSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string relatedTypeName)
+    {
+        var fkProperty = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+        
+        // Get actual table name from metadata
+        var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        
+        sb.AppendLine($"            var fkProperty = entity.GetType().GetProperty(\"{fkProperty}\");");
+        sb.AppendLine($"            if (fkProperty == null) throw new InvalidOperationException(\"Property {fkProperty} not found on entity.\");");
+        sb.AppendLine("            var fkValue = fkProperty.GetValue(entity);");
+        sb.AppendLine("            if (fkValue == null) return null;");
+        sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE Id = @Id\";");
+        sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = fkValue }});");
+        sb.AppendLine("            return result.FirstOrDefault();");
+    }
+
+    // Phase 7.2: Generate eager loading overrides
+    private static string GenerateEagerLoadingOverrides(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("        #region Eager Loading Overrides");
+        sb.AppendLine();
+
+        var entityName = info.EntityType.Split('.').Last();
+        var eagerRelationships = info.EagerRelationships;
+
+        if (eagerRelationships.Count == 0)
+        {
+            sb.AppendLine("        #endregion");
+            return sb.ToString();
+        }
+
+        // Check if we have only single-entity relationships or also collections
+        var hasSingleOnly = eagerRelationships.All(r => !r.IsCollection);
+        var hasCollections = eagerRelationships.Any(r => r.IsCollection);
+
+        if (hasSingleOnly)
+        {
+            // Simple case: only ManyToOne or OneToOne relationships
+            GenerateSimpleEagerGetByIdOverride(sb, info, entityName, eagerRelationships);
+        }
+        else if (!hasCollections)
+        {
+            // Only single relationships
+            GenerateSimpleEagerGetByIdOverride(sb, info, entityName, eagerRelationships);
+        }
+        else
+        {
+            // Complex case: has collections - need multiple queries or careful JOIN
+            GenerateComplexEagerGetByIdOverride(sb, info, entityName, eagerRelationships);
+        }
+
+        // Generate GetAllAsync override
+        GenerateEagerGetAllOverride(sb, info, entityName, eagerRelationships);
+
+        // Generate GetByIdsAsync for batch loading
+        GenerateBatchLoadingMethod(sb, info, entityName, eagerRelationships);
+
+        sb.AppendLine("        #endregion");
+        return sb.ToString();
+    }
+
+    private static void GenerateSimpleEagerGetByIdOverride(StringBuilder sb, RepositoryInfo info, string entityName, List<Models.RelationshipMetadata> eagerRelationships)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets a {entityName} by its ID with eager relationships loaded asynchronously.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"id\">The {entityName} identifier.</param>");
+        sb.AppendLine($"        /// <returns>The {entityName} with eager relationships loaded if found; otherwise, null.</returns>");
+        sb.AppendLine($"        public override async Task<{info.EntityType}?> GetByIdAsync({info.KeyType} id)");
+        sb.AppendLine("        {");
+
+        // Get actual table name from metadata
+        var entityTableName = info.EntityMetadata?.TableName ?? entityName;
+
+        // Build SQL with JOINs for all eager relationships
+        var sqlBuilder = new StringBuilder($"SELECT e.*");
+        var joins = new List<string>();
+        var splitOns = new List<string> { "Id" };
+        var typeParams = new List<string> { info.EntityType };
+        var aliases = new Dictionary<string, string> { { entityName, "e" } };
+        int aliasCounter = 0;
+
+        foreach (var relationship in eagerRelationships)
+        {
+            if (relationship.IsCollection) continue; // Skip collections in simple case
+
+            var alias = $"r{aliasCounter++}";
+            var relatedTypeName = relationship.TargetEntityType;
+            var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+            var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+            
+            aliases[relatedTypeName] = alias;
+            sqlBuilder.Append($", {alias}.*");
+            joins.Add($"LEFT JOIN {relatedTableName} {alias} ON e.{foreignKeyColumn} = {alias}.Id");
+            splitOns.Add("Id");
+            typeParams.Add(relationship.TargetEntityFullType);
+        }
+
+        sqlBuilder.Append($" FROM {entityTableName} e");
+        foreach (var join in joins)
+        {
+            sqlBuilder.Append($" {join}");
+        }
+        sqlBuilder.Append(" WHERE e.Id = @Id");
+
+        sb.AppendLine($"            var sql = @\"{sqlBuilder}\";");
+        sb.AppendLine();
+
+        // Generate Dapper query with multi-mapping
+        if (eagerRelationships.Count == 1)
+        {
+            var rel = eagerRelationships[0];
+            sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {rel.TargetEntityFullType}, {info.EntityType}>(");
+            sb.AppendLine($"                sql,");
+            sb.AppendLine($"                (entity, related) => {{ entity.{rel.PropertyName} = related; return entity; }},");
+            sb.AppendLine($"                new {{ Id = id }},");
+            sb.AppendLine($"                splitOn: \"{string.Join(",", splitOns.Skip(1))}\");");
+        }
+        else if (eagerRelationships.Count == 2)
+        {
+            var rel1 = eagerRelationships[0];
+            var rel2 = eagerRelationships[1];
+            sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {rel1.TargetEntityFullType}, {rel2.TargetEntityFullType}, {info.EntityType}>(");
+            sb.AppendLine($"                sql,");
+            sb.AppendLine($"                (entity, related1, related2) => {{ entity.{rel1.PropertyName} = related1; entity.{rel2.PropertyName} = related2; return entity; }},");
+            sb.AppendLine($"                new {{ Id = id }},");
+            sb.AppendLine($"                splitOn: \"{string.Join(",", splitOns.Skip(1))}\");");
+        }
+        else
+        {
+            // Fall back to multiple queries for more than 2 relationships
+            sb.AppendLine($"            var entity = await base.GetByIdAsync(id);");
+            sb.AppendLine($"            if (entity == null) return null;");
+            sb.AppendLine();
+            foreach (var rel in eagerRelationships)
+            {
+                sb.AppendLine($"            entity.{rel.PropertyName} = await GetByIdWith{rel.PropertyName}Async(id);");
+            }
+        }
+
+        sb.AppendLine("            return result.FirstOrDefault();");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void GenerateComplexEagerGetByIdOverride(StringBuilder sb, RepositoryInfo info, string entityName, List<Models.RelationshipMetadata> eagerRelationships)
+    {
+        // When we have collections, we need to use separate queries to avoid cartesian product
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets a {entityName} by its ID with eager relationships loaded asynchronously.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"id\">The {entityName} identifier.</param>");
+        sb.AppendLine($"        /// <returns>The {entityName} with eager relationships loaded if found; otherwise, null.</returns>");
+        sb.AppendLine($"        public override async Task<{info.EntityType}?> GetByIdAsync({info.KeyType} id)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var entity = await base.GetByIdAsync(id);");
+        sb.AppendLine($"            if (entity == null) return null;");
+        sb.AppendLine();
+
+        // Load each eager relationship
+        foreach (var rel in eagerRelationships)
+        {
+            if (rel.IsCollection)
+            {
+                var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
+                sb.AppendLine($"            // Load {rel.PropertyName} collection");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {rel.TargetEntityType} WHERE {foreignKeyColumn} = @Id\";");
+                sb.AppendLine($"            entity.{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Id = id }})).ToList();");
+                sb.AppendLine();
+            }
+            else
+            {
+                var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{rel.TargetEntityType}Id";
+                sb.AppendLine($"            // Load {rel.PropertyName}");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT r.* FROM {rel.TargetEntityType} r WHERE r.Id = @ForeignKeyId\";");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}FkValue = entity.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(entity);");
+                sb.AppendLine($"            if ({rel.PropertyName.ToLower()}FkValue != null)");
+                sb.AppendLine($"            {{");
+                sb.AppendLine($"                entity.{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ ForeignKeyId = {rel.PropertyName.ToLower()}FkValue }})).FirstOrDefault();");
+                sb.AppendLine($"            }}");
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine("            return entity;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void GenerateEagerGetAllOverride(StringBuilder sb, RepositoryInfo info, string entityName, List<Models.RelationshipMetadata> eagerRelationships)
+    {
+        // GetAllAsync with eager loading
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets all {entityName} entities with eager relationships loaded asynchronously.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <returns>A collection of {entityName} entities with eager relationships loaded.</returns>");
+        sb.AppendLine($"        public override async Task<IEnumerable<{info.EntityType}>> GetAllAsync()");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var entities = (await base.GetAllAsync()).ToList();");
+        sb.AppendLine($"            if (!entities.Any()) return entities;");
+        sb.AppendLine();
+
+        // Load relationships for all entities
+        foreach (var rel in eagerRelationships)
+        {
+            if (rel.IsCollection)
+            {
+                var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
+                sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
+                sb.AppendLine($"            var ids = entities.Select(e => e.Id).ToArray();");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {rel.TargetEntityType} WHERE {foreignKeyColumn} IN @Ids\";");
+                sb.AppendLine($"            var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = ids }})).ToList();");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(r)).ToDictionary(g => g.Key, g => g.ToList());");
+                sb.AppendLine($"            foreach (var entity in entities)");
+                sb.AppendLine($"            {{");
+                sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.Id, out var items))");
+                sb.AppendLine($"                    entity.{rel.PropertyName} = items;");
+                sb.AppendLine($"            }}");
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine("            return entities;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void GenerateBatchLoadingMethod(StringBuilder sb, RepositoryInfo info, string entityName, List<Models.RelationshipMetadata> eagerRelationships)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets multiple {entityName} entities by their IDs with eager relationships loaded asynchronously.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"ids\">The collection of {entityName} identifiers.</param>");
+        sb.AppendLine($"        /// <returns>A collection of {entityName} entities with eager relationships loaded.</returns>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> GetByIdsAsync(IEnumerable<{info.KeyType}> ids)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var idArray = ids.ToArray();");
+        sb.AppendLine($"            if (!idArray.Any()) return Enumerable.Empty<{info.EntityType}>();");
+        sb.AppendLine();
+        
+        // Get actual table name from metadata
+        var entityTableName = info.EntityMetadata?.TableName ?? entityName;
+        
+        sb.AppendLine($"            var sql = @\"SELECT * FROM {entityTableName} WHERE Id IN @Ids\";");
+        sb.AppendLine($"            var entities = (await _connection.QueryAsync<{info.EntityType}>(sql, new {{ Ids = idArray }})).ToList();");
+        sb.AppendLine($"            if (!entities.Any()) return entities;");
+        sb.AppendLine();
+
+        // Load relationships for all entities
+        foreach (var rel in eagerRelationships)
+        {
+            if (rel.IsCollection)
+            {
+                var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
+                var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+                sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {relatedTableName} WHERE {foreignKeyColumn} IN @Ids\";");
+                sb.AppendLine($"            var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = idArray }})).ToList();");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(r)).ToDictionary(g => g.Key, g => g.ToList());");
+                sb.AppendLine($"            foreach (var entity in entities)");
+                sb.AppendLine($"            {{");
+                sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.Id, out var items))");
+                sb.AppendLine($"                    entity.{rel.PropertyName} = items;");
+                sb.AppendLine($"            }}");
+                sb.AppendLine();
+            }
+            else
+            {
+                var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{rel.TargetEntityType}Id";
+                var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+                sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Ids = entities.Select(e => e.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(e)).Where(v => v != null).Distinct().ToArray();");
+                sb.AppendLine($"            if ({rel.PropertyName.ToLower()}Ids.Any())");
+                sb.AppendLine($"            {{");
+                sb.AppendLine($"                var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {relatedTableName} WHERE Id IN @Ids\";");
+                sb.AppendLine($"                var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = {rel.PropertyName.ToLower()}Ids }})).ToDictionary(r => r.Id);");
+                sb.AppendLine($"                foreach (var entity in entities)");
+                sb.AppendLine($"                {{");
+                sb.AppendLine($"                    var fkValue = entity.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(entity);");
+                sb.AppendLine($"                    if (fkValue != null && all{rel.PropertyName}.TryGetValue(({info.KeyType})fkValue, out var related))");
+                sb.AppendLine($"                        entity.{rel.PropertyName} = related;");
+                sb.AppendLine($"                }}");
+                sb.AppendLine($"            }}");
+                sb.AppendLine();
+            }
+        }
+
+        sb.AppendLine("            return entities;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static string GenerateCascadeOperationOverrides(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("        #region Cascade Operations");
+        sb.AppendLine();
+
+        // Check for Persist cascades - affects AddAsync
+        var persistCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & 1) != 0).ToList(); // Persist = 1
+        if (persistCascades.Any())
+        {
+            sb.AppendLine(GenerateCascadeAddMethod(info, persistCascades));
+        }
+
+        // Check for Merge cascades - affects UpdateAsync
+        var mergeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & 2) != 0).ToList(); // Merge = 2
+        if (mergeCascades.Any())
+        {
+            sb.AppendLine(GenerateCascadeUpdateMethod(info, mergeCascades));
+        }
+
+        // Check for Remove cascades - affects DeleteAsync
+        var removeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & 4) != 0).ToList(); // Remove = 4
+        if (removeCascades.Any())
+        {
+            sb.AppendLine(GenerateCascadeDeleteMethod(info, removeCascades));
+        }
+
+        sb.AppendLine("        #endregion");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    private static string GenerateCascadeAddMethod(RepositoryInfo info, List<Models.RelationshipMetadata> cascades)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"        /// <summary>");
+        sb.AppendLine($"        /// Adds an entity with cascade persist support.");
+        sb.AppendLine($"        /// Automatically persists related entities marked with CascadeType.Persist.");
+        sb.AppendLine($"        /// Cascades: {string.Join(", ", cascades.Select(c => c.PropertyName))}");
+        sb.AppendLine($"        /// </summary>");
+        sb.AppendLine($"        public async Task<{info.EntityType}> AddWithCascadeAsync({info.EntityType} entity)");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            if (entity == null) throw new ArgumentNullException(nameof(entity));");
+        sb.AppendLine();
+        
+        // Generate cascade logic for each relationship with Persist
+        foreach (var cascade in cascades)
+        {
+            if (cascade.IsCollection)
+            {
+                // Collection cascade (OneToMany) - Persist children after parent
+                sb.AppendLine($"            // Cascade persist {cascade.PropertyName} collection (children persisted after parent)");
+                sb.AppendLine($"            var {cascade.PropertyName.ToLower()}ToPersist = entity.{cascade.PropertyName}?.ToList() ?? new List<{cascade.TargetEntityFullType}>();");
+                sb.AppendLine();
+            }
+            else
+            {
+                // Single entity cascade (ManyToOne, OneToOne) - Persist parent first
+                var fkColumn = cascade.JoinColumn?.Name ?? $"{cascade.TargetEntityType}Id".ToLower();
+                sb.AppendLine($"            // Cascade persist {cascade.PropertyName} (parent persisted first)");
+                sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
+                sb.AppendLine($"            {{");
+                sb.AppendLine($"                var idProperty = entity.{cascade.PropertyName}.GetType().GetProperty(\"Id\");");
+                sb.AppendLine($"                var idValue = idProperty?.GetValue(entity.{cascade.PropertyName});");
+                sb.AppendLine($"                ");
+                sb.AppendLine($"                // Check if entity is transient (Id is default value)");
+                sb.AppendLine($"                if (idValue == null || idValue.Equals(Activator.CreateInstance(idValue.GetType())))");
+                sb.AppendLine($"                {{");
+                sb.AppendLine($"                    // Persist the related entity first");
+                sb.AppendLine($"                    await _entityManager.PersistAsync(entity.{cascade.PropertyName});");
+                sb.AppendLine($"                    ");
+                sb.AppendLine($"                    // Update FK on main entity");
+                sb.AppendLine($"                    var newId = idProperty?.GetValue(entity.{cascade.PropertyName});");
+                sb.AppendLine($"                    var fkProperty = entity.GetType().GetProperty(\"{fkColumn}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);");
+                sb.AppendLine($"                    fkProperty?.SetValue(entity, newId);");
+                sb.AppendLine($"                }}");
+                sb.AppendLine($"            }}");
+                sb.AppendLine();
+            }
+        }
+        
+        sb.AppendLine($"            // Persist the main entity");
+        sb.AppendLine($"            var result = await AddAsync(entity);");
+        sb.AppendLine();
+
+        // Now persist collections (children after parent)
+        foreach (var cascade in cascades.Where(c => c.IsCollection))
+        {
+            var fkColumn = cascade.MappedBy != null 
+                ? $"{info.EntityType}Id".ToLower() 
+                : $"{cascade.TargetEntityType}Id".ToLower();
+            
+            sb.AppendLine($"            // Persist {cascade.PropertyName} collection after parent");
+            sb.AppendLine($"            if ({cascade.PropertyName.ToLower()}ToPersist.Any())");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                var parentIdProperty = result.GetType().GetProperty(\"Id\");");
+            sb.AppendLine($"                var parentId = parentIdProperty?.GetValue(result);");
+            sb.AppendLine($"                ");
+            sb.AppendLine($"                foreach (var item in {cascade.PropertyName.ToLower()}ToPersist)");
+            sb.AppendLine($"                {{");
+            sb.AppendLine($"                    // Set FK to parent");
+            sb.AppendLine($"                    var fkProperty = item.GetType().GetProperty(\"{fkColumn}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);");
+            sb.AppendLine($"                    fkProperty?.SetValue(item, parentId);");
+            sb.AppendLine($"                    ");
+            sb.AppendLine($"                    await _entityManager.PersistAsync(item);");
+            sb.AppendLine($"                }}");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine($"            return result;");
+        sb.AppendLine($"        }}");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    private static string GenerateCascadeUpdateMethod(RepositoryInfo info, List<Models.RelationshipMetadata> cascades)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"        /// <summary>");
+        sb.AppendLine($"        /// Updates an entity with cascade merge support.");
+        sb.AppendLine($"        /// Automatically updates related entities marked with CascadeType.Merge.");
+        sb.AppendLine($"        /// Cascades: {string.Join(", ", cascades.Select(c => c.PropertyName))}");
+        sb.AppendLine($"        /// </summary>");
+        sb.AppendLine($"        public async Task UpdateWithCascadeAsync({info.EntityType} entity)");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            if (entity == null) throw new ArgumentNullException(nameof(entity));");
+        sb.AppendLine();
+        
+        // Update single entity relationships first
+        foreach (var cascade in cascades.Where(c => !c.IsCollection))
+        {
+            sb.AppendLine($"            // Cascade merge {cascade.PropertyName}");
+            sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                var idProperty = entity.{cascade.PropertyName}.GetType().GetProperty(\"Id\");");
+            sb.AppendLine($"                var idValue = idProperty?.GetValue(entity.{cascade.PropertyName});");
+            sb.AppendLine($"                ");
+            sb.AppendLine($"                // Update if entity exists (has Id), persist if new");
+            sb.AppendLine($"                if (idValue != null && !idValue.Equals(Activator.CreateInstance(idValue.GetType())))");
+            sb.AppendLine($"                {{");
+            sb.AppendLine($"                    await _entityManager.MergeAsync(entity.{cascade.PropertyName});");
+            sb.AppendLine($"                }}");
+            sb.AppendLine($"                else");
+            sb.AppendLine($"                {{");
+            sb.AppendLine($"                    await _entityManager.PersistAsync(entity.{cascade.PropertyName});");
+            sb.AppendLine($"                }}");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine($"            // Update the main entity");
+        sb.AppendLine($"            await UpdateAsync(entity);");
+        sb.AppendLine();
+
+        // Handle collection cascades
+        foreach (var cascade in cascades.Where(c => c.IsCollection))
+        {
+            var fkColumn = cascade.MappedBy != null 
+                ? $"{info.EntityType}Id".ToLower() 
+                : $"{cascade.TargetEntityType}Id".ToLower();
+
+            sb.AppendLine($"            // Cascade merge {cascade.PropertyName} collection");
+            sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                var currentItems = entity.{cascade.PropertyName}.ToList();");
+            sb.AppendLine($"                var parentIdProperty = entity.GetType().GetProperty(\"Id\");");
+            sb.AppendLine($"                var parentId = parentIdProperty?.GetValue(entity);");
+            sb.AppendLine($"                ");
+            
+            if (cascade.OrphanRemoval)
+            {
+                var relatedTableName = GetTableNameFromMetadata(info, cascade.TargetEntityType) ?? cascade.TargetEntityType;
+                sb.AppendLine($"                // Load existing items to detect orphans (OrphanRemoval=true)");
+                sb.AppendLine($"                var fkColumn = \"{fkColumn}\";");
+                sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumn}} = @ParentId\";");
+                sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{cascade.TargetEntityFullType}>(sql, new {{ ParentId = parentId }})).ToList();");
+                sb.AppendLine($"                ");
+                sb.AppendLine($"                var currentIds = currentItems.Where(i => {{");
+                sb.AppendLine($"                    var id = i.GetType().GetProperty(\"Id\")?.GetValue(i);");
+                sb.AppendLine($"                    return id != null && !id.Equals(Activator.CreateInstance(id.GetType()));");
+                sb.AppendLine($"                }}).Select(i => i.GetType().GetProperty(\"Id\")?.GetValue(i)).ToHashSet();");
+                sb.AppendLine($"                ");
+                sb.AppendLine($"                // Delete orphaned items");
+                sb.AppendLine($"                foreach (var existing in existingItems)");
+                sb.AppendLine($"                {{");
+                sb.AppendLine($"                    var existingId = existing.GetType().GetProperty(\"Id\")?.GetValue(existing);");
+                sb.AppendLine($"                    if (existingId != null && !currentIds.Contains(existingId))");
+                sb.AppendLine($"                    {{");
+                sb.AppendLine($"                        await _entityManager.RemoveAsync(existing);");
+                sb.AppendLine($"                    }}");
+                sb.AppendLine($"                }}");
+                sb.AppendLine($"                ");
+            }
+            
+            sb.AppendLine($"                // Update existing items or persist new ones");
+            sb.AppendLine($"                foreach (var item in currentItems)");
+            sb.AppendLine($"                {{");
+            sb.AppendLine($"                    // Ensure FK is set");
+            sb.AppendLine($"                    var fkProperty = item.GetType().GetProperty(\"{fkColumn}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);");
+            sb.AppendLine($"                    fkProperty?.SetValue(item, parentId);");
+            sb.AppendLine($"                    ");
+            sb.AppendLine($"                    var idProperty = item.GetType().GetProperty(\"Id\");");
+            sb.AppendLine($"                    var idValue = idProperty?.GetValue(item);");
+            sb.AppendLine($"                    ");
+            sb.AppendLine($"                    if (idValue != null && !idValue.Equals(Activator.CreateInstance(idValue.GetType())))");
+            sb.AppendLine($"                    {{");
+            sb.AppendLine($"                        await _entityManager.MergeAsync(item);");
+            sb.AppendLine($"                    }}");
+            sb.AppendLine($"                    else");
+            sb.AppendLine($"                    {{");
+            sb.AppendLine($"                        await _entityManager.PersistAsync(item);");
+            sb.AppendLine($"                    }}");
+            sb.AppendLine($"                }}");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine($"        }}");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    private static string GenerateCascadeDeleteMethod(RepositoryInfo info, List<Models.RelationshipMetadata> cascades)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"        /// <summary>");
+        sb.AppendLine($"        /// Deletes an entity with cascade remove support.");
+        sb.AppendLine($"        /// Automatically deletes related entities marked with CascadeType.Remove.");
+        sb.AppendLine($"        /// Cascades: {string.Join(", ", cascades.Select(c => c.PropertyName))}");
+        sb.AppendLine($"        /// </summary>");
+        sb.AppendLine($"        public async Task DeleteWithCascadeAsync({info.KeyType} id)");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            // Load entity to check relationships");
+        sb.AppendLine($"            var entity = await GetByIdAsync(id);");
+        sb.AppendLine($"            if (entity == null)");
+        sb.AppendLine($"                throw new InvalidOperationException($\"{info.EntityType} with id {{id}} not found\");");
+        sb.AppendLine();
+        
+        // Delete collections first (children before parent)
+        foreach (var cascade in cascades.Where(c => c.IsCollection))
+        {
+            var fkColumn = cascade.MappedBy != null 
+                ? $"{info.EntityType}Id".ToLower() 
+                : $"{cascade.TargetEntityType}Id".ToLower();
+            var relatedTableName = GetTableNameFromMetadata(info, cascade.TargetEntityType) ?? cascade.TargetEntityType;
+
+            sb.AppendLine($"            // Cascade remove {cascade.PropertyName} collection (delete children first)");
+            sb.AppendLine($"            var fkColumn{cascade.PropertyName} = \"{fkColumn}\";");
+            sb.AppendLine($"            var sql{cascade.PropertyName} = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumn{cascade.PropertyName}}} = @ParentId\";");
+            sb.AppendLine($"            var {cascade.PropertyName.ToLower()}Items = await _connection.QueryAsync<{cascade.TargetEntityFullType}>(sql{cascade.PropertyName}, new {{ ParentId = id }});");
+            sb.AppendLine($"            ");
+            sb.AppendLine($"            foreach (var item in {cascade.PropertyName.ToLower()}Items)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                await _entityManager.RemoveAsync(item);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+        }
+
+        // Handle single entity cascades
+        foreach (var cascade in cascades.Where(c => !c.IsCollection))
+        {
+            sb.AppendLine($"            // Cascade remove {cascade.PropertyName}");
+            sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                await _entityManager.RemoveAsync(entity.{cascade.PropertyName});");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine($"            // Delete the main entity");
+        sb.AppendLine($"            await DeleteAsync(id);");
+        sb.AppendLine($"        }}");
+        sb.AppendLine();
+
+        return sb.ToString();
     }
 }
 
@@ -2339,6 +3125,18 @@ internal class RepositoryInfo
     public MultiTenantInfo? MultiTenantInfo { get; set; }
     public EntityMetadataInfo? EntityMetadata { get; set; }
     public Dictionary<string, EntityMetadataInfo> EntitiesMetadata { get; set; } = new();
+    
+    // Relationship-aware repository generation
+    public List<Models.RelationshipMetadata> Relationships { get; set; } = new();
+    public bool HasRelationships => Relationships != null && Relationships.Count > 0;
+    
+    // Eager loading support
+    public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == 0 && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
+    public List<Models.RelationshipMetadata> EagerRelationships => Relationships?.Where(r => r.FetchType == 0 && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy))).ToList() ?? new();
+    
+    // Cascade operations
+    public bool HasCascadeRelationships => Relationships != null && Relationships.Any(r => r.CascadeTypes != 0);
+    public List<Models.RelationshipMetadata> CascadeRelationships => Relationships?.Where(r => r.CascadeTypes != 0).ToList() ?? new();
 }
 
 internal class MultiTenantInfo
