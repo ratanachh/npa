@@ -42,6 +42,7 @@ public class EntityManagerTests : IAsyncLifetime
             .WithUsername("npa_user")
             .WithPassword("npa_password")
             .WithPortBinding(5432, true)
+            .WithStartupCallback((container, ct) => Task.Delay(TimeSpan.FromSeconds(3), ct))
             .Build();
 
         _connection = new NpgsqlConnection();
@@ -433,11 +434,12 @@ public class EntityManagerTests : IAsyncLifetime
         // Arrange
         await ClearTestData();
         
+        var guid = Guid.NewGuid().ToString("N");
         var users = new[]
         {
-            new User { Username = "user1", Email = "user1@test.com", CreatedAt = DateTime.UtcNow, IsActive = true },
-            new User { Username = "user2", Email = "user2@test.com", CreatedAt = DateTime.UtcNow, IsActive = true },
-            new User { Username = "user3", Email = "user3@test.com", CreatedAt = DateTime.UtcNow, IsActive = true }
+            new User { Username = $"user1_{guid}", Email = $"user1_{guid}@test.com", CreatedAt = DateTime.UtcNow, IsActive = true },
+            new User { Username = $"user2_{guid}", Email = $"user2_{guid}@test.com", CreatedAt = DateTime.UtcNow, IsActive = true },
+            new User { Username = $"user3_{guid}", Email = $"user3_{guid}@test.com", CreatedAt = DateTime.UtcNow, IsActive = true }
         };
 
         // Act - Track entities without transaction (should use change tracker)
@@ -458,9 +460,9 @@ public class EntityManagerTests : IAsyncLifetime
         // Verify in database
         var savedUsers = await _connection.QueryAsync<User>("SELECT * FROM public.users ORDER BY id");
         savedUsers.Should().HaveCount(3);
-        savedUsers.Should().Contain(u => u.Username == "user1");
-        savedUsers.Should().Contain(u => u.Username == "user2");
-        savedUsers.Should().Contain(u => u.Username == "user3");
+        savedUsers.Should().Contain(u => u.Username == $"user1_{guid}");
+        savedUsers.Should().Contain(u => u.Username == $"user2_{guid}");
+        savedUsers.Should().Contain(u => u.Username == $"user3_{guid}");
     }
 
     [Fact]
@@ -469,11 +471,12 @@ public class EntityManagerTests : IAsyncLifetime
         // Arrange
         await ClearTestData();
         
+        var guid = Guid.NewGuid().ToString("N");
         // Insert initial user
         var user1 = new User 
         { 
-            Username = "original", 
-            Email = "original@test.com", 
+            Username = $"original_{guid}", 
+            Email = $"original_{guid}@test.com", 
             CreatedAt = DateTime.UtcNow, 
             IsActive = true 
         };
@@ -482,14 +485,14 @@ public class EntityManagerTests : IAsyncLifetime
 
         var user2 = new User 
         { 
-            Username = "new", 
-            Email = "new@test.com", 
+            Username = $"new_{guid}", 
+            Email = $"new_{guid}@test.com", 
             CreatedAt = DateTime.UtcNow, 
             IsActive = true 
         };
         
         // Act - Queue mixed operations
-        user1.Username = "modified";
+        user1.Username = $"modified_{guid}";
         await _entityManager.MergeAsync(user1); // Update
         await _entityManager.PersistAsync(user2); // Insert
         
@@ -498,7 +501,7 @@ public class EntityManagerTests : IAsyncLifetime
         // Assert
         var users = await _connection.QueryAsync<User>("SELECT * FROM public.users ORDER BY id");
         users.Should().HaveCount(2);
-        users.First().Username.Should().Be("modified");
-        users.Last().Username.Should().Be("new");
+        users.First().Username.Should().Be($"modified_{guid}");
+        users.Last().Username.Should().Be($"new_{guid}");
     }
 }

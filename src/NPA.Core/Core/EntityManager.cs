@@ -135,7 +135,8 @@ public sealed class EntityManager : IEntityManager
             await _connection.ExecuteAsync(sql, parameters);
         }
 
-        _changeTracker.Track(entity, EntityState.Added);
+        // After successful insert, entity should be in Unchanged state (persisted)
+        _changeTracker.Track(entity, EntityState.Unchanged);
     }
 
     /// <inheritdoc />
@@ -328,9 +329,16 @@ public sealed class EntityManager : IEntityManager
         {
             switch (kvp.Value)
             {
-                case EntityState.Added: await CallGenericMethodAsync(nameof(InsertEntityAsync), kvp.Key); break;
-                case EntityState.Modified: await CallGenericMethodAsync(nameof(MergeAsync), kvp.Key); break;
-                case EntityState.Deleted: await CallGenericMethodAsync(nameof(RemoveAsync), kvp.Key); break;
+                case EntityState.Added: 
+                    await CallGenericMethodAsync(nameof(InsertEntityAsync), kvp.Key); 
+                    break;
+                case EntityState.Modified: 
+                    // Call the public MergeAsync method using reflection
+                    await CallPublicMethodAsync(nameof(MergeAsync), kvp.Key); 
+                    break;
+                case EntityState.Deleted: 
+                    await CallGenericMethodAsync(nameof(RemoveAsync), kvp.Key); 
+                    break;
             }
         }
     }
@@ -764,6 +772,27 @@ public sealed class EntityManager : IEntityManager
         
         var genericMethod = method.MakeGenericMethod(entityType);
         var task = (Task)genericMethod.Invoke(this, new[] { entity, metadata })!;
+        await task;
+    }
+
+    private async Task CallPublicMethodAsync(string methodName, object entity)
+    {
+        var entityType = entity.GetType();
+        
+        // Find the public generic method definition with single entity parameter
+        var method = GetType()
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .FirstOrDefault(m => 
+                m.Name == methodName && 
+                m.IsGenericMethodDefinition && 
+                m.GetParameters().Length == 1 &&
+                m.GetParameters()[0].ParameterType.IsGenericParameter);
+        
+        if (method == null) 
+            throw new InvalidOperationException($"Method {methodName} not found.");
+        
+        var genericMethod = method.MakeGenericMethod(entityType);
+        var task = (Task)genericMethod.Invoke(this, new[] { entity })!;
         await task;
     }
 

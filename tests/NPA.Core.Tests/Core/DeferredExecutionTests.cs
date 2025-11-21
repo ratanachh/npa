@@ -32,6 +32,7 @@ public class DeferredExecutionTests : IAsyncLifetime
             .WithUsername("npa_user")
             .WithPassword("npa_password")
             .WithPortBinding(5432, true)
+            .WithStartupCallback((container, ct) => Task.Delay(TimeSpan.FromSeconds(3), ct))
             .Build();
         _connection = new NpgsqlConnection();
         _metadataProvider = new MetadataProvider();
