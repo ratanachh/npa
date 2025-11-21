@@ -298,13 +298,24 @@ public class RepositoryGenerator : IIncrementalGenerator
         var enforceTenantIsolation = true;
         var allowCrossTenantQueries = false;
 
+        // Check constructor arguments first (positional parameter like [MultiTenant("OrganizationId")])
+        if (multiTenantAttr.ConstructorArguments.Length > 0)
+        {
+            var firstArg = multiTenantAttr.ConstructorArguments[0];
+            if (firstArg.Value is string constructorProp && !string.IsNullOrEmpty(constructorProp))
+            {
+                tenantIdProperty = constructorProp;
+            }
+        }
+
+        // Named arguments (both named constructor parameters like tenantIdProperty: and property setters)
+        // Note: Named constructor parameters appear as property names in Roslyn's NamedArguments
         foreach (var namedArg in multiTenantAttr.NamedArguments)
         {
             switch (namedArg.Key)
             {
-                case "TenantIdProperty":
-                case "tenantIdProperty":
-                    if (namedArg.Value.Value is string prop)
+                case "TenantIdProperty": // Property name used by Roslyn even for constructor parameter
+                    if (namedArg.Value.Value is string prop && !string.IsNullOrEmpty(prop))
                         tenantIdProperty = prop;
                     break;
                 case "EnforceTenantIsolation":
@@ -316,13 +327,6 @@ public class RepositoryGenerator : IIncrementalGenerator
                         allowCrossTenantQueries = allow;
                     break;
             }
-        }
-
-        // Check constructor arguments as well (for tenantIdProperty)
-        if (multiTenantAttr.ConstructorArguments.Length > 0 &&
-            multiTenantAttr.ConstructorArguments[0].Value is string constructorProp)
-        {
-            tenantIdProperty = constructorProp;
         }
 
         return new MultiTenantInfo
@@ -2419,12 +2423,6 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         foreach (var relationship in info.Relationships)
         {
-            // Skip inverse side of bidirectional relationships
-            if (!relationship.IsOwner && !string.IsNullOrEmpty(relationship.MappedBy))
-            {
-                continue;
-            }
-
             var relatedTypeName = relationship.TargetEntityType;
             var relatedTypeFullName = relationship.TargetEntityFullType;
             var propertyName = relationship.PropertyName;
@@ -2556,17 +2554,15 @@ public class RepositoryGenerator : IIncrementalGenerator
 
     private static void GenerateLazyLoadSingleSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string relatedTypeName)
     {
-        var fkProperty = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+        var fkColumnName = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+        var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
 
         // Get actual table name from metadata
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
 
-        sb.AppendLine($"            var fkProperty = entity.GetType().GetProperty(\"{fkProperty}\");");
-        sb.AppendLine($"            if (fkProperty == null) throw new InvalidOperationException(\"Property {fkProperty} not found on entity.\");");
-        sb.AppendLine("            var fkValue = fkProperty.GetValue(entity);");
-        sb.AppendLine("            if (fkValue == null) return null;");
+        sb.AppendLine($"            // Lazy load {relationship.PropertyName}");
         sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE Id = @Id\";");
-        sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = fkValue }});");
+        sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{fkPropertyName} }});");
         sb.AppendLine("            return result.FirstOrDefault();");
     }
 
@@ -2728,9 +2724,11 @@ public class RepositoryGenerator : IIncrementalGenerator
             else
             {
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{rel.TargetEntityType}Id";
+                var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn);
+
                 sb.AppendLine($"            // Load {rel.PropertyName}");
                 sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT r.* FROM {rel.TargetEntityType} r WHERE r.Id = @ForeignKeyId\";");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}FkValue = entity.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(entity);");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}FkValue = entity.{foreignKeyProperty};");
                 sb.AppendLine($"            if ({rel.PropertyName.ToLower()}FkValue != null)");
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                entity.{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ ForeignKeyId = {rel.PropertyName.ToLower()}FkValue }})).FirstOrDefault();");
@@ -2763,11 +2761,13 @@ public class RepositoryGenerator : IIncrementalGenerator
             if (rel.IsCollection)
             {
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
+                var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn, rel.TargetEntityType);
+
                 sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
                 sb.AppendLine($"            var ids = entities.Select(e => e.Id).ToArray();");
                 sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {rel.TargetEntityType} WHERE {foreignKeyColumn} IN @Ids\";");
                 sb.AppendLine($"            var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = ids }})).ToList();");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(r)).ToDictionary(g => g.Key, g => g.ToList());");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.{foreignKeyProperty}).ToDictionary(g => g.Key, g => g.ToList());");
                 sb.AppendLine($"            foreach (var entity in entities)");
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.Id, out var items))");
@@ -2809,11 +2809,13 @@ public class RepositoryGenerator : IIncrementalGenerator
             if (rel.IsCollection)
             {
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
+                var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn, rel.TargetEntityType);
                 var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+
                 sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
                 sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {relatedTableName} WHERE {foreignKeyColumn} IN @Ids\";");
                 sb.AppendLine($"            var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = idArray }})).ToList();");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(r)).ToDictionary(g => g.Key, g => g.ToList());");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.{foreignKeyProperty}).ToDictionary(g => g.Key, g => g.ToList());");
                 sb.AppendLine($"            foreach (var entity in entities)");
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.Id, out var items))");
@@ -2824,16 +2826,18 @@ public class RepositoryGenerator : IIncrementalGenerator
             else
             {
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{rel.TargetEntityType}Id";
+                var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn);
                 var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+
                 sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Ids = entities.Select(e => e.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(e)).Where(v => v != null).Distinct().ToArray();");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Ids = entities.Select(e => e.{foreignKeyProperty}).Where(v => v != null).Distinct().ToArray();");
                 sb.AppendLine($"            if ({rel.PropertyName.ToLower()}Ids.Any())");
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {relatedTableName} WHERE Id IN @Ids\";");
                 sb.AppendLine($"                var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = {rel.PropertyName.ToLower()}Ids }})).ToDictionary(r => r.Id);");
                 sb.AppendLine($"                foreach (var entity in entities)");
                 sb.AppendLine($"                {{");
-                sb.AppendLine($"                    var fkValue = entity.GetType().GetProperty(\"{foreignKeyColumn}\")?.GetValue(entity);");
+                sb.AppendLine($"                    var fkValue = entity.{foreignKeyProperty};");
                 sb.AppendLine($"                    if (fkValue != null && all{rel.PropertyName}.TryGetValue(({info.KeyType})fkValue, out var related))");
                 sb.AppendLine($"                        entity.{rel.PropertyName} = related;");
                 sb.AppendLine($"                }}");
@@ -2908,8 +2912,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             else
             {
                 // Single entity cascade (ManyToOne, OneToOne) - Persist parent first
-                var fkColumn = cascade.JoinColumn?.Name ?? $"{cascade.TargetEntityType}Id";
-                var fkProperty = ToCamelCase(fkColumn);
+                var fkColumnName = cascade.JoinColumn?.Name ?? $"{cascade.TargetEntityType}Id";
+                var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
 
                 sb.AppendLine($"            // Cascade persist {cascade.PropertyName} (parent persisted first)");
                 sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
@@ -2921,7 +2925,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 sb.AppendLine($"                    await _entityManager.PersistAsync(entity.{cascade.PropertyName});");
                 sb.AppendLine($"                    ");
                 sb.AppendLine($"                    // Update FK on main entity");
-                sb.AppendLine($"                    entity.{fkColumn} = entity.{cascade.PropertyName}.Id;");
+                sb.AppendLine($"                    entity.{fkPropertyName} = entity.{cascade.PropertyName}.Id;");
                 sb.AppendLine($"                }}");
                 sb.AppendLine($"            }}");
                 sb.AppendLine();
@@ -3294,6 +3298,52 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        Task<int> Count{relationship.PropertyName}Async({info.KeyType} id);");
         sb.AppendLine();
+    }
+
+    private static string ToPascalCase(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+
+        // If already PascalCase (starts with upper) and no underscores, just return
+        if (char.IsUpper(input[0]) && !input.Contains("_")) return input;
+
+        var parts = input.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+        var sb = new StringBuilder();
+        foreach (var part in parts)
+        {
+            if (part.Length > 0)
+            {
+                sb.Append(char.ToUpper(part[0]));
+                if (part.Length > 1)
+                    sb.Append(part.Substring(1));
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string GetPropertyNameForColumn(RepositoryInfo info, string columnName, string? entityTypeName = null)
+    {
+        EntityMetadataInfo? metadata = info.EntityMetadata;
+
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var simpleName = entityTypeName!.Split('.').Last();
+            if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var m))
+            {
+                metadata = m;
+            }
+        }
+
+        if (metadata?.Properties != null)
+        {
+            var prop = metadata.Properties.FirstOrDefault(p =>
+                string.Equals(p.ColumnName, columnName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+            if (prop != null) return prop.Name;
+        }
+
+        return ToPascalCase(columnName);
     }
 }
 

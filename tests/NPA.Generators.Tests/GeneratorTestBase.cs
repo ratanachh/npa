@@ -159,6 +159,21 @@ namespace NPA.Core.Annotations
         public string[]? InverseJoinColumns { get; set; }
         public JoinTableAttribute(string name) { Name = name; }
     }
+    
+    [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
+    public sealed class MultiTenantAttribute : System.Attribute
+    {
+        public string TenantIdProperty { get; }
+        public bool EnforceTenantIsolation { get; set; } = true;
+        public bool AllowCrossTenantQueries { get; set; } = false;
+        public bool ValidateTenantOnWrite { get; set; } = true;
+        public bool AutoPopulateTenantId { get; set; } = true;
+        
+        public MultiTenantAttribute(string tenantIdProperty = ""TenantId"")
+        {
+            TenantIdProperty = tenantIdProperty;
+        }
+    }
 }";
 
     /// <summary>

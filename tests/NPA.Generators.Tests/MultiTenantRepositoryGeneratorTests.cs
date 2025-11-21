@@ -188,7 +188,7 @@ namespace TestNamespace
 
     private (ImmutableArray<Diagnostic> Diagnostics, string Output) GetGeneratedOutput(string source)
     {
-        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: false);
+        var result = RunGenerator<RepositoryGenerator>(source, includeAnnotationSource: true);
         var output = result.GeneratedSources.Length > 0
             ? string.Join("\n\n", result.GeneratedSources.Select(s => s.SourceText.ToString()))
             : string.Empty;

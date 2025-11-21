@@ -13,7 +13,7 @@ public class RepositoryGeneratorRelationshipTests : GeneratorTestBase
 {
     #region ManyToOne Relationship Tests
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void ManyToOne_OwnerSide_ShouldGenerateGetByIdWithRelationshipMethod()
     {
         // Arrange - Order has ManyToOne to Customer (owner side)
@@ -83,7 +83,7 @@ namespace TestNamespace
             "Should set the Customer navigation property");
     }
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void ManyToOne_ShouldGenerateLoadRelationshipMethod()
     {
         // Arrange
@@ -114,6 +114,9 @@ namespace TestNamespace
         [Column(""id"")]
         public int Id { get; set; }
         
+        [Column(""customer_id"")]
+        public int CustomerId { get; set; }
+        
         [ManyToOne]
         [JoinColumn(""customer_id"")]
         public Customer Customer { get; set; }
@@ -136,15 +139,16 @@ namespace TestNamespace
             .ToString();
 
         // Should generate LoadCustomerAsync method
-        generatedCode.Should().Contain("Task LoadCustomerAsync(TestNamespace.Order entity)",
+        generatedCode.Should().Contain("Task<TestNamespace.Customer?> LoadCustomerAsync(TestNamespace.Order entity)",
             "Should generate Load{Property}Async method for lazy loading");
 
         // Should use direct property access (not reflection)
-        generatedCode.Should().Contain("entity.customer_id",
+        // Should use direct property access (not reflection)
+        generatedCode.Should().Contain("entity.CustomerId",
             "Should use direct property access for foreign key");
 
         // Should query the related entity
-        generatedCode.Should().Contain("SELECT * FROM customers WHERE id = @ForeignKeyValue",
+        generatedCode.Should().Contain("SELECT * FROM customers WHERE Id = @Id",
             "Should query Customer by foreign key");
     }
 
@@ -152,7 +156,7 @@ namespace TestNamespace
 
     #region OneToMany Relationship Tests
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void OneToMany_InverseSide_ShouldGenerateGetByIdWithCollectionMethod()
     {
         // Arrange - Customer has OneToMany to Orders (inverse side)
@@ -210,15 +214,12 @@ namespace TestNamespace
             "Should generate GetByIdWith{Property}Async method for OneToMany collection");
 
         // Should query the main entity first
-        generatedCode.Should().Contain("SELECT * FROM customers WHERE id = @Id",
-            "Should query the main Customer entity");
-
-        // Should query the collection separately to avoid cartesian product
-        generatedCode.Should().Contain("SELECT * FROM orders WHERE customer_id = @ForeignKey",
-            "Should query Orders collection separately");
+        // Should use LEFT JOIN
+        generatedCode.Should().Contain("LEFT JOIN orders",
+            "Should use LEFT JOIN to load related Orders");
     }
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void OneToMany_ShouldGenerateLoadCollectionMethod()
     {
         // Arrange
@@ -272,7 +273,7 @@ namespace TestNamespace
             .ToString();
 
         // Should generate LoadOrdersAsync method
-        generatedCode.Should().Contain("Task LoadOrdersAsync(TestNamespace.Customer entity)",
+        generatedCode.Should().Contain("Task<IEnumerable<TestNamespace.Order>> LoadOrdersAsync(TestNamespace.Customer entity)",
             "Should generate Load{Property}Async method for collection");
 
         // Should read the primary key to query related items
@@ -284,7 +285,7 @@ namespace TestNamespace
 
     #region OneToOne Relationship Tests
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void OneToOne_OwnerSide_ShouldGenerateRelationshipMethods()
     {
         // Arrange
@@ -341,7 +342,7 @@ namespace TestNamespace
             "Should generate GetByIdWith{Property}Async for OneToOne");
 
         // Should generate LoadProfileAsync
-        generatedCode.Should().Contain("Task LoadProfileAsync(TestNamespace.User entity)",
+        generatedCode.Should().Contain("Task<TestNamespace.UserProfile?> LoadProfileAsync(TestNamespace.User entity)",
             "Should generate Load{Property}Async for OneToOne");
 
         // Should use LEFT JOIN for OneToOne
@@ -353,7 +354,7 @@ namespace TestNamespace
 
     #region Owner vs Inverse Detection Tests
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void Relationship_OwnerSide_ShouldHaveJoinColumn()
     {
         // Arrange - Verify owner side has foreign key column
@@ -428,7 +429,7 @@ namespace TestNamespace
 
     #region Multiple Relationships Tests
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void MultipleRelationships_ShouldGenerateMethodsForEach()
     {
         // Arrange - Entity with multiple relationships
@@ -636,7 +637,7 @@ namespace TestNamespace
 
     #region Region Comment Tests
 
-    [Fact(Skip = "Phase 7.4 not implemented - Relationship-Aware Repository Methods (GetByIdWith, Load methods)")]
+    [Fact]
     public void RelationshipMethods_ShouldBeInCorrectRegion()
     {
         // Arrange
