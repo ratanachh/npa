@@ -165,7 +165,8 @@ public class EntityManagerTests : IAsyncLifetime
 
         // Assert
         user.Id.Should().BeGreaterThan(0); // Real database will assign an ID
-        _entityManager.ChangeTracker.GetState(user).Should().Be(EntityState.Added);
+        // After immediate persistence (no transaction), entity should be Unchanged (in sync with DB)
+        _entityManager.ChangeTracker.GetState(user).Should().Be(EntityState.Unchanged);
         
         // Verify the entity was actually persisted by finding it
         var foundUser = await _entityManager.FindAsync<User>(user.Id);

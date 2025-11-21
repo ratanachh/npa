@@ -2554,15 +2554,28 @@ public class RepositoryGenerator : IIncrementalGenerator
 
     private static void GenerateLazyLoadSingleSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string relatedTypeName)
     {
-        var fkColumnName = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
-        var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
-
         // Get actual table name from metadata
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        var entityName = info.EntityType.Split('.').Last();
 
         sb.AppendLine($"            // Lazy load {relationship.PropertyName}");
-        sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE Id = @Id\";");
-        sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{fkPropertyName} }});");
+
+        if (relationship.Type == Models.RelationshipType.OneToOne && !string.IsNullOrEmpty(relationship.MappedBy))
+        {
+            // Owner side of OneToOne with MappedBy - query by owner's ID on inverse side's FK
+            var inverseFkColumn = relationship.JoinColumn?.Name ?? $"{entityName}Id";
+            sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {inverseFkColumn} = @Id\";");
+            sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.Id }});");
+        }
+        else
+        {
+            // ManyToOne or inverse side of OneToOne - query by FK on current entity
+            var fkColumnName = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
+            var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
+            sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE Id = @Id\";");
+            sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{fkPropertyName} }});");
+        }
+
         sb.AppendLine("            return result.FirstOrDefault();");
     }
 
@@ -3237,8 +3250,19 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"    public interface {partialInterfaceName}");
         sb.AppendLine("    {");
 
+        var entityName = info.EntityType.Split('.').Last();
+
         foreach (var relationship in info.Relationships)
         {
+            // Generate GetByIdWith{Property}Async signature
+            GenerateGetByIdWithPropertySignature(sb, info, relationship, entityName);
+
+            // Generate Load{Property}Async signature for lazy loading
+            if (relationship.FetchType == 1) // Lazy
+            {
+                GenerateLoadPropertySignature(sb, info, relationship, entityName);
+            }
+
             // Generate FindBy method signatures for ManyToOne relationships
             if (relationship.Type == Models.RelationshipType.ManyToOne)
             {
@@ -3258,6 +3282,43 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("}");
 
         return sb.ToString();
+    }
+
+    private static void GenerateGetByIdWithPropertySignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName)
+    {
+        var propertyName = relationship.PropertyName;
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets a {entityName} by its ID with {propertyName} loaded asynchronously.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"id\">The {entityName} identifier.</param>");
+        sb.AppendLine($"        /// <returns>The {entityName} with {propertyName} loaded if found; otherwise, null.</returns>");
+        sb.AppendLine($"        Task<{info.EntityType}?> GetByIdWith{propertyName}Async({info.KeyType} id);");
+        sb.AppendLine();
+    }
+
+    private static void GenerateLoadPropertySignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName)
+    {
+        var propertyName = relationship.PropertyName;
+        var relatedTypeName = relationship.TargetEntityType;
+        var relatedTypeFullName = relationship.TargetEntityFullType;
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Loads {propertyName} for an existing {entityName} entity asynchronously.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"entity\">The {entityName} entity.</param>");
+
+        if (relationship.IsCollection)
+        {
+            sb.AppendLine($"        /// <returns>A collection of {relatedTypeName} entities.</returns>");
+            sb.AppendLine($"        Task<IEnumerable<{relatedTypeFullName}>> Load{propertyName}Async({info.EntityType} entity);");
+        }
+        else
+        {
+            sb.AppendLine($"        /// <returns>The loaded {relatedTypeName} entity if found; otherwise, null.</returns>");
+            var returnType = relatedTypeFullName.TrimEnd('?');
+            sb.AppendLine($"        Task<{returnType}?> Load{propertyName}Async({info.EntityType} entity);");
+        }
+        sb.AppendLine();
     }
 
     private static void GenerateFindByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
