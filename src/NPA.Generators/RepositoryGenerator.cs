@@ -2453,7 +2453,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine();
 
             // Generate Load{Property}Async for lazy loading
-            if (relationship.FetchType == 1) // Lazy
+            if (relationship.FetchType == Models.FetchType.Lazy)
             {
                 sb.AppendLine("        /// <summary>");
                 sb.AppendLine($"        /// Loads {propertyName} for an existing {entityName} entity asynchronously.");
@@ -2872,21 +2872,21 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
 
         // Check for Persist cascades - affects AddAsync
-        var persistCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & 1) != 0).ToList(); // Persist = 1
+        var persistCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Persist) != 0).ToList();
         if (persistCascades.Any())
         {
             sb.AppendLine(GenerateCascadeAddMethod(info, persistCascades));
         }
 
         // Check for Merge cascades - affects UpdateAsync
-        var mergeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & 2) != 0).ToList(); // Merge = 2
+        var mergeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Merge) != 0).ToList();
         if (mergeCascades.Any())
         {
             sb.AppendLine(GenerateCascadeUpdateMethod(info, mergeCascades));
         }
 
         // Check for Remove cascades - affects DeleteAsync
-        var removeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & 4) != 0).ToList(); // Remove = 4
+        var removeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Remove) != 0).ToList();
         if (removeCascades.Any())
         {
             sb.AppendLine(GenerateCascadeDeleteMethod(info, removeCascades));
@@ -3258,7 +3258,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             GenerateGetByIdWithPropertySignature(sb, info, relationship, entityName);
 
             // Generate Load{Property}Async signature for lazy loading
-            if (relationship.FetchType == 1) // Lazy
+            if (relationship.FetchType == Models.FetchType.Lazy)
             {
                 GenerateLoadPropertySignature(sb, info, relationship, entityName);
             }
@@ -3276,6 +3276,25 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GenerateHasChildrenSignature(sb, info, relationship);
                 GenerateCountChildrenSignature(sb, info, relationship);
             }
+        }
+
+        // Generate cascade operation method signatures if applicable
+        var persistCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Persist) != 0).ToList();
+        if (persistCascades.Any())
+        {
+            GenerateAddWithCascadeSignature(sb, info, persistCascades, entityName);
+        }
+
+        var mergeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Merge) != 0).ToList();
+        if (mergeCascades.Any())
+        {
+            GenerateUpdateWithCascadeSignature(sb, info, mergeCascades, entityName);
+        }
+
+        var removeCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Remove) != 0).ToList();
+        if (removeCascades.Any())
+        {
+            GenerateDeleteWithCascadeSignature(sb, info, removeCascades, entityName);
         }
 
         sb.AppendLine("    }");
@@ -3361,6 +3380,39 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
+    private static void GenerateAddWithCascadeSignature(StringBuilder sb, RepositoryInfo info, List<Models.RelationshipMetadata> cascades, string entityName)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Adds a {entityName} with cascade persist support.");
+        sb.AppendLine($"        /// Automatically persists related entities marked with CascadeType.Persist.");
+        sb.AppendLine($"        /// Cascades: {string.Join(", ", cascades.Select(c => c.PropertyName))}");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<{info.EntityType}> AddWithCascadeAsync({info.EntityType} entity);");
+        sb.AppendLine();
+    }
+
+    private static void GenerateUpdateWithCascadeSignature(StringBuilder sb, RepositoryInfo info, List<Models.RelationshipMetadata> cascades, string entityName)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Updates a {entityName} with cascade merge support.");
+        sb.AppendLine($"        /// Automatically updates related entities marked with CascadeType.Merge.");
+        sb.AppendLine($"        /// Cascades: {string.Join(", ", cascades.Select(c => c.PropertyName))}");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task UpdateWithCascadeAsync({info.EntityType} entity);");
+        sb.AppendLine();
+    }
+
+    private static void GenerateDeleteWithCascadeSignature(StringBuilder sb, RepositoryInfo info, List<Models.RelationshipMetadata> cascades, string entityName)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Deletes a {entityName} with cascade remove support.");
+        sb.AppendLine($"        /// Automatically deletes related entities marked with CascadeType.Remove.");
+        sb.AppendLine($"        /// Cascades: {string.Join(", ", cascades.Select(c => c.PropertyName))}");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task DeleteWithCascadeAsync({info.KeyType} id);");
+        sb.AppendLine();
+    }
+
     private static string ToPascalCase(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
@@ -3428,8 +3480,8 @@ internal class RepositoryInfo
     public bool HasRelationships => Relationships != null && Relationships.Count > 0;
 
     // Eager loading support
-    public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == 0 && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
-    public List<Models.RelationshipMetadata> EagerRelationships => Relationships?.Where(r => r.FetchType == 0 && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy))).ToList() ?? new();
+    public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == Models.FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
+    public List<Models.RelationshipMetadata> EagerRelationships => Relationships?.Where(r => r.FetchType == Models.FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy))).ToList() ?? new();
 
     // Cascade operations
     public bool HasCascadeRelationships => Relationships != null && Relationships.Any(r => r.CascadeTypes != 0);

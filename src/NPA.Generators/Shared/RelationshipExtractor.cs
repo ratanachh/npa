@@ -107,7 +107,7 @@ public static class RelationshipExtractor
         return null;
     }
 
-    private static int ExtractCascadeTypesFromAttributes(IPropertySymbol propertySymbol)
+    private static Models.CascadeType ExtractCascadeTypesFromAttributes(IPropertySymbol propertySymbol)
     {
         var attr = propertySymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name.Contains("ToOne") == true ||
@@ -117,12 +117,12 @@ public static class RelationshipExtractor
         {
             var cascadeArg = attr.NamedArguments.FirstOrDefault(arg => arg.Key == "Cascade");
             if (cascadeArg.Value.Value is int cascadeValue)
-                return cascadeValue;
+                return (Models.CascadeType)cascadeValue;
         }
-        return 0; // CascadeType.None
+        return Models.CascadeType.None;
     }
 
-    private static int ExtractFetchTypeFromAttributes(IPropertySymbol propertySymbol)
+    private static Models.FetchType ExtractFetchTypeFromAttributes(IPropertySymbol propertySymbol)
     {
         var attr = propertySymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name.Contains("ToOne") == true ||
@@ -132,9 +132,9 @@ public static class RelationshipExtractor
         {
             var fetchArg = attr.NamedArguments.FirstOrDefault(arg => arg.Key == "Fetch");
             if (fetchArg.Value.Value is int fetchValue)
-                return fetchValue;
+                return (Models.FetchType)fetchValue;
         }
-        return 1; // FetchType.Lazy (default)
+        return Models.FetchType.Lazy;
     }
 
     private static bool HasOrphanRemovalFromAttributes(IPropertySymbol propertySymbol)

@@ -22,6 +22,48 @@ public enum RelationshipType
 }
 
 /// <summary>
+/// Defines the cascade operations that should be applied to related entities.
+/// Mirrors NPA.Core.Annotations.CascadeType for source generation compatibility.
+/// </summary>
+[Flags]
+public enum CascadeType
+{
+    /// <summary>No cascade operations.</summary>
+    None = 0,
+    
+    /// <summary>Cascade persist (save) operations.</summary>
+    Persist = 1 << 0,
+    
+    /// <summary>Cascade merge (update) operations.</summary>
+    Merge = 1 << 1,
+    
+    /// <summary>Cascade remove (delete) operations.</summary>
+    Remove = 1 << 2,
+    
+    /// <summary>Cascade refresh operations.</summary>
+    Refresh = 1 << 3,
+    
+    /// <summary>Cascade detach operations.</summary>
+    Detach = 1 << 4,
+    
+    /// <summary>Cascade all operations.</summary>
+    All = Persist | Merge | Remove | Refresh | Detach
+}
+
+/// <summary>
+/// Defines the loading strategy for relationship data.
+/// Mirrors NPA.Core.Annotations.FetchType for source generation compatibility.
+/// </summary>
+public enum FetchType
+{
+    /// <summary>Load the relationship eagerly (immediately with the owning entity).</summary>
+    Eager = 0,
+    
+    /// <summary>Load the relationship lazily (on-demand when accessed).</summary>
+    Lazy = 1
+}
+
+/// <summary>
 /// Lightweight relationship metadata for source generation.
 /// Mirrors NPA.Core.Metadata.RelationshipMetadata but optimized for code generation.
 /// </summary>
@@ -45,11 +87,11 @@ public class RelationshipMetadata
     /// <summary>MappedBy property for bidirectional relationships</summary>
     public string? MappedBy { get; set; }
     
-    /// <summary>Cascade types as bit flags (matches NPA.Core.Annotations.CascadeType)</summary>
-    public int CascadeTypes { get; set; }
+    /// <summary>Cascade types (matches NPA.Core.Annotations.CascadeType)</summary>
+    public CascadeType CascadeTypes { get; set; }
     
-    /// <summary>Fetch type (0=Eager, 1=Lazy, matches NPA.Core.Annotations.FetchType)</summary>
-    public int FetchType { get; set; } = 1; // Lazy by default
+    /// <summary>Fetch type (matches NPA.Core.Annotations.FetchType)</summary>
+    public FetchType FetchType { get; set; } = FetchType.Lazy;
     
     /// <summary>Whether to remove orphaned entities</summary>
     public bool OrphanRemoval { get; set; }
@@ -71,19 +113,19 @@ public class RelationshipMetadata
     
     // Helper properties
     /// <summary>True if fetch type is Eager</summary>
-    public bool IsEager => FetchType == 0;
+    public bool IsEager => FetchType == FetchType.Eager;
     
     /// <summary>True if cascade persist is enabled</summary>
-    public bool HasCascadePersist => (CascadeTypes & (1 << 0)) != 0;
+    public bool HasCascadePersist => (CascadeTypes & CascadeType.Persist) != 0;
     
     /// <summary>True if cascade merge is enabled</summary>
-    public bool HasCascadeMerge => (CascadeTypes & (1 << 1)) != 0;
+    public bool HasCascadeMerge => (CascadeTypes & CascadeType.Merge) != 0;
     
     /// <summary>True if cascade remove is enabled</summary>
-    public bool HasCascadeRemove => (CascadeTypes & (1 << 2)) != 0;
+    public bool HasCascadeRemove => (CascadeTypes & CascadeType.Remove) != 0;
     
     /// <summary>True if cascade refresh is enabled</summary>
-    public bool HasCascadeRefresh => (CascadeTypes & (1 << 3)) != 0;
+    public bool HasCascadeRefresh => (CascadeTypes & CascadeType.Refresh) != 0;
 }
 
 /// <summary>
