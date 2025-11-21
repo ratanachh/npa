@@ -62,7 +62,7 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
 
         // Extract all relationships
         var relationships = MetadataExtractor.ExtractRelationships(classSymbol);
-        
+
         // Find bidirectional relationships (those with mappedBy or those that are referenced by mappedBy)
         var bidirectionalRelationships = new List<BidirectionalRelationship>();
 
@@ -151,6 +151,9 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
             }
         }
 
+        // Generate validation methods for all bidirectional relationships
+        GenerateValidationMethods(sb, entity);
+
         sb.AppendLine("}");
 
         return sb.ToString();
@@ -160,7 +163,7 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
     {
         var fkProperty = $"{rel.PropertyName}Id";
         var hasFk = entity.ForeignKeyProperties.ContainsKey(fkProperty);
-        
+
         // Use fully qualified names for parameters
         var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
         var targetFullName = rel.TargetEntity; // Already fully qualified from extraction
@@ -179,12 +182,12 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
         sb.AppendLine("        // Remove from old parent's collection");
         sb.AppendLine("        if (oldValue != null)");
         sb.AppendLine("        {");
-        
+
         // Find the inverse property name
         // For ManyToOne, the inverse is typically a collection (OneToMany)
         // We need to infer the collection property name
         var inverseCollectionName = $"{entity.EntityName}s"; // Pluralize entity name
-        
+
         sb.AppendLine($"            // Assuming inverse collection is named {inverseCollectionName}");
         sb.AppendLine($"            var inverseCollection = oldValue.GetType().GetProperty(\"{inverseCollectionName}\")?.GetValue(oldValue) as System.Collections.IList;");
         sb.AppendLine("            inverseCollection?.Remove(entity);");
@@ -192,12 +195,12 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("        // Set new value");
         sb.AppendLine($"        entity.{rel.PropertyName} = value;");
-        
+
         if (hasFk)
         {
             sb.AppendLine($"        entity.{fkProperty} = value?.Id ?? 0;");
         }
-        
+
         sb.AppendLine();
         sb.AppendLine("        // Add to new parent's collection");
         sb.AppendLine("        if (value != null)");
@@ -215,7 +218,7 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
     {
         var targetEntityName = rel.TargetEntity.Split('.').Last();
         var mappedByProperty = rel.MappedBy ?? entity.EntityName;
-        
+
         // Use fully qualified names for parameters
         var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
         var targetFullName = rel.TargetEntity;
@@ -261,7 +264,7 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
     {
         var targetEntityName = rel.TargetEntity.Split('.').Last();
         var mappedByProperty = rel.MappedBy ?? entity.EntityName;
-        
+
         // Use fully qualified names for parameters
         var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
         var targetFullName = rel.TargetEntity;
@@ -298,6 +301,56 @@ public class BidirectionalRelationshipGenerator : IIncrementalGenerator
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
+    }
+
+    private static void GenerateValidationMethods(StringBuilder sb, EntityRelationshipInfo entity)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    #region Validation Methods");
+        sb.AppendLine();
+
+        // Use fully qualified names
+        var entityFullName = $"{entity.Namespace}.{entity.EntityName}";
+
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine($"    /// Validates that all bidirectional relationships on {entity.EntityName} are consistent.");
+        sb.AppendLine("    /// Throws InvalidOperationException if inconsistencies are detected.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    public static void ValidateRelationshipConsistency({entityFullName} entity)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (entity == null) throw new System.ArgumentNullException(nameof(entity));");
+        sb.AppendLine();
+
+        foreach (var rel in entity.BidirectionalRelationships)
+        {
+            if (rel.IsOwnerSide)
+            {
+                var fkProperty = $"{rel.PropertyName}Id";
+                if (entity.ForeignKeyProperties.ContainsKey(fkProperty))
+                {
+                    sb.AppendLine($"        // Validate {rel.PropertyName} consistency");
+                    sb.AppendLine($"        if (entity.{rel.PropertyName} != null)");
+                    sb.AppendLine("        {");
+                    sb.AppendLine($"            var expectedFk = entity.{rel.PropertyName}.Id;");
+                    sb.AppendLine($"            if (entity.{fkProperty} != expectedFk)");
+                    sb.AppendLine("            {");
+                    sb.AppendLine($"                throw new System.InvalidOperationException(");
+                    sb.AppendLine($"                    $\"Bidirectional relationship inconsistency: {rel.PropertyName}Id ({{entity.{fkProperty}}}) does not match {rel.PropertyName}.Id ({{expectedFk}})\");");
+                    sb.AppendLine("            }");
+                    sb.AppendLine("        }");
+                    sb.AppendLine($"        else if (entity.{fkProperty} != 0)");
+                    sb.AppendLine("        {");
+                    sb.AppendLine($"            throw new System.InvalidOperationException(");
+                    sb.AppendLine($"                $\"Bidirectional relationship inconsistency: {rel.PropertyName}Id is {{entity.{fkProperty}}} but {rel.PropertyName} is null\");");
+                    sb.AppendLine("        }");
+                    sb.AppendLine();
+                }
+            }
+        }
+
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    #endregion");
     }
 }
 

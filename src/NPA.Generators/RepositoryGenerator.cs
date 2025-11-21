@@ -104,11 +104,11 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         // Extract entity metadata (table name and column mappings)
         var entityMetadata = ExtractEntityMetadata(semanticModel.Compilation, entityType);
-        
+
         // Build dictionary of all entity metadata (main + related entities)
         var entitiesMetadata = BuildEntityMetadataDictionary(semanticModel.Compilation, entityMetadata);
 
-        // Phase 7.1: Extract relationship metadata
+        // Extract relationship metadata
         var relationships = ExtractRelationships(semanticModel.Compilation, entityType);
 
         return new RepositoryInfo
@@ -132,7 +132,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static (bool hasCompositeKey, List<string> keyProperties) DetectCompositeKey(Compilation compilation, string entityTypeName)
     {
         var keyProperties = new List<string>();
-        
+
         // Find the entity type symbol
         var entityType = compilation.GetTypeByMetadataName(entityTypeName);
         if (entityType == null)
@@ -164,7 +164,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static List<ManyToManyRelationshipInfo> DetectManyToManyRelationships(Compilation compilation, string entityTypeName)
     {
         var relationships = new List<ManyToManyRelationshipInfo>();
-        
+
         // Find the entity type symbol
         var entityType = compilation.GetTypeByMetadataName(entityTypeName);
         if (entityType == null)
@@ -188,7 +188,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             var manyToManyAttr = property.GetAttributes()
                 .FirstOrDefault(a => a.AttributeClass?.Name == "ManyToManyAttribute");
-            
+
             var joinTableAttr = property.GetAttributes()
                 .FirstOrDefault(a => a.AttributeClass?.Name == "JoinTableAttribute");
 
@@ -319,7 +319,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         // Check constructor arguments as well (for tenantIdProperty)
-        if (multiTenantAttr.ConstructorArguments.Length > 0 && 
+        if (multiTenantAttr.ConstructorArguments.Length > 0 &&
             multiTenantAttr.ConstructorArguments[0].Value is string constructorProp)
         {
             tenantIdProperty = constructorProp;
@@ -357,17 +357,17 @@ public class RepositoryGenerator : IIncrementalGenerator
     /// Builds a dictionary of entity metadata including the main entity and all related entities
     /// </summary>
     private static Dictionary<string, EntityMetadataInfo> BuildEntityMetadataDictionary(
-        Compilation compilation, 
+        Compilation compilation,
         EntityMetadataInfo? mainEntityMetadata)
     {
         var dictionary = new Dictionary<string, EntityMetadataInfo>();
-        
+
         if (mainEntityMetadata == null)
             return dictionary;
-        
+
         // Add the main entity
         dictionary[mainEntityMetadata.Name] = mainEntityMetadata;
-        
+
         // Add related entities from relationships
         foreach (var relationship in mainEntityMetadata.Relationships)
         {
@@ -380,7 +380,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 }
             }
         }
-        
+
         return dictionary;
     }
 
@@ -417,7 +417,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             var attrName = attr.AttributeClass?.Name;
             var attrFullName = attr.AttributeClass?.ToDisplayString();
-            
+
             if (attrName == "QueryAttribute")
             {
                 info.HasQuery = true;
@@ -441,7 +441,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                     }
                 }
-                
+
                 info.CommandTimeout = GetNamedArgument<int?>(attr, "CommandTimeout");
                 var buffered = GetNamedArgument<bool?>(attr, "Buffered");
                 info.Buffered = buffered ?? true;
@@ -480,7 +480,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                         }
                     }
                 }
-                
+
                 info.CommandTimeout = GetNamedArgument<int?>(attr, "CommandTimeout");
                 info.Schema = GetNamedArgument<string>(attr, "Schema");
             }
@@ -627,7 +627,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 }
                 info.AuditIncludeOldValue = GetNamedArgument<bool?>(attr, "IncludeOldValue") ?? false;
                 info.AuditIncludeNewValue = GetNamedArgument<bool?>(attr, "IncludeNewValue") ?? true;
-                
+
                 // Handle AuditSeverity enum
                 var severityValue = GetNamedArgument<int?>(attr, "Severity");
                 if (severityValue.HasValue)
@@ -645,7 +645,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 {
                     info.AuditSeverity = "Normal";
                 }
-                
+
                 info.AuditIncludeParameters = GetNamedArgument<bool?>(attr, "IncludeParameters") ?? true;
                 info.AuditCaptureUser = GetNamedArgument<bool?>(attr, "CaptureUser") ?? true;
                 info.AuditDescription = GetNamedArgument<string>(attr, "Description");
@@ -675,6 +675,13 @@ public class RepositoryGenerator : IIncrementalGenerator
             repositoryName = repositoryName.Substring(1);
         }
         context.AddSource($"{repositoryName}Implementation.g.cs", SourceText.From(code, Encoding.UTF8));
+
+        // Generate partial interface for relationship query methods (Phase 7.6)
+        if (info.Relationships.Count > 0)
+        {
+            var interfaceCode = GeneratePartialInterface(info);
+            context.AddSource($"{repositoryName}Extensions.g.cs", SourceText.From(interfaceCode, Encoding.UTF8));
+        }
     }
 
     private static void GenerateServiceCollectionExtension(SourceProductionContext context, ImmutableArray<RepositoryInfo> repositories)
@@ -684,7 +691,7 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         // Group repositories by namespace to organize the output
         var firstNamespace = repositories.FirstOrDefault()?.Namespace ?? "NPA.Generated";
-        
+
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated />");
         sb.AppendLine("// This code was generated by NPA.Generators.RepositoryGenerator");
@@ -694,14 +701,14 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("using NPA.Core.Core;");
         sb.AppendLine("using NPA.Core.Repositories;");
         sb.AppendLine();
-        
+
         // Add namespaces from all repositories
         var namespaces = repositories.Select(r => r.Namespace).Distinct().OrderBy(n => n);
         foreach (var ns in namespaces)
         {
             sb.AppendLine($"using {ns};");
         }
-        
+
         sb.AppendLine();
         sb.AppendLine("namespace Microsoft.Extensions.DependencyInjection;");
         sb.AppendLine();
@@ -717,24 +724,24 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("    /// <returns>The service collection for chaining.</returns>");
         sb.AppendLine("    public static IServiceCollection AddNPA(this IServiceCollection services)");
         sb.AppendLine("    {");
-        
+
         // Register EntityManager and BaseRepository
         sb.AppendLine("        // Register core NPA services");
         sb.AppendLine("        services.AddScoped<IEntityManager, EntityManager>();");
         sb.AppendLine();
         sb.AppendLine("        // Register all generated repositories");
-        
+
         foreach (var repo in repositories.OrderBy(r => r.InterfaceName))
         {
             var implName = GetImplementationName(repo.InterfaceName);
             sb.AppendLine($"        services.AddScoped<{repo.InterfaceName}, {implName}>();");
         }
-        
+
         sb.AppendLine();
         sb.AppendLine("        return services;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        
+
         context.AddSource("NPAServiceCollectionExtensions.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
     }
 
@@ -755,20 +762,20 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("using NPA.Core.Core;");
         sb.AppendLine("using NPA.Core.Repositories;");
         sb.AppendLine("using NPA.Core.Metadata;");
-        
+
         // Add multi-tenancy using if needed
         if (info.MultiTenantInfo?.IsMultiTenant == true)
         {
             sb.AppendLine("using NPA.Core.MultiTenancy;");
         }
-        
+
         sb.AppendLine();
 
         sb.AppendLine($"namespace {info.Namespace}");
         sb.AppendLine("{");
         sb.AppendLine($"    /// <summary>");
         sb.AppendLine($"    /// Generated implementation of {info.InterfaceName}.");
-        
+
         // Add multi-tenant documentation if applicable
         if (info.MultiTenantInfo?.IsMultiTenant == true)
         {
@@ -783,16 +790,25 @@ public class RepositoryGenerator : IIncrementalGenerator
                 sb.AppendLine($"    /// Cross-tenant queries: Not allowed");
             }
         }
-        
+
         sb.AppendLine($"    /// </summary>");
-        sb.AppendLine($"    public class {GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {info.FullInterfaceName}");
+
+        // Build the interface list - add Partial interface if relationships exist
+        var interfaces = info.FullInterfaceName;
+        if (info.Relationships.Count > 0)
+        {
+            var partialInterfaceName = info.InterfaceName + "Partial";
+            interfaces = $"{info.FullInterfaceName}, {partialInterfaceName}";
+        }
+
+        sb.AppendLine($"    public class {GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {interfaces}");
         sb.AppendLine("    {");
-        
+
         // Generate constructor
         sb.AppendLine($"        /// <summary>");
         sb.AppendLine($"        /// Initializes a new instance of the {GetImplementationName(info.InterfaceName)} class.");
         sb.AppendLine($"        /// </summary>");
-        
+
         if (info.MultiTenantInfo?.IsMultiTenant == true)
         {
             // Constructor with ITenantProvider
@@ -805,7 +821,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine("        public " + GetImplementationName(info.InterfaceName) + "(IDbConnection connection, IEntityManager entityManager, IMetadataProvider metadataProvider)");
             sb.AppendLine("            : base(connection, entityManager, metadataProvider)");
         }
-        
+
         sb.AppendLine("        {");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -847,6 +863,12 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine(GenerateCascadeOperationOverrides(info));
         }
 
+        // Generate relationship query methods (Phase 7.6)
+        if (info.Relationships.Count > 0)
+        {
+            sb.AppendLine(GenerateRelationshipQueryMethods(info));
+        }
+
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
@@ -860,7 +882,7 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         sb.AppendLine("        #region Composite Key Methods");
         sb.AppendLine();
-        
+
         // GetByIdAsync(CompositeKey)
         sb.AppendLine("        /// <summary>");
         sb.AppendLine("        /// Gets an entity by its composite key asynchronously.");
@@ -873,7 +895,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            return await _entityManager.FindAsync<{entityType}>(key);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        
+
         // DeleteAsync(CompositeKey)
         sb.AppendLine("        /// <summary>");
         sb.AppendLine("        /// Deletes an entity by its composite key asynchronously.");
@@ -885,7 +907,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            await _entityManager.RemoveAsync<{entityType}>(key);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        
+
         // ExistsAsync(CompositeKey)
         sb.AppendLine("        /// <summary>");
         sb.AppendLine("        /// Checks if an entity exists by its composite key asynchronously.");
@@ -899,11 +921,11 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("            return entity != null;");
         sb.AppendLine("        }");
         sb.AppendLine();
-        
+
         // FindByCompositeKey (individual parameters)
         var keyParams = string.Join(", ", info.CompositeKeyProperties.Select((prop, i) => $"object {ToCamelCase(prop)}"));
         var keySetters = string.Join("\n            ", info.CompositeKeyProperties.Select(prop => $"key.SetValue(\"{prop}\", {ToCamelCase(prop)});"));
-        
+
         sb.AppendLine("        /// <summary>");
         sb.AppendLine("        /// Finds an entity by its composite key components asynchronously.");
         sb.AppendLine("        /// </summary>");
@@ -921,7 +943,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
 
         sb.AppendLine("        #endregion");
-        
+
         return sb.ToString();
     }
 
@@ -935,8 +957,8 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             var entityName = info.EntityType.Split('.').Last();
             var relatedName = relationship.CollectionElementType.Split('.').Last();
-            var joinTable = string.IsNullOrEmpty(relationship.JoinTableSchema) 
-                ? relationship.JoinTableName 
+            var joinTable = string.IsNullOrEmpty(relationship.JoinTableSchema)
+                ? relationship.JoinTableName
                 : $"{relationship.JoinTableSchema}.{relationship.JoinTableName}";
 
             // Determine key columns with defaults if not specified
@@ -1020,7 +1042,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("        #endregion");
-        
+
         return sb.ToString();
     }
 
@@ -1028,7 +1050,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         if (string.IsNullOrEmpty(pascalCase) || char.IsLower(pascalCase[0]))
             return pascalCase;
-        
+
         return char.ToLower(pascalCase[0]) + pascalCase.Substring(1);
     }
 
@@ -1037,7 +1059,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         // IUserRepository -> UserRepositoryImplementation
         if (interfaceName.StartsWith("I") && interfaceName.Length > 1 && char.IsUpper(interfaceName[1]))
             return interfaceName.Substring(1) + "Implementation";
-        
+
         return interfaceName + "Implementation";
     }
 
@@ -1052,7 +1074,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"));
         var isAsync = method.ReturnType.StartsWith("System.Threading.Tasks.Task");
         var asyncModifier = isAsync ? "async " : "";
-        
+
         sb.AppendLine($"        public {asyncModifier}{method.ReturnType} {method.Name}({parameters})");
         sb.AppendLine("        {");
 
@@ -1128,10 +1150,10 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         var methodName = method.Name;
         var entityName = info.EntityType;
-        
+
         // Extract simple entity name without namespace
-        var simpleEntityName = entityName.Contains(".") 
-            ? entityName.Substring(entityName.LastIndexOf('.') + 1) 
+        var simpleEntityName = entityName.Contains(".")
+            ? entityName.Substring(entityName.LastIndexOf('.') + 1)
             : entityName;
 
         // Try different naming conventions:
@@ -1152,14 +1174,14 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (methodName.EndsWith("Async"))
         {
             var nameWithoutAsync = methodName.Substring(0, methodName.Length - 5);
-            
+
             // EntityName.MethodNameWithoutAsync
             var fullNameWithoutAsync = $"{simpleEntityName}.{nameWithoutAsync}";
             if (entityMetadata.NamedQueries.Any(nq => nq.Name == fullNameWithoutAsync))
             {
                 return fullNameWithoutAsync;
             }
-            
+
             // Just MethodNameWithoutAsync
             if (entityMetadata.NamedQueries.Any(nq => nq.Name == nameWithoutAsync))
             {
@@ -1195,19 +1217,19 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             // Multi-mapping query using Dapper
             var innerType = GetInnerType(method.ReturnType);
-            var isCollection = method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("List") || 
+            var isCollection = method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("List") ||
                              method.ReturnType.Contains("ICollection") || method.ReturnType.Contains("[]");
-            
+
             sb.AppendLine($"            var sql = @\"{sql}\";");
             sb.AppendLine($"            var splitOn = \"{attrs.SplitOn ?? "Id"}\";");
             sb.AppendLine();
-            
+
             if (isCollection)
             {
                 // Collection result with multi-mapping
                 sb.AppendLine($"            var lookup = new Dictionary<object, {innerType}>();");
                 sb.AppendLine();
-                
+
                 if (isAsync)
                 {
                     sb.AppendLine($"            await _connection.QueryAsync<{innerType}, dynamic, {innerType}>(");
@@ -1224,7 +1246,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                     sb.AppendLine($"                {paramObj},");
                     sb.AppendLine($"                splitOn: splitOn);");
                     sb.AppendLine();
-                    
+
                     var conversion = GetCollectionConversion(method.ReturnType);
                     if (!string.IsNullOrEmpty(conversion))
                     {
@@ -1251,7 +1273,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                     sb.AppendLine($"                {paramObj},");
                     sb.AppendLine($"                splitOn: splitOn);");
                     sb.AppendLine();
-                    
+
                     var conversion = GetCollectionConversion(method.ReturnType);
                     if (!string.IsNullOrEmpty(conversion))
                     {
@@ -1294,15 +1316,15 @@ public class RepositoryGenerator : IIncrementalGenerator
                 }
             }
         }
-        else if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
-                 method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
+        else if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") ||
+                 method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") ||
                  method.ReturnType.Contains("HashSet") || method.ReturnType.Contains("ISet") ||
                  method.ReturnType.Contains("IReadOnly"))
         {
             // Returns collection
             sb.AppendLine($"            var sql = @\"{sql}\";");
             var conversion = GetCollectionConversion(method.ReturnType);
-            
+
             if (isAsync)
             {
                 if (!string.IsNullOrEmpty(conversion))
@@ -1333,11 +1355,11 @@ public class RepositoryGenerator : IIncrementalGenerator
             // Returns scalar (count, affected rows, etc.)
             // Detect if it's INSERT/UPDATE/DELETE based on SQL query
             sb.AppendLine($"            var sql = @\"{sql}\";");
-            
+
             var isModification = sql.TrimStart().StartsWith("INSERT", StringComparison.OrdinalIgnoreCase) ||
                                 sql.TrimStart().StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase) ||
                                 sql.TrimStart().StartsWith("DELETE", StringComparison.OrdinalIgnoreCase);
-            
+
             if (isModification)
             {
                 // INSERT/UPDATE/DELETE - returns affected row count
@@ -1399,20 +1421,20 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Find the named query from entity metadata
         var namedQuery = info.EntityMetadata?.NamedQueries
             ?.FirstOrDefault(nq => nq.Name == namedQueryName);
-        
+
         if (namedQuery == null)
         {
             // Fallback to convention-based if named query not found
             // This shouldn't happen but provides a safety net
             return GenerateSimpleConventionBody(method, info);
         }
-        
+
         var sb = new StringBuilder();
-        
+
         // Generate comment indicating this uses a named query
         sb.AppendLine($"            // Using named query: {namedQueryName}");
         sb.AppendLine();
-        
+
         // Determine the SQL to use
         string sql;
         if (namedQuery.NativeQuery)
@@ -1427,15 +1449,15 @@ public class RepositoryGenerator : IIncrementalGenerator
                 ? CpqlToSqlConverter.ConvertToSql(namedQuery.Query, info.EntitiesMetadata)
                 : CpqlToSqlConverter.ConvertToSql(namedQuery.Query);
         }
-        
+
         // Generate parameter object
         var paramObj = GenerateParameterObject(method.Parameters);
-        
+
         // Execute query based on return type (same logic as GenerateQueryMethodBody)
         var isAsync = method.ReturnType.StartsWith("System.Threading.Tasks.Task");
-        
-        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
-            method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
+
+        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") ||
+            method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") ||
             method.ReturnType.Contains("HashSet") || method.ReturnType.Contains("ISet") ||
             method.ReturnType.Contains("IReadOnly"))
         {
@@ -1467,11 +1489,11 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             // Returns scalar (count, affected rows, etc.)
             sb.AppendLine($"            var sql = @\"{sql}\";");
-            
+
             var isModification = sql.TrimStart().StartsWith("INSERT", StringComparison.OrdinalIgnoreCase) ||
                                 sql.TrimStart().StartsWith("UPDATE", StringComparison.OrdinalIgnoreCase) ||
                                 sql.TrimStart().StartsWith("DELETE", StringComparison.OrdinalIgnoreCase);
-            
+
             if (isModification)
             {
                 // INSERT/UPDATE/DELETE - returns affected row count
@@ -1535,14 +1557,14 @@ public class RepositoryGenerator : IIncrementalGenerator
         var procName = attrs.Schema != null ? $"{attrs.Schema}.{attrs.ProcedureName}" : attrs.ProcedureName;
         var paramObj = GenerateParameterObject(method.Parameters);
 
-        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") || 
-            method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") || 
+        if (method.ReturnType.Contains("IEnumerable") || method.ReturnType.Contains("ICollection") ||
+            method.ReturnType.Contains("List") || method.ReturnType.Contains("[]") ||
             method.ReturnType.Contains("HashSet") || method.ReturnType.Contains("ISet") ||
             method.ReturnType.Contains("IReadOnly"))
         {
             // Returns collection
             var conversion = GetCollectionConversion(method.ReturnType);
-            
+
             if (isAsync)
             {
                 if (!string.IsNullOrEmpty(conversion))
@@ -1605,7 +1627,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (entityParam != null)
         {
             var collectionType = GetInnerType(entityParam.Type);
-            
+
             if (method.Name.Contains("Insert") || method.Name.Contains("Add") || method.Name.Contains("Create"))
             {
                 if (isAsync)
@@ -1687,11 +1709,11 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GenerateSelectQuery(MethodInfo method, RepositoryInfo info, string tableName, MethodConvention convention, bool isAsync)
     {
         var sb = new StringBuilder();
-        
+
         // Determine the actual return type - use method return type if different from entity
         var returnType = GetInnerType(method.ReturnType);
         var queryType = string.IsNullOrEmpty(returnType) ? info.EntityType : returnType;
-        
+
         var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters, info.EntityMetadata);
         var orderByClause = BuildOrderByClause(convention.OrderByProperties, info.EntityMetadata);
         var paramObj = GenerateParameterObject(convention.Parameters);
@@ -1701,12 +1723,12 @@ public class RepositoryGenerator : IIncrementalGenerator
         var columnList = BuildColumnList(info.EntityMetadata);
         var selectClause = convention.HasDistinct ? $"SELECT DISTINCT {columnList}" : $"SELECT {columnList}";
         var sqlBuilder = new StringBuilder($"{selectClause} FROM {tableName}");
-        
+
         if (!string.IsNullOrEmpty(whereClause))
         {
             sqlBuilder.Append($" WHERE {whereClause}");
         }
-        
+
         if (!string.IsNullOrEmpty(orderByClause))
         {
             sqlBuilder.Append($" ORDER BY {orderByClause}");
@@ -1783,7 +1805,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var sb = new StringBuilder();
         var whereClause = BuildWhereClause(convention.PropertyNames, convention.PropertySeparators, convention.Parameters, info.EntityMetadata);
         var paramObj = GenerateParameterObject(convention.Parameters);
-        
+
         // Handle DISTINCT for COUNT queries
         var countExpression = convention.HasDistinct ? "COUNT(DISTINCT *)" : "COUNT(*)";
 
@@ -1845,9 +1867,9 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (string.IsNullOrEmpty(whereClause) && convention.Parameters.Count > 0)
         {
             // Check if there's an 'id' parameter (case-insensitive)
-            var idParam = convention.Parameters.FirstOrDefault(p => 
+            var idParam = convention.Parameters.FirstOrDefault(p =>
                 p.Name.Equals("id", StringComparison.OrdinalIgnoreCase));
-            
+
             if (idParam != null)
             {
                 whereClause = $"id = @{idParam.Name}";
@@ -1920,14 +1942,14 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             var propertyMetadata = entityMetadata.Properties
                 .FirstOrDefault(p => p.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase));
-            
+
             if (propertyMetadata != null && !string.IsNullOrEmpty(propertyMetadata.ColumnName))
             {
                 // Return the column name from metadata (either from [Column] attribute or property name as-is)
                 return propertyMetadata.ColumnName;
             }
         }
-        
+
         // No metadata found: use property name as-is (preserve exact casing)
         return propertyName;
     }
@@ -1939,11 +1961,11 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         var clauses = new List<string>();
         var paramIndex = 0;
-        
+
         for (int i = 0; i < propertyNames.Count; i++)
         {
             var propExpression = propertyNames[i];
-            
+
             // Check if property has a keyword (format: "Property:Keyword")
             if (propExpression.Contains(":"))
             {
@@ -1951,7 +1973,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 var propertyName = parts[0];
                 var keyword = parts[1];
                 var columnName = GetColumnNameForProperty(propertyName, entityMetadata);
-                
+
                 switch (keyword)
                 {
                     case "GreaterThan":
@@ -2169,17 +2191,17 @@ public class RepositoryGenerator : IIncrementalGenerator
             return string.Empty;
         if (clauses.Count == 1)
             return clauses[0];
-        
+
         var result = new StringBuilder();
         result.Append(clauses[0]);
-        
+
         for (int i = 1; i < clauses.Count; i++)
         {
             // Use separator if available, otherwise default to AND
             var separator = i - 1 < separators.Count ? separators[i - 1].ToUpper() : "AND";
             result.Append($" {separator} {clauses[i]}");
         }
-        
+
         return result.ToString();
     }
 
@@ -2224,7 +2246,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         // Handle IEnumerable<T>, ICollection<T>, List<T>, HashSet<T>, ISet<T>, etc.
-        if (typeString.Contains("IEnumerable<") || typeString.Contains("ICollection<") || 
+        if (typeString.Contains("IEnumerable<") || typeString.Contains("ICollection<") ||
             typeString.Contains("IList<") || typeString.Contains("List<") ||
             typeString.Contains("HashSet<") || typeString.Contains("ISet<") ||
             typeString.Contains("IReadOnlyCollection<") || typeString.Contains("IReadOnlyList<"))
@@ -2246,26 +2268,26 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         // Determine what conversion method to use based on return type
         // Returns: empty string (no conversion), "ToList()", "ToArray()", "ToHashSet()"
-        
+
         if (returnType.Contains("[]"))
             return "ToArray()";
-        
+
         // List<T>, IList<T>, IReadOnlyList<T> all need ToList()
         if (returnType.Contains("List<") || returnType.Contains("System.Collections.Generic.List<") ||
             returnType.Contains("IList<") || returnType.Contains("System.Collections.Generic.IList<") ||
             returnType.Contains("IReadOnlyList<") || returnType.Contains("System.Collections.Generic.IReadOnlyList<"))
             return "ToList()";
-        
+
         // IReadOnlyCollection<T> also needs ToList() (can't use ToHashSet for this)
         if (returnType.Contains("IReadOnlyCollection<") || returnType.Contains("System.Collections.Generic.IReadOnlyCollection<"))
             return "ToList()";
-        
+
         if (returnType.Contains("HashSet<") || returnType.Contains("System.Collections.Generic.HashSet<"))
             return "ToHashSet()";
-        
+
         if (returnType.Contains("ISet<") || returnType.Contains("System.Collections.Generic.ISet<"))
             return "ToHashSet()";
-        
+
         // IEnumerable, ICollection - no conversion needed (QueryAsync returns IEnumerable)
         return string.Empty;
     }
@@ -2298,7 +2320,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static string GenerateSimpleConventionBody(MethodInfo method, RepositoryInfo info)
     {
         var sb = new StringBuilder();
-        
+
         // Determine the actual return type - use method return type if different from entity
         var returnType = GetInnerType(method.ReturnType);
         var queryType = string.IsNullOrEmpty(returnType) ? info.EntityType : returnType;
@@ -2331,7 +2353,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var simpleName = entityType.Split('.').Last();
         return MethodConventionAnalyzer.ToSnakeCase(simpleName) + "s";
     }
-    
+
     private static string? GetTableNameFromMetadata(RepositoryInfo info, string entityType)
     {
         // Try to find the entity in the metadata dictionary
@@ -2361,7 +2383,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static List<Models.RelationshipMetadata> ExtractRelationships(Compilation compilation, string entityTypeName)
     {
         var relationships = new List<Models.RelationshipMetadata>();
-        
+
         // Find the entity type symbol
         var entityType = compilation.GetTypeByMetadataName(entityTypeName);
         if (entityType == null)
@@ -2415,7 +2437,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"        /// <returns>The {entityName} with {propertyName} loaded if found; otherwise, null.</returns>");
             sb.AppendLine($"        public async Task<{info.EntityType}?> GetByIdWith{propertyName}Async({info.KeyType} id)");
             sb.AppendLine("        {");
-            
+
             if (relationship.IsCollection)
             {
                 GenerateOneToManyLoadSQL(sb, info, relationship, entityName, relatedTypeName);
@@ -2439,7 +2461,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 sb.AppendLine($"        /// Loads {propertyName} for an existing {entityName} entity asynchronously.");
                 sb.AppendLine("        /// </summary>");
                 sb.AppendLine($"        /// <param name=\"entity\">The {entityName} entity.</param>");
-                
+
                 if (relationship.IsCollection)
                 {
                     sb.AppendLine($"        /// <returns>A collection of {relatedTypeName} entities.</returns>");
@@ -2452,7 +2474,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                     var returnType = relatedTypeFullName.TrimEnd('?');
                     sb.AppendLine($"        public async Task<{returnType}?> Load{propertyName}Async({info.EntityType} entity)");
                 }
-                
+
                 sb.AppendLine("        {");
                 sb.AppendLine("            if (entity == null) throw new ArgumentNullException(nameof(entity));");
                 sb.AppendLine();
@@ -2478,11 +2500,11 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateManyToOneLoadSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName, string relatedTypeName)
     {
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
-        
+
         // Get actual table names from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
-        
+
         sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.Id WHERE e.Id = @Id\";");
         sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"Id\");");
         sb.AppendLine("            return result.FirstOrDefault();");
@@ -2491,11 +2513,11 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateOneToOneLoadSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName, string relatedTypeName)
     {
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
-        
+
         // Get actual table names from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
-        
+
         sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.Id WHERE e.Id = @Id\";");
         sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"Id\");");
         sb.AppendLine("            return result.FirstOrDefault();");
@@ -2504,11 +2526,11 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateOneToManyLoadSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string entityName, string relatedTypeName)
     {
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{entityName}Id";
-        
+
         // Get actual table names from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
-        
+
         sb.AppendLine($"            var entityDict = new Dictionary<{info.KeyType}, {info.EntityType}>();");
         sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.Id = r.{foreignKeyColumn} WHERE e.Id = @Id\";");
         sb.AppendLine($"            await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{");
@@ -2527,7 +2549,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         // Get actual table name from metadata
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
-        
+
         sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {relationship.JoinColumn?.Name ?? "OwnerId"} = @Id\";");
         sb.AppendLine($"            return await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.Id }});");
     }
@@ -2535,10 +2557,10 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateLazyLoadSingleSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string relatedTypeName)
     {
         var fkProperty = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
-        
+
         // Get actual table name from metadata
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
-        
+
         sb.AppendLine($"            var fkProperty = entity.GetType().GetProperty(\"{fkProperty}\");");
         sb.AppendLine($"            if (fkProperty == null) throw new InvalidOperationException(\"Property {fkProperty} not found on entity.\");");
         sb.AppendLine("            var fkValue = fkProperty.GetValue(entity);");
@@ -2623,7 +2645,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             var relatedTypeName = relationship.TargetEntityType;
             var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
             var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
-            
+
             aliases[relatedTypeName] = alias;
             sqlBuilder.Append($", {alias}.*");
             joins.Add($"LEFT JOIN {relatedTableName} {alias} ON e.{foreignKeyColumn} = {alias}.Id");
@@ -2772,10 +2794,10 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            var idArray = ids.ToArray();");
         sb.AppendLine($"            if (!idArray.Any()) return Enumerable.Empty<{info.EntityType}>();");
         sb.AppendLine();
-        
+
         // Get actual table name from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
-        
+
         sb.AppendLine($"            var sql = @\"SELECT * FROM {entityTableName} WHERE Id IN @Ids\";");
         sb.AppendLine($"            var entities = (await _connection.QueryAsync<{info.EntityType}>(sql, new {{ Ids = idArray }})).ToList();");
         sb.AppendLine($"            if (!entities.Any()) return entities;");
@@ -2872,7 +2894,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"        {{");
         sb.AppendLine($"            if (entity == null) throw new ArgumentNullException(nameof(entity));");
         sb.AppendLine();
-        
+
         // Generate cascade logic for each relationship with Persist
         foreach (var cascade in cascades)
         {
@@ -2886,29 +2908,26 @@ public class RepositoryGenerator : IIncrementalGenerator
             else
             {
                 // Single entity cascade (ManyToOne, OneToOne) - Persist parent first
-                var fkColumn = cascade.JoinColumn?.Name ?? $"{cascade.TargetEntityType}Id".ToLower();
+                var fkColumn = cascade.JoinColumn?.Name ?? $"{cascade.TargetEntityType}Id";
+                var fkProperty = ToCamelCase(fkColumn);
+
                 sb.AppendLine($"            // Cascade persist {cascade.PropertyName} (parent persisted first)");
                 sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
                 sb.AppendLine($"            {{");
-                sb.AppendLine($"                var idProperty = entity.{cascade.PropertyName}.GetType().GetProperty(\"Id\");");
-                sb.AppendLine($"                var idValue = idProperty?.GetValue(entity.{cascade.PropertyName});");
-                sb.AppendLine($"                ");
                 sb.AppendLine($"                // Check if entity is transient (Id is default value)");
-                sb.AppendLine($"                if (idValue == null || idValue.Equals(Activator.CreateInstance(idValue.GetType())))");
+                sb.AppendLine($"                if (entity.{cascade.PropertyName}.Id == default)");
                 sb.AppendLine($"                {{");
                 sb.AppendLine($"                    // Persist the related entity first");
                 sb.AppendLine($"                    await _entityManager.PersistAsync(entity.{cascade.PropertyName});");
                 sb.AppendLine($"                    ");
                 sb.AppendLine($"                    // Update FK on main entity");
-                sb.AppendLine($"                    var newId = idProperty?.GetValue(entity.{cascade.PropertyName});");
-                sb.AppendLine($"                    var fkProperty = entity.GetType().GetProperty(\"{fkColumn}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);");
-                sb.AppendLine($"                    fkProperty?.SetValue(entity, newId);");
+                sb.AppendLine($"                    entity.{fkColumn} = entity.{cascade.PropertyName}.Id;");
                 sb.AppendLine($"                }}");
                 sb.AppendLine($"            }}");
                 sb.AppendLine();
             }
         }
-        
+
         sb.AppendLine($"            // Persist the main entity");
         sb.AppendLine($"            var result = await AddAsync(entity);");
         sb.AppendLine();
@@ -2916,28 +2935,23 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Now persist collections (children after parent)
         foreach (var cascade in cascades.Where(c => c.IsCollection))
         {
-            var fkColumn = cascade.MappedBy != null 
-                ? $"{info.EntityType}Id".ToLower() 
-                : $"{cascade.TargetEntityType}Id".ToLower();
-            
+            var fkColumn = cascade.MappedBy != null
+                ? $"{info.EntityType.Split('.').Last()}Id"
+                : $"{cascade.TargetEntityType}Id";
+
             sb.AppendLine($"            // Persist {cascade.PropertyName} collection after parent");
             sb.AppendLine($"            if ({cascade.PropertyName.ToLower()}ToPersist.Any())");
             sb.AppendLine($"            {{");
-            sb.AppendLine($"                var parentIdProperty = result.GetType().GetProperty(\"Id\");");
-            sb.AppendLine($"                var parentId = parentIdProperty?.GetValue(result);");
-            sb.AppendLine($"                ");
             sb.AppendLine($"                foreach (var item in {cascade.PropertyName.ToLower()}ToPersist)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    // Set FK to parent");
-            sb.AppendLine($"                    var fkProperty = item.GetType().GetProperty(\"{fkColumn}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);");
-            sb.AppendLine($"                    fkProperty?.SetValue(item, parentId);");
-            sb.AppendLine($"                    ");
+            sb.AppendLine($"                    item.{fkColumn} = result.Id;");
             sb.AppendLine($"                    await _entityManager.PersistAsync(item);");
             sb.AppendLine($"                }}");
             sb.AppendLine($"            }}");
             sb.AppendLine();
         }
-        
+
         sb.AppendLine($"            return result;");
         sb.AppendLine($"        }}");
         sb.AppendLine();
@@ -2958,18 +2972,15 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"        {{");
         sb.AppendLine($"            if (entity == null) throw new ArgumentNullException(nameof(entity));");
         sb.AppendLine();
-        
+
         // Update single entity relationships first
         foreach (var cascade in cascades.Where(c => !c.IsCollection))
         {
             sb.AppendLine($"            // Cascade merge {cascade.PropertyName}");
             sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
             sb.AppendLine($"            {{");
-            sb.AppendLine($"                var idProperty = entity.{cascade.PropertyName}.GetType().GetProperty(\"Id\");");
-            sb.AppendLine($"                var idValue = idProperty?.GetValue(entity.{cascade.PropertyName});");
-            sb.AppendLine($"                ");
             sb.AppendLine($"                // Update if entity exists (has Id), persist if new");
-            sb.AppendLine($"                if (idValue != null && !idValue.Equals(Activator.CreateInstance(idValue.GetType())))");
+            sb.AppendLine($"                if (entity.{cascade.PropertyName}.Id != default)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    await _entityManager.MergeAsync(entity.{cascade.PropertyName});");
             sb.AppendLine($"                }}");
@@ -2980,7 +2991,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            }}");
             sb.AppendLine();
         }
-        
+
         sb.AppendLine($"            // Update the main entity");
         sb.AppendLine($"            await UpdateAsync(entity);");
         sb.AppendLine();
@@ -2988,54 +2999,44 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Handle collection cascades
         foreach (var cascade in cascades.Where(c => c.IsCollection))
         {
-            var fkColumn = cascade.MappedBy != null 
-                ? $"{info.EntityType}Id".ToLower() 
-                : $"{cascade.TargetEntityType}Id".ToLower();
+            var fkColumn = cascade.MappedBy != null
+                ? $"{info.EntityType.Split('.').Last()}Id"
+                : $"{cascade.TargetEntityType}Id";
 
             sb.AppendLine($"            // Cascade merge {cascade.PropertyName} collection");
             sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
             sb.AppendLine($"            {{");
             sb.AppendLine($"                var currentItems = entity.{cascade.PropertyName}.ToList();");
-            sb.AppendLine($"                var parentIdProperty = entity.GetType().GetProperty(\"Id\");");
-            sb.AppendLine($"                var parentId = parentIdProperty?.GetValue(entity);");
             sb.AppendLine($"                ");
-            
+
             if (cascade.OrphanRemoval)
             {
                 var relatedTableName = GetTableNameFromMetadata(info, cascade.TargetEntityType) ?? cascade.TargetEntityType;
                 sb.AppendLine($"                // Load existing items to detect orphans (OrphanRemoval=true)");
                 sb.AppendLine($"                var fkColumn = \"{fkColumn}\";");
                 sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumn}} = @ParentId\";");
-                sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{cascade.TargetEntityFullType}>(sql, new {{ ParentId = parentId }})).ToList();");
+                sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{cascade.TargetEntityFullType}>(sql, new {{ ParentId = entity.Id }})).ToList();");
                 sb.AppendLine($"                ");
-                sb.AppendLine($"                var currentIds = currentItems.Where(i => {{");
-                sb.AppendLine($"                    var id = i.GetType().GetProperty(\"Id\")?.GetValue(i);");
-                sb.AppendLine($"                    return id != null && !id.Equals(Activator.CreateInstance(id.GetType()));");
-                sb.AppendLine($"                }}).Select(i => i.GetType().GetProperty(\"Id\")?.GetValue(i)).ToHashSet();");
+                sb.AppendLine($"                var currentIds = currentItems.Where(i => i.Id != default).Select(i => i.Id).ToHashSet();");
                 sb.AppendLine($"                ");
                 sb.AppendLine($"                // Delete orphaned items");
                 sb.AppendLine($"                foreach (var existing in existingItems)");
                 sb.AppendLine($"                {{");
-                sb.AppendLine($"                    var existingId = existing.GetType().GetProperty(\"Id\")?.GetValue(existing);");
-                sb.AppendLine($"                    if (existingId != null && !currentIds.Contains(existingId))");
+                sb.AppendLine($"                    if (!currentIds.Contains(existing.Id))");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        await _entityManager.RemoveAsync(existing);");
                 sb.AppendLine($"                    }}");
                 sb.AppendLine($"                }}");
                 sb.AppendLine($"                ");
             }
-            
+
             sb.AppendLine($"                // Update existing items or persist new ones");
             sb.AppendLine($"                foreach (var item in currentItems)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    // Ensure FK is set");
-            sb.AppendLine($"                    var fkProperty = item.GetType().GetProperty(\"{fkColumn}\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);");
-            sb.AppendLine($"                    fkProperty?.SetValue(item, parentId);");
+            sb.AppendLine($"                    item.{fkColumn} = entity.Id;");
             sb.AppendLine($"                    ");
-            sb.AppendLine($"                    var idProperty = item.GetType().GetProperty(\"Id\");");
-            sb.AppendLine($"                    var idValue = idProperty?.GetValue(item);");
-            sb.AppendLine($"                    ");
-            sb.AppendLine($"                    if (idValue != null && !idValue.Equals(Activator.CreateInstance(idValue.GetType())))");
+            sb.AppendLine($"                    if (item.Id != default)");
             sb.AppendLine($"                    {{");
             sb.AppendLine($"                        await _entityManager.MergeAsync(item);");
             sb.AppendLine($"                    }}");
@@ -3047,7 +3048,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            }}");
             sb.AppendLine();
         }
-        
+
         sb.AppendLine($"        }}");
         sb.AppendLine();
 
@@ -3070,12 +3071,12 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            if (entity == null)");
         sb.AppendLine($"                throw new InvalidOperationException($\"{info.EntityType} with id {{id}} not found\");");
         sb.AppendLine();
-        
+
         // Delete collections first (children before parent)
         foreach (var cascade in cascades.Where(c => c.IsCollection))
         {
-            var fkColumn = cascade.MappedBy != null 
-                ? $"{info.EntityType}Id".ToLower() 
+            var fkColumn = cascade.MappedBy != null
+                ? $"{info.EntityType}Id".ToLower()
                 : $"{cascade.TargetEntityType}Id".ToLower();
             var relatedTableName = GetTableNameFromMetadata(info, cascade.TargetEntityType) ?? cascade.TargetEntityType;
 
@@ -3101,13 +3102,198 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            }}");
             sb.AppendLine();
         }
-        
+
         sb.AppendLine($"            // Delete the main entity");
         sb.AppendLine($"            await DeleteAsync(id);");
         sb.AppendLine($"        }}");
         sb.AppendLine();
 
         return sb.ToString();
+    }
+
+    // Phase 7.6: Generate relationship query methods
+    private static string GenerateRelationshipQueryMethods(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("        #region Relationship Query Methods");
+        sb.AppendLine();
+
+        var entityName = info.EntityType.Split('.').Last();
+        var tableName = info.EntityMetadata?.TableName ?? entityName;
+
+        foreach (var relationship in info.Relationships)
+        {
+            // Generate FindBy methods for ManyToOne relationships (find by parent)
+            if (relationship.Type == Models.RelationshipType.ManyToOne)
+            {
+                GenerateFindByParentMethod(sb, info, relationship, tableName);
+                GenerateCountByParentMethod(sb, info, relationship, tableName);
+            }
+
+            // Generate Has/Count methods for OneToMany relationships (check if parent has children)
+            if (relationship.Type == Models.RelationshipType.OneToMany && !string.IsNullOrEmpty(relationship.MappedBy))
+            {
+                GenerateHasChildrenMethod(sb, info, relationship);
+                GenerateCountChildrenMethod(sb, info, relationship);
+            }
+        }
+
+        sb.AppendLine("        #endregion");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    private static void GenerateFindByParentMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
+    {
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
+        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync(int {paramName})");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY Id\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName} }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void GenerateCountByParentMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
+    {
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
+        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Counts {info.EntityType} entities by {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<int> CountBy{relationship.PropertyName}IdAsync(int {paramName})");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {tableName} WHERE {foreignKeyColumn} = @{paramName}\";");
+        sb.AppendLine($"            return await _connection.ExecuteScalarAsync<int>(sql, new {{ {paramName} }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void GenerateHasChildrenMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relationship.TargetEntityType;
+        var foreignKeyColumn = $"{info.EntityType.Split('.').Last()}Id";
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Checks if the entity has any {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<bool> Has{relationship.PropertyName}Async({info.KeyType} id)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {childTableName} WHERE {foreignKeyColumn} = @id\";");
+        sb.AppendLine($"            var count = await _connection.ExecuteScalarAsync<int>(sql, new {{ id }});");
+        sb.AppendLine($"            return count > 0;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static void GenerateCountChildrenMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relationship.TargetEntityType;
+        var foreignKeyColumn = $"{info.EntityType.Split('.').Last()}Id";
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Counts the number of {relationship.PropertyName} for the entity.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<int> Count{relationship.PropertyName}Async({info.KeyType} id)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {childTableName} WHERE {foreignKeyColumn} = @id\";");
+        sb.AppendLine($"            return await _connection.ExecuteScalarAsync<int>(sql, new {{ id }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    // Phase 7.6: Generate separate interface for relationship query methods
+    private static string GeneratePartialInterface(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+
+        // Create interface name with Partial suffix (e.g., IOrderRepositoryPartial)
+        var partialInterfaceName = info.InterfaceName + "Partial";
+
+        sb.AppendLine("// <auto-generated />");
+        sb.AppendLine("// This code was generated by NPA.Generators.RepositoryGenerator");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Threading.Tasks;");
+        sb.AppendLine();
+        sb.AppendLine($"namespace {info.Namespace}");
+        sb.AppendLine("{");
+        sb.AppendLine($"    /// <summary>");
+        sb.AppendLine($"    /// Extended interface for {info.InterfaceName} with relationship query methods.");
+        sb.AppendLine($"    /// This interface is automatically implemented by the generated repository.");
+        sb.AppendLine($"    /// </summary>");
+        sb.AppendLine($"    public interface {partialInterfaceName}");
+        sb.AppendLine("    {");
+
+        foreach (var relationship in info.Relationships)
+        {
+            // Generate FindBy method signatures for ManyToOne relationships
+            if (relationship.Type == Models.RelationshipType.ManyToOne)
+            {
+                GenerateFindByParentSignature(sb, info, relationship);
+                GenerateCountByParentSignature(sb, info, relationship);
+            }
+
+            // Generate Has/Count method signatures for OneToMany relationships
+            if (relationship.Type == Models.RelationshipType.OneToMany && !string.IsNullOrEmpty(relationship.MappedBy))
+            {
+                GenerateHasChildrenSignature(sb, info, relationship);
+                GenerateCountChildrenSignature(sb, info, relationship);
+            }
+        }
+
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    private static void GenerateFindByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync(int {paramName});");
+        sb.AppendLine();
+    }
+
+    private static void GenerateCountByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Counts {info.EntityType} entities by {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<int> CountBy{relationship.PropertyName}IdAsync(int {paramName});");
+        sb.AppendLine();
+    }
+
+    private static void GenerateHasChildrenSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Checks if the entity has any {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<bool> Has{relationship.PropertyName}Async({info.KeyType} id);");
+        sb.AppendLine();
+    }
+
+    private static void GenerateCountChildrenSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Counts the number of {relationship.PropertyName} for the entity.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<int> Count{relationship.PropertyName}Async({info.KeyType} id);");
+        sb.AppendLine();
     }
 }
 
@@ -3125,15 +3311,15 @@ internal class RepositoryInfo
     public MultiTenantInfo? MultiTenantInfo { get; set; }
     public EntityMetadataInfo? EntityMetadata { get; set; }
     public Dictionary<string, EntityMetadataInfo> EntitiesMetadata { get; set; } = new();
-    
+
     // Relationship-aware repository generation
     public List<Models.RelationshipMetadata> Relationships { get; set; } = new();
     public bool HasRelationships => Relationships != null && Relationships.Count > 0;
-    
+
     // Eager loading support
     public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == 0 && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
     public List<Models.RelationshipMetadata> EagerRelationships => Relationships?.Where(r => r.FetchType == 0 && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy))).ToList() ?? new();
-    
+
     // Cascade operations
     public bool HasCascadeRelationships => Relationships != null && Relationships.Any(r => r.CascadeTypes != 0);
     public List<Models.RelationshipMetadata> CascadeRelationships => Relationships?.Where(r => r.CascadeTypes != 0).ToList() ?? new();
@@ -3177,7 +3363,7 @@ public class ParameterInfo
     /// Gets or sets the parameter name.
     /// </summary>
     public string Name { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Gets or sets the parameter type.
     /// </summary>
@@ -3189,22 +3375,22 @@ internal class MethodAttributeInfo
     public bool HasQuery { get; set; }
     public string? QuerySql { get; set; }
     public bool NativeQuery { get; set; }
-    
+
     public bool HasNamedQuery { get; set; }
     public string? NamedQueryName { get; set; }
-    
+
     public bool HasStoredProcedure { get; set; }
     public string? ProcedureName { get; set; }
     public string? Schema { get; set; }
-    
+
     public bool HasMultiMapping { get; set; }
     public string? KeyProperty { get; set; }
     public string? SplitOn { get; set; }
-    
+
     public bool HasBulkOperation { get; set; }
     public int BatchSize { get; set; }
     public bool UseTransaction { get; set; }
-    
+
     public int? CommandTimeout { get; set; }
     public bool Buffered { get; set; } = true;
 
@@ -3409,7 +3595,7 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
     {
         if (x is null && y is null) return true;
         if (x is null || y is null) return false;
-        
+
         return x.IsMultiTenant == y.IsMultiTenant &&
                x.TenantIdProperty == y.TenantIdProperty &&
                x.EnforceTenantIsolation == y.EnforceTenantIsolation &&

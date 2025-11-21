@@ -62,7 +62,7 @@ namespace TestNamespace
 
         // Assert
         diagnostics.Should().BeEmpty("Generator should not produce diagnostics");
-        
+
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
             .ToString();
@@ -70,10 +70,10 @@ namespace TestNamespace
         // Should have all three cascade methods for CascadeType.All
         generatedCode.Should().Contain("public async Task<TestNamespace.Customer> AddWithCascadeAsync(TestNamespace.Customer entity)",
             "Should generate AddWithCascadeAsync for CascadeType.Persist");
-        
+
         generatedCode.Should().Contain("public async Task UpdateWithCascadeAsync(TestNamespace.Customer entity)",
             "Should generate UpdateWithCascadeAsync for CascadeType.Merge");
-        
+
         generatedCode.Should().Contain("public async Task DeleteWithCascadeAsync(int id)",
             "Should generate DeleteWithCascadeAsync for CascadeType.Remove");
     }
@@ -123,14 +123,14 @@ namespace TestNamespace
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
             .ToString();
-        
+
         // Should handle Orders collection (child-after strategy)
         generatedCode.Should().Contain("Cascade persist Orders collection (children persisted after parent)",
             "Should use child-after strategy for OneToMany relationships");
-        
+
         generatedCode.Should().Contain("var ordersToPersist = entity.Orders?.ToList()",
             "Should collect Orders before persisting parent");
-        
+
         generatedCode.Should().Contain("await _entityManager.PersistAsync(item)",
             "Should persist each Order after parent");
     }
@@ -180,14 +180,14 @@ namespace TestNamespace
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
             .ToString();
-        
+
         // Should have orphan removal logic
         generatedCode.Should().Contain("Load existing items to detect orphans (OrphanRemoval=true)",
             "Should query existing items for orphan detection");
-        
+
         generatedCode.Should().Contain("Delete orphaned items",
             "Should delete items not in current collection");
-        
+
         generatedCode.Should().Contain("await _entityManager.RemoveAsync(existing)",
             "Should use EntityManager to remove orphans");
     }
@@ -237,11 +237,11 @@ namespace TestNamespace
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
             .ToString();
-        
+
         // Should delete children before parent  
         generatedCode.Should().Contain("delete children first",
             "Should use children-first deletion strategy");
-        
+
         generatedCode.Should().Contain("SELECT * FROM orders WHERE",
             "Should query related Orders from orders table before deleting");
     }
@@ -287,10 +287,10 @@ namespace TestNamespace
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
             .ToString();
-        
+
         generatedCode.Should().Contain("AddWithCascadeAsync",
             "Should generate AddWithCascadeAsync");
-        
+
         // Should handle Customer (parent-first)
         generatedCode.Should().Contain("Cascade persist Customer (parent persisted first)",
             "Should use parent-first strategy for ManyToOne");
@@ -337,14 +337,14 @@ namespace TestNamespace
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
             .ToString();
-        
+
         // Should check if Customer is transient before persisting
         generatedCode.Should().Contain("Check if entity is transient (Id is default value)",
             "Should check for transient entities");
-        
-        generatedCode.Should().Contain("idValue.Equals(Activator.CreateInstance(idValue.GetType()))",
-            "Should compare Id with default value");
-        
+
+        generatedCode.Should().Contain("entity.Customer.Id == default",
+            "Should use direct property access to check if Id is default");
+
         generatedCode.Should().Contain("await _entityManager.PersistAsync(entity.Customer)",
             "Should persist transient Customer before main entity");
     }
@@ -390,14 +390,14 @@ namespace TestNamespace
         var generatedCode = outputCompilation.SyntaxTrees
             .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
             .ToString();
-        
+
         // Should not generate cascade methods
         generatedCode.Should().NotContain("AddWithCascadeAsync",
             "Should not generate AddWithCascadeAsync when CascadeType is None");
-        
+
         generatedCode.Should().NotContain("UpdateWithCascadeAsync",
             "Should not generate UpdateWithCascadeAsync when CascadeType is None");
-        
+
         generatedCode.Should().NotContain("DeleteWithCascadeAsync",
             "Should not generate DeleteWithCascadeAsync when CascadeType is None");
     }
