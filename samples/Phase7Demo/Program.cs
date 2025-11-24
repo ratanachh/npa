@@ -64,30 +64,46 @@ Console.WriteLine("Demo 1: OneToMany/ManyToOne Bidirectional Synchronization");
 Console.WriteLine("────────────────────────────────────────────────────────");
 
 var customer = new Customer { Id = 1, Name = "John Doe", Email = "john@example.com" };
-var order1 = new Order { Id = 101, OrderNumber = "ORD-001", CustomerId = 1 };
-var order2 = new Order { Id = 102, OrderNumber = "ORD-002", CustomerId = 1 };
+var order1 = new Order { Id = 101, OrderNumber = "ORD-001" };
+var order2 = new Order { Id = 102, OrderNumber = "ORD-002" };
 
 Console.WriteLine("Initial state:");
 Console.WriteLine($"  customer.Orders.Count = {customer.Orders?.Count ?? 0}");
 Console.WriteLine();
 
 Console.WriteLine("Setting order1.Customer using OrderRelationshipHelper.SetCustomer()...");
+Console.WriteLine("  • Uses direct property access (no reflection)");
+Console.WriteLine("  • Automatically removes from old parent's collection");
+Console.WriteLine("  • Adds to new parent's collection");
+Console.WriteLine("  • FK column (customer_id) is managed automatically by @JoinColumn");
 OrderRelationshipHelper.SetCustomer(order1, customer);
 Console.WriteLine($"  ✓ order1.Customer = {order1.Customer?.Name}");
 Console.WriteLine($"  ✓ customer.Orders.Count = {customer.Orders?.Count ?? 0} (collection updated)");
 Console.WriteLine();
 
 Console.WriteLine("Adding order2 using CustomerRelationshipHelper.AddToOrders()...");
+Console.WriteLine("  • Uses direct property access (no reflection)");
+Console.WriteLine("  • Checks FK property existence before assignment");
+Console.WriteLine("  • Initializes collection if needed");
+Console.WriteLine("  • FK column (customer_id) is managed automatically by @JoinColumn");
 CustomerRelationshipHelper.AddToOrders(customer, order2);
 Console.WriteLine($"  ✓ order2.Customer = {order2.Customer?.Name} (inverse set)");
-Console.WriteLine($"  ✓ order2.CustomerId = {order2.CustomerId} (FK synchronized)");
 Console.WriteLine($"  ✓ customer.Orders.Count = {customer.Orders?.Count ?? 0}");
 Console.WriteLine();
 
 Console.WriteLine("Removing order1 using CustomerRelationshipHelper.RemoveFromOrders()...");
+Console.WriteLine("  • Uses direct property access (no reflection)");
+Console.WriteLine("  • Handles nullability correctly (non-nullable properties skip null assignment)");
+Console.WriteLine("  • FK column is managed automatically by @JoinColumn");
 CustomerRelationshipHelper.RemoveFromOrders(customer, order1);
-Console.WriteLine($"  ✓ order1.Customer = {(order1.Customer == null ? "null" : order1.Customer.Name)} (inverse cleared)");
-Console.WriteLine($"  ✓ order1.CustomerId = {order1.CustomerId} (FK cleared)");
+if (order1.Customer == null)
+{
+    Console.WriteLine($"  ✓ order1.Customer = null (inverse cleared - nullable property)");
+}
+else
+{
+    Console.WriteLine($"  ✓ order1.Customer = {order1.Customer.Name} (FK cleared, but property is non-nullable)");
+}
 Console.WriteLine($"  ✓ customer.Orders.Count = {customer.Orders?.Count ?? 0}");
 Console.WriteLine();
 
@@ -95,13 +111,22 @@ Console.WriteLine("Demo 2: OneToOne Bidirectional Synchronization");
 Console.WriteLine("───────────────────────────────────────────────");
 
 var user = new User { Id = 1, Username = "johndoe", Email = "john@example.com" };
-var profile = new UserProfile { Id = 1, UserId = 1, Bio = "Software developer", AvatarUrl = "avatar.jpg" };
+var profile = new UserProfile { Id = 1, Bio = "Software developer", AvatarUrl = "avatar.jpg" };
 
 Console.WriteLine("Setting profile.User using UserProfileRelationshipHelper.SetUser()...");
+Console.WriteLine("  • Nullable property - can accept null values");
+Console.WriteLine("  • FK column (user_id) is managed automatically by @JoinColumn");
 UserProfileRelationshipHelper.SetUser(profile, user);
 Console.WriteLine($"  ✓ profile.User = {profile.User?.Username}");
-Console.WriteLine($"  ✓ profile.UserId = {profile.UserId} (FK set)");
 Console.WriteLine($"  ✓ Inverse side synchronized (OneToOne)");
+Console.WriteLine();
+
+Console.WriteLine("Demo 3: Nullability Handling");
+Console.WriteLine("─────────────────────────────");
+Console.WriteLine("✓ Non-nullable properties use null-forgiving operator (!) in Set methods");
+Console.WriteLine("✓ Nullable properties allow null assignment in RemoveFrom methods");
+Console.WriteLine("✓ FK property existence is checked before assignment");
+Console.WriteLine("✓ Type-safe code generation with no reflection");
 Console.WriteLine();
 
 // ============================================================================
@@ -115,7 +140,7 @@ Console.WriteLine();
 Console.WriteLine("Phase 7.1: Relationship-Aware Repositories        ✅ COMPLETE");
 Console.WriteLine("Phase 7.2: Eager Loading Support                  ✅ COMPLETE (Basic)");
 Console.WriteLine("Phase 7.3: Cascade Operations                     ✅ COMPLETE");
-Console.WriteLine("Phase 7.4: Bidirectional Synchronization          🚧 70% COMPLETE");
+Console.WriteLine("Phase 7.4: Bidirectional Synchronization          ✅ COMPLETE");
 Console.WriteLine();
 Console.WriteLine("📁 Check obj/generated folder for all generated code!");
 Console.WriteLine();

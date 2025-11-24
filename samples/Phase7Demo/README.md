@@ -98,15 +98,16 @@ public async Task<Customer> AddWithCascadeAsync(Customer entity)
 - ✓ Proper operation ordering to respect FK constraints
 - ✓ EntityManager integration for atomic operations
 
-### 🚧 Phase 7.4: Bidirectional Relationship Management (70% COMPLETE)
+### ✅ Phase 7.4: Bidirectional Relationship Management (COMPLETE)
 
-Automatic synchronization helper methods for bidirectional relationships:
+Automatic synchronization helper methods for bidirectional relationships with full type safety and nullability support:
 
 **Generated Helper Classes:**
 - `{Entity}RelationshipHelper` static classes with synchronization methods
 - `Set{Property}(entity, value)` - For owner side (ManyToOne, OneToOne)
 - `AddTo{Collection}(entity, item)` - For inverse side collections
 - `RemoveFrom{Collection}(entity, item)` - For inverse side collections
+- `ValidateRelationshipConsistency(entity)` - Validates FK and navigation property consistency
 
 **Example:**
 ```csharp
@@ -116,30 +117,55 @@ public static void AddToOrders(Customer entity, Order item)
     entity.Orders ??= new List<Order>();
     entity.Orders.Add(item);
     
-    // Synchronize inverse side
+    // Synchronize inverse side using direct property access (no reflection)
     item.Customer = entity;
-    item.CustomerId = entity.Id;
+    
+    // Only set FK if the property exists on the target entity
+    if (HasForeignKeyProperty)
+    {
+        item.CustomerId = entity.Id;
+    }
 }
 
 // Generated OrderRelationshipHelper
 public static void SetCustomer(Order entity, Customer? value)
 {
-    var old = entity.Customer;
-    if (old != null) old.Orders?.Remove(entity);
+    var oldValue = entity.Customer;
+    if (oldValue != null)
+    {
+        // Remove from old parent's collection using direct property access
+        if (oldValue.Orders?.Contains(entity) == true)
+        {
+            oldValue.Orders.Remove(entity);
+        }
+    }
     
-    entity.Customer = value;
-    entity.CustomerId = value?.Id ?? 0;
+    // Set new value with nullability handling
+    // Non-nullable properties use null-forgiving operator
+    entity.Customer = value!; // or value; for nullable properties
     
-    if (value != null) value.Orders?.Add(entity);
+    // Add to new parent's collection
+    if (value != null)
+    {
+        value.Orders ??= new List<Order>();
+        if (!value.Orders.Contains(entity))
+        {
+            value.Orders.Add(entity);
+        }
+    }
 }
 ```
 
 **Key Features:**
-- ✓ Bidirectional OneToMany/ManyToOne synchronization
-- ✓ Bidirectional OneToOne synchronization
-- ✓ Automatic FK synchronization
-- ✓ Collection initialization
-- ⚠️ Known limitations: Uses reflection, OneToOne inverse needs improvement
+- ✅ Bidirectional OneToMany/ManyToOne synchronization
+- ✅ Bidirectional OneToOne synchronization
+- ✅ Automatic FK synchronization with existence checking
+- ✅ Collection initialization
+- ✅ **Direct property access (no reflection)** - improved performance and type safety
+- ✅ **Nullability-aware code generation** - respects nullable/non-nullable properties
+- ✅ **FK property existence checking** - only generates FK assignments when property exists
+- ✅ **Type-safe casting** - handles different FK and key types correctly
+- ✅ **Validation methods** - consistency checking for relationships
 
 ## Project Structure
 
@@ -245,13 +271,23 @@ public Customer Customer { get; set; }
 public ICollection<Order> Orders { get; set; }
 ```
 
-## Remaining Work (Phase 7.4 - 30%)
+## Recent Improvements (Phase 7.4)
 
-- [ ] Improve OneToOne inverse side property detection
-- [ ] Replace reflection with generated code in helpers
-- [ ] Add validation methods for consistency checking
+### ✅ Completed Enhancements
+
+1. **Removed Reflection** - All helper methods now use direct property access for better performance and type safety
+2. **Nullability Handling** - Generated code correctly handles nullable and non-nullable properties:
+   - Non-nullable properties use null-forgiving operator (`!`) when needed
+   - Nullable properties allow null assignment in RemoveFrom methods
+3. **FK Property Existence Checking** - FK assignments are only generated when the property exists on the target entity
+4. **Type-Safe Casting** - Correctly handles cases where FK type differs from related entity's key type
+5. **Inverse Collection Property Detection** - Automatically finds and uses inverse collection properties without reflection
+
+### 🔄 Future Enhancements
+
 - [ ] Repository integration with automatic validation
-- [ ] Performance optimizations (compiled expressions)
+- [ ] Performance optimizations (compiled expressions for large collections)
+- [ ] Support for ManyToMany bidirectional relationships
 
 ## Related Documentation
 
