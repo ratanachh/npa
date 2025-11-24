@@ -32,3 +32,10 @@ public interface IUserRepository : IRepository<User, int>
     // Basic CRUD methods inherited from IRepository
     // OneToOne relationships with User and UserProfile for bidirectional demo
 }
+
+
+[Repository]
+public interface IProductRepository : IRepository<Product, Guid>
+{
+    
+}

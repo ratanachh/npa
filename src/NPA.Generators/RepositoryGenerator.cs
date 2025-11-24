@@ -868,7 +868,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         // Generate relationship query methods (Phase 7.6)
-        if (info.Relationships.Count > 0)
+        if (info.Relationships is { Count: > 0 })
         {
             sb.AppendLine(GenerateRelationshipQueryMethods(info));
         }
@@ -977,16 +977,20 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"        /// <returns>A collection of {relatedName} entities.</returns>");
             sb.AppendLine($"        public async Task<IEnumerable<{relationship.CollectionElementType}>> Get{relationship.PropertyName}Async({info.KeyType} {ToCamelCase(entityName)}Id)");
             sb.AppendLine("        {");
+            // Get the related entity's key property name from metadata
+            // CollectionElementType is the full type name (e.g., "Phase7Demo.Tag")
+            // Extract just the type name (e.g., "Tag")
+            var relatedEntityTypeName = relationship.CollectionElementType.Split('.').Last();
+            var relatedKeyPropertyName = GetKeyPropertyName(info, relatedEntityTypeName);
             sb.AppendLine($"            var sql = @\"");
             sb.AppendLine($"                SELECT r.*");
             sb.AppendLine($"                FROM {joinTable} jt");
-            sb.AppendLine($"                INNER JOIN {relatedName} r ON jt.{targetKeyColumn} = r.Id");
+            sb.AppendLine($"                INNER JOIN {relatedName} r ON jt.{targetKeyColumn} = r.{relatedKeyPropertyName}");
             sb.AppendLine($"                WHERE jt.{ownerKeyColumn} = @{entityName}Id\";");
             sb.AppendLine();
             sb.AppendLine($"            return await _connection.QueryAsync<{relationship.CollectionElementType}>(");
             sb.AppendLine($"                sql,");
-            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id }},");
-            sb.AppendLine("                _transaction);");
+            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id }});");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -1002,8 +1006,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine();
             sb.AppendLine("            await _connection.ExecuteAsync(");
             sb.AppendLine("                sql,");
-            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id, {relatedName}Id = {ToCamelCase(relatedName)}Id }},");
-            sb.AppendLine("                _transaction);");
+            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id, {relatedName}Id = {ToCamelCase(relatedName)}Id }});");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -1019,8 +1022,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine();
             sb.AppendLine("            await _connection.ExecuteAsync(");
             sb.AppendLine("                sql,");
-            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id, {relatedName}Id = {ToCamelCase(relatedName)}Id }},");
-            sb.AppendLine("                _transaction);");
+            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id, {relatedName}Id = {ToCamelCase(relatedName)}Id }});");
             sb.AppendLine("        }");
             sb.AppendLine();
 
@@ -1037,8 +1039,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine();
             sb.AppendLine("            var count = await _connection.ExecuteScalarAsync<int>(");
             sb.AppendLine("                sql,");
-            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id, {relatedName}Id = {ToCamelCase(relatedName)}Id }},");
-            sb.AppendLine("                _transaction);");
+            sb.AppendLine($"                new {{ {entityName}Id = {ToCamelCase(entityName)}Id, {relatedName}Id = {ToCamelCase(relatedName)}Id }});");
             sb.AppendLine();
             sb.AppendLine("            return count > 0;");
             sb.AppendLine("        }");
@@ -2502,9 +2503,11 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Get actual table names from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        var keyPropertyName = GetKeyPropertyName(info);
+        var relatedKeyPropertyName = GetKeyPropertyName(info, relationship.TargetEntityType);
 
-        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.Id WHERE e.Id = @Id\";");
-        sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"Id\");");
+        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyPropertyName} WHERE e.{keyPropertyName} = @Id\";");
+        sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"{relatedKeyPropertyName}\");");
         sb.AppendLine("            return result.FirstOrDefault();");
     }
 
@@ -2515,9 +2518,11 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Get actual table names from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        var keyPropertyName = GetKeyPropertyName(info);
+        var relatedKeyPropertyName = GetKeyPropertyName(info, relationship.TargetEntityType);
 
-        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.Id WHERE e.Id = @Id\";");
-        sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"Id\");");
+        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyPropertyName} WHERE e.{keyPropertyName} = @Id\";");
+        sb.AppendLine($"            var result = await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{ entity.{relationship.PropertyName} = related; return entity; }}, new {{ Id = id }}, splitOn: \"{relatedKeyPropertyName}\");");
         sb.AppendLine("            return result.FirstOrDefault();");
     }
 
@@ -2529,17 +2534,18 @@ public class RepositoryGenerator : IIncrementalGenerator
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
 
+        var keyPropertyName = GetKeyPropertyName(info);
         sb.AppendLine($"            var entityDict = new Dictionary<{info.KeyType}, {info.EntityType}>();");
-        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.Id = r.{foreignKeyColumn} WHERE e.Id = @Id\";");
+        sb.AppendLine($"            var sql = @\"SELECT e.*, r.* FROM {entityTableName} e LEFT JOIN {relatedTableName} r ON e.{keyPropertyName} = r.{foreignKeyColumn} WHERE e.{keyPropertyName} = @Id\";");
         sb.AppendLine($"            await _connection.QueryAsync<{info.EntityType}, {relationship.TargetEntityFullType}, {info.EntityType}>(sql, (entity, related) => {{");
-        sb.AppendLine($"                if (!entityDict.TryGetValue(entity.Id, out var existingEntity)) {{");
+        sb.AppendLine($"                if (!entityDict.TryGetValue(entity.{keyPropertyName}, out var existingEntity)) {{");
         sb.AppendLine($"                    existingEntity = entity;");
         sb.AppendLine($"                    existingEntity.{relationship.PropertyName} = new List<{relationship.TargetEntityFullType}>();");
-        sb.AppendLine($"                    entityDict[entity.Id] = existingEntity;");
+        sb.AppendLine($"                    entityDict[entity.{keyPropertyName}] = existingEntity;");
         sb.AppendLine($"                }}");
         sb.AppendLine($"                if (related != null) ((List<{relationship.TargetEntityFullType}>)existingEntity.{relationship.PropertyName}).Add(related);");
         sb.AppendLine($"                return existingEntity;");
-        sb.AppendLine($"            }}, new {{ Id = id }}, splitOn: \"Id\");");
+        sb.AppendLine($"            }}, new {{ Id = id }}, splitOn: \"{keyPropertyName}\");");
         sb.AppendLine("            return entityDict.Values.FirstOrDefault();");
     }
 
@@ -2547,9 +2553,11 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         // Get actual table name from metadata
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
+        var keyPropertyName = GetKeyPropertyName(info);
+        var fkColumnName = relationship.JoinColumn?.Name ?? $"{info.EntityType.Split('.').Last()}Id";
 
-        sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {relationship.JoinColumn?.Name ?? "OwnerId"} = @Id\";");
-        sb.AppendLine($"            return await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.Id }});");
+        sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {fkColumnName} = @Id\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{keyPropertyName} }});");
     }
 
     private static void GenerateLazyLoadSingleSQL(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string relatedTypeName)
@@ -2560,20 +2568,35 @@ public class RepositoryGenerator : IIncrementalGenerator
 
         sb.AppendLine($"            // Lazy load {relationship.PropertyName}");
 
+        var keyPropertyName = GetKeyPropertyName(info);
+        
         if (relationship.Type == Models.RelationshipType.OneToOne && !string.IsNullOrEmpty(relationship.MappedBy))
         {
             // Owner side of OneToOne with MappedBy - query by owner's ID on inverse side's FK
             var inverseFkColumn = relationship.JoinColumn?.Name ?? $"{entityName}Id";
             sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {inverseFkColumn} = @Id\";");
-            sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.Id }});");
+            sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{keyPropertyName} }});");
         }
         else
         {
             // ManyToOne or inverse side of OneToOne - query by FK on current entity
             var fkColumnName = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
-            var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
-            sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE Id = @Id\";");
-            sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{fkPropertyName} }});");
+            var hasFkProperty = HasProperty(info, fkColumnName);
+            var relatedKeyPropertyName = GetKeyPropertyName(info, relationship.TargetEntityType);
+            sb.AppendLine($"            var sql = @\"SELECT * FROM {relatedTableName} WHERE {relatedKeyPropertyName} = @Id\";");
+            
+            if (hasFkProperty)
+            {
+                var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
+                sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{fkPropertyName} }});");
+            }
+            else
+            {
+                // Use navigation property's key if FK property doesn't exist
+                var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
+                var defaultKeyValue = relatedKeyType == "Guid" ? "Guid.Empty" : relatedKeyType == "int" ? "0" : relatedKeyType == "long" ? "0L" : $"default({relatedKeyType})";
+                sb.AppendLine($"            var result = await _connection.QueryAsync<{relationship.TargetEntityFullType}>(sql, new {{ Id = entity.{relationship.PropertyName}?.{relatedKeyPropertyName} ?? {defaultKeyValue} }});");
+            }
         }
 
         sb.AppendLine("            return result.FirstOrDefault();");
@@ -2639,9 +2662,10 @@ public class RepositoryGenerator : IIncrementalGenerator
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
 
         // Build SQL with JOINs for all eager relationships
+        var keyPropertyName = GetKeyPropertyName(info);
         var sqlBuilder = new StringBuilder($"SELECT e.*");
         var joins = new List<string>();
-        var splitOns = new List<string> { "Id" };
+        var splitOns = new List<string> { keyPropertyName };
         var typeParams = new List<string> { info.EntityType };
         var aliases = new Dictionary<string, string> { { entityName, "e" } };
         int aliasCounter = 0;
@@ -2655,10 +2679,11 @@ public class RepositoryGenerator : IIncrementalGenerator
             var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedTypeName;
             var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relatedTypeName}Id";
 
+            var relatedKeyPropertyName = GetKeyPropertyName(info, relationship.TargetEntityType);
             aliases[relatedTypeName] = alias;
             sqlBuilder.Append($", {alias}.*");
-            joins.Add($"LEFT JOIN {relatedTableName} {alias} ON e.{foreignKeyColumn} = {alias}.Id");
-            splitOns.Add("Id");
+            joins.Add($"LEFT JOIN {relatedTableName} {alias} ON e.{foreignKeyColumn} = {alias}.{relatedKeyPropertyName}");
+            splitOns.Add(relatedKeyPropertyName);
             typeParams.Add(relationship.TargetEntityFullType);
         }
 
@@ -2667,7 +2692,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         {
             sqlBuilder.Append($" {join}");
         }
-        sqlBuilder.Append(" WHERE e.Id = @Id");
+        sqlBuilder.Append($" WHERE e.{keyPropertyName} = @Id");
 
         sb.AppendLine($"            var sql = @\"{sqlBuilder}\";");
         sb.AppendLine();
@@ -2737,12 +2762,29 @@ public class RepositoryGenerator : IIncrementalGenerator
             else
             {
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{rel.TargetEntityType}Id";
-                var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn);
+                var hasFkProperty = HasProperty(info, foreignKeyColumn);
+                var isFkNullable = IsPropertyNullable(info, foreignKeyColumn);
+                var relatedKeyType = GetRelatedEntityKeyType(info, rel.TargetEntityType);
+                var nullCheck = isFkNullable ? "!= null" : $"!= default({relatedKeyType})";
 
+                var relatedKeyPropertyName = GetKeyPropertyName(info, rel.TargetEntityType);
                 sb.AppendLine($"            // Load {rel.PropertyName}");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT r.* FROM {rel.TargetEntityType} r WHERE r.Id = @ForeignKeyId\";");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}FkValue = entity.{foreignKeyProperty};");
-                sb.AppendLine($"            if ({rel.PropertyName.ToLower()}FkValue != null)");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT r.* FROM {rel.TargetEntityType} r WHERE r.{relatedKeyPropertyName} = @ForeignKeyId\";");
+                
+                if (hasFkProperty)
+                {
+                    var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn);
+                    sb.AppendLine($"            var {rel.PropertyName.ToLower()}FkValue = entity.{foreignKeyProperty};");
+                    sb.AppendLine($"            if ({rel.PropertyName.ToLower()}FkValue {nullCheck})");
+                }
+                else
+                {
+                    // Use navigation property's key if FK property doesn't exist
+                    var defaultKeyValue = relatedKeyType == "Guid" ? "Guid.Empty" : relatedKeyType == "int" ? "0" : relatedKeyType == "long" ? "0L" : $"default({relatedKeyType})";
+                    sb.AppendLine($"            var {rel.PropertyName.ToLower()}FkValue = entity.{rel.PropertyName}?.{relatedKeyPropertyName} ?? {defaultKeyValue};");
+                    sb.AppendLine($"            if (entity.{rel.PropertyName} != null)");
+                }
+                
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                entity.{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ ForeignKeyId = {rel.PropertyName.ToLower()}FkValue }})).FirstOrDefault();");
                 sb.AppendLine($"            }}");
@@ -2776,14 +2818,15 @@ public class RepositoryGenerator : IIncrementalGenerator
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
                 var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn, rel.TargetEntityType);
 
+                var keyPropertyName = GetKeyPropertyName(info);
                 sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
-                sb.AppendLine($"            var ids = entities.Select(e => e.Id).ToArray();");
+                sb.AppendLine($"            var ids = entities.Select(e => e.{keyPropertyName}).ToArray();");
                 sb.AppendLine($"            var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {rel.TargetEntityType} WHERE {foreignKeyColumn} IN @Ids\";");
                 sb.AppendLine($"            var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = ids }})).ToList();");
                 sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.{foreignKeyProperty}).ToDictionary(g => g.Key, g => g.ToList());");
                 sb.AppendLine($"            foreach (var entity in entities)");
                 sb.AppendLine($"            {{");
-                sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.Id, out var items))");
+                sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.{keyPropertyName}, out var items))");
                 sb.AppendLine($"                    entity.{rel.PropertyName} = items;");
                 sb.AppendLine($"            }}");
                 sb.AppendLine();
@@ -2811,7 +2854,8 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Get actual table name from metadata
         var entityTableName = info.EntityMetadata?.TableName ?? entityName;
 
-        sb.AppendLine($"            var sql = @\"SELECT * FROM {entityTableName} WHERE Id IN @Ids\";");
+        var keyPropertyName = GetKeyPropertyName(info);
+        sb.AppendLine($"            var sql = @\"SELECT * FROM {entityTableName} WHERE {keyPropertyName} IN @Ids\";");
         sb.AppendLine($"            var entities = (await _connection.QueryAsync<{info.EntityType}>(sql, new {{ Ids = idArray }})).ToList();");
         sb.AppendLine($"            if (!entities.Any()) return entities;");
         sb.AppendLine();
@@ -2831,7 +2875,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 sb.AppendLine($"            var {rel.PropertyName.ToLower()}ByEntity = all{rel.PropertyName}.GroupBy(r => r.{foreignKeyProperty}).ToDictionary(g => g.Key, g => g.ToList());");
                 sb.AppendLine($"            foreach (var entity in entities)");
                 sb.AppendLine($"            {{");
-                sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.Id, out var items))");
+                sb.AppendLine($"                if ({rel.PropertyName.ToLower()}ByEntity.TryGetValue(entity.{keyPropertyName}, out var items))");
                 sb.AppendLine($"                    entity.{rel.PropertyName} = items;");
                 sb.AppendLine($"            }}");
                 sb.AppendLine();
@@ -2841,17 +2885,26 @@ public class RepositoryGenerator : IIncrementalGenerator
                 var foreignKeyColumn = rel.JoinColumn?.Name ?? $"{rel.TargetEntityType}Id";
                 var foreignKeyProperty = GetPropertyNameForColumn(info, foreignKeyColumn);
                 var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+                var isFkNullable = IsPropertyNullable(info, foreignKeyColumn);
+                var relatedKeyType = GetRelatedEntityKeyType(info, rel.TargetEntityType);
+                var fkPropertyType = GetForeignKeyPropertyType(info, foreignKeyColumn);
+                var nullCheck = isFkNullable ? "!= null" : $"!= default({relatedKeyType})";
+                var fkValueCheck = isFkNullable ? "fkValue != null && " : "";
+                // Cast is needed if FK type differs from related entity's key type, regardless of nullability
+                var needsCast = fkPropertyType != null && fkPropertyType != relatedKeyType;
+                var fkValueCast = needsCast ? $"({relatedKeyType})fkValue" : "fkValue";
 
                 sb.AppendLine($"            // Load {rel.PropertyName} for all entities");
-                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Ids = entities.Select(e => e.{foreignKeyProperty}).Where(v => v != null).Distinct().ToArray();");
+                sb.AppendLine($"            var {rel.PropertyName.ToLower()}Ids = entities.Select(e => e.{foreignKeyProperty}).Where(v => v {nullCheck}).Distinct().ToArray();");
                 sb.AppendLine($"            if ({rel.PropertyName.ToLower()}Ids.Any())");
                 sb.AppendLine($"            {{");
-                sb.AppendLine($"                var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {relatedTableName} WHERE Id IN @Ids\";");
-                sb.AppendLine($"                var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = {rel.PropertyName.ToLower()}Ids }})).ToDictionary(r => r.Id);");
+                var relatedKeyPropertyName = GetKeyPropertyName(info, rel.TargetEntityType);
+                sb.AppendLine($"                var {rel.PropertyName.ToLower()}Sql = @\"SELECT * FROM {relatedTableName} WHERE {relatedKeyPropertyName} IN @Ids\";");
+                sb.AppendLine($"                var all{rel.PropertyName} = (await _connection.QueryAsync<{rel.TargetEntityFullType}>({rel.PropertyName.ToLower()}Sql, new {{ Ids = {rel.PropertyName.ToLower()}Ids }})).ToDictionary(r => r.{relatedKeyPropertyName});");
                 sb.AppendLine($"                foreach (var entity in entities)");
                 sb.AppendLine($"                {{");
                 sb.AppendLine($"                    var fkValue = entity.{foreignKeyProperty};");
-                sb.AppendLine($"                    if (fkValue != null && all{rel.PropertyName}.TryGetValue(({info.KeyType})fkValue, out var related))");
+                sb.AppendLine($"                    if ({fkValueCheck}all{rel.PropertyName}.TryGetValue({fkValueCast}, out var related))");
                 sb.AppendLine($"                        entity.{rel.PropertyName} = related;");
                 sb.AppendLine($"                }}");
                 sb.AppendLine($"            }}");
@@ -2926,19 +2979,28 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 // Single entity cascade (ManyToOne, OneToOne) - Persist parent first
                 var fkColumnName = cascade.JoinColumn?.Name ?? $"{cascade.TargetEntityType}Id";
-                var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
+                var hasFkProperty = HasProperty(info, fkColumnName);
 
                 sb.AppendLine($"            // Cascade persist {cascade.PropertyName} (parent persisted first)");
                 sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
                 sb.AppendLine($"            {{");
+                var relatedKeyPropertyName = GetKeyPropertyName(info, cascade.TargetEntityType);
                 sb.AppendLine($"                // Check if entity is transient (Id is default value)");
-                sb.AppendLine($"                if (entity.{cascade.PropertyName}.Id == default)");
+                sb.AppendLine($"                if (entity.{cascade.PropertyName}.{relatedKeyPropertyName} == default)");
                 sb.AppendLine($"                {{");
                 sb.AppendLine($"                    // Persist the related entity first");
                 sb.AppendLine($"                    await _entityManager.PersistAsync(entity.{cascade.PropertyName});");
                 sb.AppendLine($"                    ");
-                sb.AppendLine($"                    // Update FK on main entity");
-                sb.AppendLine($"                    entity.{fkPropertyName} = entity.{cascade.PropertyName}.Id;");
+                if (hasFkProperty)
+                {
+                    var fkPropertyName = GetPropertyNameForColumn(info, fkColumnName);
+                    sb.AppendLine($"                    // Update FK on main entity (if FK property exists)");
+                    sb.AppendLine($"                    entity.{fkPropertyName} = entity.{cascade.PropertyName}.{relatedKeyPropertyName};");
+                }
+                else
+                {
+                    sb.AppendLine($"                    // Note: FK property doesn't exist - FK is managed automatically via @JoinColumn");
+                }
                 sb.AppendLine($"                }}");
                 sb.AppendLine($"            }}");
                 sb.AppendLine();
@@ -2952,9 +3014,15 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Now persist collections (children after parent)
         foreach (var cascade in cascades.Where(c => c.IsCollection))
         {
+            // Determine FK column name from MappedBy or convention
             var fkColumn = cascade.MappedBy != null
                 ? $"{info.EntityType.Split('.').Last()}Id"
                 : $"{cascade.TargetEntityType}Id";
+            
+            // Check if FK property exists on the related entity
+            var hasFkProperty = HasProperty(info, fkColumn, cascade.TargetEntityType);
+            var fkPropertyName = hasFkProperty ? GetPropertyNameForColumn(info, fkColumn, cascade.TargetEntityType) : null;
+            var ownerPropertyName = cascade.MappedBy ?? info.EntityType.Split('.').Last();
 
             sb.AppendLine($"            // Persist {cascade.PropertyName} collection after parent");
             sb.AppendLine($"            if ({cascade.PropertyName.ToLower()}ToPersist.Any())");
@@ -2962,7 +3030,15 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"                foreach (var item in {cascade.PropertyName.ToLower()}ToPersist)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    // Set FK to parent");
-            sb.AppendLine($"                    item.{fkColumn} = result.Id;");
+            if (hasFkProperty && fkPropertyName != null)
+            {
+                sb.AppendLine($"                    item.{fkPropertyName} = result.Id;");
+            }
+            else
+            {
+                // Use navigation property if FK property doesn't exist
+                sb.AppendLine($"                    item.{ownerPropertyName} = result;");
+            }
             sb.AppendLine($"                    await _entityManager.PersistAsync(item);");
             sb.AppendLine($"                }}");
             sb.AppendLine($"            }}");
@@ -3016,10 +3092,19 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Handle collection cascades
         foreach (var cascade in cascades.Where(c => c.IsCollection))
         {
+            // Determine FK column name from MappedBy or convention
             var fkColumn = cascade.MappedBy != null
                 ? $"{info.EntityType.Split('.').Last()}Id"
                 : $"{cascade.TargetEntityType}Id";
+            
+            // Check if FK property exists on the related entity
+            var hasFkProperty = HasProperty(info, fkColumn, cascade.TargetEntityType);
+            var fkPropertyName = hasFkProperty ? GetPropertyNameForColumn(info, fkColumn, cascade.TargetEntityType) : null;
+            var ownerPropertyName = cascade.MappedBy ?? info.EntityType.Split('.').Last();
 
+            var keyPropertyName = GetKeyPropertyName(info);
+            var relatedKeyPropertyName = GetKeyPropertyName(info, cascade.TargetEntityType);
+            
             sb.AppendLine($"            // Cascade merge {cascade.PropertyName} collection");
             sb.AppendLine($"            if (entity.{cascade.PropertyName} != null)");
             sb.AppendLine($"            {{");
@@ -3030,16 +3115,16 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 var relatedTableName = GetTableNameFromMetadata(info, cascade.TargetEntityType) ?? cascade.TargetEntityType;
                 sb.AppendLine($"                // Load existing items to detect orphans (OrphanRemoval=true)");
-                sb.AppendLine($"                var fkColumn = \"{fkColumn}\";");
-                sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumn}} = @ParentId\";");
-                sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{cascade.TargetEntityFullType}>(sql, new {{ ParentId = entity.Id }})).ToList();");
+                sb.AppendLine($"                var fkColumnName = \"{fkColumn}\";");
+                sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumnName}} = @ParentId\";");
+                sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{cascade.TargetEntityFullType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
                 sb.AppendLine($"                ");
-                sb.AppendLine($"                var currentIds = currentItems.Where(i => i.Id != default).Select(i => i.Id).ToHashSet();");
+                sb.AppendLine($"                var currentIds = currentItems.Where(i => i.{relatedKeyPropertyName} != default).Select(i => i.{relatedKeyPropertyName}).ToHashSet();");
                 sb.AppendLine($"                ");
                 sb.AppendLine($"                // Delete orphaned items");
                 sb.AppendLine($"                foreach (var existing in existingItems)");
                 sb.AppendLine($"                {{");
-                sb.AppendLine($"                    if (!currentIds.Contains(existing.Id))");
+                sb.AppendLine($"                    if (!currentIds.Contains(existing.{relatedKeyPropertyName}))");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        await _entityManager.RemoveAsync(existing);");
                 sb.AppendLine($"                    }}");
@@ -3051,9 +3136,17 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"                foreach (var item in currentItems)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    // Ensure FK is set");
-            sb.AppendLine($"                    item.{fkColumn} = entity.Id;");
+            if (hasFkProperty && fkPropertyName != null)
+            {
+                sb.AppendLine($"                    item.{fkPropertyName} = entity.{keyPropertyName};");
+            }
+            else
+            {
+                // Use navigation property if FK property doesn't exist
+                sb.AppendLine($"                    item.{ownerPropertyName} = entity;");
+            }
             sb.AppendLine($"                    ");
-            sb.AppendLine($"                    if (item.Id != default)");
+            sb.AppendLine($"                    if (item.{relatedKeyPropertyName} != default)");
             sb.AppendLine($"                    {{");
             sb.AppendLine($"                        await _entityManager.MergeAsync(item);");
             sb.AppendLine($"                    }}");
@@ -3165,13 +3258,14 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var keyPropertyName = GetKeyPropertyName(info);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync(int {paramName})");
         sb.AppendLine("        {");
-        sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY Id\";");
+        sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {keyPropertyName}\";");
         sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName} }});");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -3457,6 +3551,135 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         return ToPascalCase(columnName);
+    }
+
+    /// <summary>
+    /// Checks if a property exists on an entity by column name or property name.
+    /// </summary>
+    private static bool HasProperty(RepositoryInfo info, string columnOrPropertyName, string? entityTypeName = null)
+    {
+        EntityMetadataInfo? metadata = info.EntityMetadata;
+
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var simpleName = entityTypeName!.Split('.').Last();
+            if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var m))
+            {
+                metadata = m;
+            }
+        }
+
+        if (metadata?.Properties != null)
+        {
+            return metadata.Properties.Any(p =>
+                string.Equals(p.ColumnName, columnOrPropertyName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Name, columnOrPropertyName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return false;
+    }
+
+    private static bool IsPropertyNullable(RepositoryInfo info, string columnName, string? entityTypeName = null)
+    {
+        EntityMetadataInfo? metadata = info.EntityMetadata;
+
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var simpleName = entityTypeName!.Split('.').Last();
+            if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var m))
+            {
+                metadata = m;
+            }
+        }
+
+        if (metadata?.Properties != null)
+        {
+            var prop = metadata.Properties.FirstOrDefault(p =>
+                string.Equals(p.ColumnName, columnName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+            if (prop != null) return prop.IsNullable;
+        }
+
+        // Default to non-nullable if we can't determine
+        return false;
+    }
+
+    private static string GetRelatedEntityKeyType(RepositoryInfo info, string relatedEntityTypeName)
+    {
+        // Try to get from EntitiesMetadata first
+        var simpleName = relatedEntityTypeName.Split('.').Last();
+        if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var metadata))
+        {
+            // Find the primary key property
+            var keyProperty = metadata.Properties?.FirstOrDefault(p => p.IsPrimaryKey);
+            if (keyProperty != null)
+            {
+                return keyProperty.TypeName;
+            }
+        }
+
+        // Fallback: try to extract from compilation
+        // This is a best-effort approach - if we can't determine, use the current entity's key type
+        // In practice, most entities use the same key type, so this is a reasonable fallback
+        return info.KeyType;
+    }
+
+    /// <summary>
+    /// Gets the type of a foreign key property by column name.
+    /// </summary>
+    private static string? GetForeignKeyPropertyType(RepositoryInfo info, string columnName, string? entityTypeName = null)
+    {
+        EntityMetadataInfo? metadata = info.EntityMetadata;
+
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var simpleName = entityTypeName!.Split('.').Last();
+            if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var m))
+            {
+                metadata = m;
+            }
+        }
+
+        if (metadata?.Properties != null)
+        {
+            var prop = metadata.Properties.FirstOrDefault(p =>
+                string.Equals(p.ColumnName, columnName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+            if (prop != null) return prop.TypeName;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the primary key property name for an entity. Returns "Id" if not found.
+    /// </summary>
+    private static string GetKeyPropertyName(RepositoryInfo info, string? entityTypeName = null)
+    {
+        EntityMetadataInfo? metadata = info.EntityMetadata;
+
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var simpleName = entityTypeName!.Split('.').Last();
+            if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var m))
+            {
+                metadata = m;
+            }
+        }
+
+        if (metadata?.Properties != null)
+        {
+            var keyProperty = metadata.Properties.FirstOrDefault(p => p.IsPrimaryKey);
+            if (keyProperty != null)
+            {
+                return keyProperty.Name;
+            }
+        }
+
+        // Default to "Id" if we can't determine
+        return "Id";
     }
 }
 
