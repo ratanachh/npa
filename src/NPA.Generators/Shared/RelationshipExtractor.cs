@@ -139,15 +139,44 @@ public static class RelationshipExtractor
 
     private static bool HasOrphanRemovalFromAttributes(IPropertySymbol propertySymbol)
     {
-        var attr = propertySymbol.GetAttributes()
+        // Check OneToManyAttribute
+        var oneToManyAttr = propertySymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "OneToManyAttribute");
         
-        if (attr != null)
+        if (oneToManyAttr != null)
         {
-            var orphanArg = attr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
+            var orphanArg = oneToManyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
             if (orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
+
+        // Check OneToOneAttribute (Phase 7.5)
+        var oneToOneAttr = propertySymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "OneToOneAttribute");
+        
+        if (oneToOneAttr != null)
+        {
+            var orphanArg = oneToOneAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
+            if (orphanArg.Value.Value is bool orphanValue)
+                return orphanValue;
+        }
+
+        // Check ManyToManyAttribute (Phase 7.5 - extended support)
+        var manyToManyAttr = propertySymbol.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "ManyToManyAttribute");
+        
+        if (manyToManyAttr != null)
+        {
+            var orphanArg = manyToManyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
+            if (orphanArg.Value.Value is bool orphanValue)
+                return orphanValue;
+        }
+
+        // Note: ManyToOneAttribute does NOT support orphan removal because:
+        // - It's the inverse side of OneToMany (the "many" side)
+        // - Removing the relationship only sets FK to null, doesn't delete the parent
+        // - The parent entity should not be deleted when a child removes the reference
+
         return false;
     }
 

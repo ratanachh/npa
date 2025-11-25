@@ -487,5 +487,6 @@ internal class BidirectionalRelationship
     public bool IsCollection { get; set; }
     public bool IsNullable { get; set; }
     public string? InverseCollectionProperty { get; set; }
+    public string InversePropertyName { get; set; }
     public bool HasForeignKeyProperty { get; set; }
 }

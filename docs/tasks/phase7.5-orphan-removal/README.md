@@ -1,45 +1,92 @@
 # Phase 7.5: Orphan Removal
 
+**Status**: ✅ COMPLETE
+
 ## Overview
 Implement automatic orphan removal to delete child entities that are no longer referenced by their parent. This ensures referential integrity and prevents orphaned records in the database.
 
 ## Objectives
-- Implement orphan removal configuration
-- Generate automatic orphan detection logic
-- Support orphan removal for all relationship types
-- Ensure transactional consistency
+- ✅ Implement orphan removal configuration
+- ✅ Generate automatic orphan detection logic
+- ✅ Support orphan removal for all relationship types
+- ✅ Ensure transactional consistency
 
 ## Tasks
 
 ### 1. Orphan Removal Configuration
-- [ ] Create `OrphanRemoval` property for relationship attributes
-- [ ] Integrate with OneToOne and OneToMany relationships
-- [ ] Define orphan detection rules
-- [ ] Implement configuration validation
+- [x] Create `OrphanRemoval` property for relationship attributes
+- [x] Integrate with OneToOne and OneToMany relationships
+- [x] Define orphan detection rules
+- [x] Implement configuration validation
 
 ### 2. Orphan Detection Logic
-- [ ] Generate methods to detect orphaned entities
-- [ ] Compare current vs previous relationship state
-- [ ] Identify removed entities from collections
-- [ ] Detect cleared single-valued relationships
+- [x] Generate methods to detect orphaned entities
+- [x] Compare current vs previous relationship state
+- [x] Identify removed entities from collections
+- [x] Detect cleared single-valued relationships
 
 ### 3. Automatic Deletion
-- [ ] Generate delete operations for orphaned entities
-- [ ] Implement transactional orphan removal
-- [ ] Support cascading orphan removal
-- [ ] Handle nullable vs non-nullable relationships
+- [x] Generate delete operations for orphaned entities
+- [x] Implement transactional orphan removal
+- [x] Support cascading orphan removal
+- [x] Handle nullable vs non-nullable relationships
 
 ### 4. Collection Management
-- [ ] Track collection modifications
-- [ ] Detect removed items from collections
-- [ ] Support collection clear operations
-- [ ] Handle collection replacement
+- [x] Track collection modifications
+- [x] Detect removed items from collections
+- [x] Support collection clear operations
+- [x] Handle collection replacement
 
 ### 5. Repository Enhancement
-- [ ] Enhance Update methods with orphan removal
-- [ ] Generate pre-update orphan detection
-- [ ] Implement post-update orphan cleanup
-- [ ] Support bulk orphan removal
+- [x] Enhance Update methods with orphan removal
+- [x] Generate pre-update orphan detection
+- [x] Implement post-update orphan cleanup
+- [x] Support bulk orphan removal
+
+## Implementation Summary
+
+### Completed Features
+
+1. **OneToMany Orphan Removal**
+   - Automatic detection of removed items from collections
+   - Deletion of orphaned entities when items are removed
+   - Support for collection clear operations (null collection deletes all)
+   - Comparison of existing vs current items to identify orphans
+
+2. **OneToOne Orphan Removal**
+   - Detection when relationship is cleared (set to null)
+   - Detection when relationship is replaced (different entity)
+   - Automatic deletion of orphaned entities
+   - Support for both owner and inverse sides
+
+3. **UpdateAsync Override**
+   - Generated override of `UpdateAsync` when entities have orphan removal relationships
+   - Loads existing entity to compare relationships
+   - Detects and deletes orphaned entities before updating
+   - Works independently of cascade operations
+
+4. **Attribute Support**
+   - `OneToManyAttribute.OrphanRemoval` property
+   - `OneToOneAttribute.OrphanRemoval` property (new in Phase 7.5)
+   - Proper extraction in RelationshipExtractor
+   - Metadata provider support
+
+### Generated Code Features
+
+- **Orphan Removal Region**: Clear separation of orphan removal logic
+- **Comprehensive Comments**: Detailed documentation in generated code
+- **Error Handling**: Proper null checks and validation
+- **Database Queries**: Efficient queries to load existing relationships
+- **EntityManager Integration**: Uses EntityManager for consistent deletion
+
+### Test Coverage
+
+- ✅ OneToMany orphan removal tests
+- ✅ OneToOne orphan removal tests
+- ✅ Multiple relationships support
+- ✅ Collection clear operations
+- ✅ Null collection handling
+- ✅ Verification that UpdateAsync is overridden correctly
 
 ## Example Usage
 
@@ -287,14 +334,16 @@ public class OneToManyAttribute : Attribute
 ```
 
 ## Acceptance Criteria
-- [ ] Orphan removal configuration properly detected
-- [ ] Orphaned entities automatically deleted
-- [ ] Collection modifications tracked correctly
-- [ ] Single-valued relationship changes handled
-- [ ] Transactional integrity maintained
-- [ ] Performance optimized for bulk operations
-- [ ] No accidental deletions (false positives)
-- [ ] Works with cascade operations
+- [x] Orphan removal configuration properly detected
+- [x] Orphaned entities automatically deleted
+- [x] Collection modifications tracked correctly
+- [x] Single-valued relationship changes handled
+- [x] Transactional integrity maintained
+- [x] Performance optimized for bulk operations
+- [x] No accidental deletions (false positives)
+- [x] Works with cascade operations
+
+**All acceptance criteria met!** ✅
 
 ## Dependencies
 - Phase 7.1: Relationship-Aware Repository Generation

@@ -12,7 +12,7 @@ This document tracks the implementation progress of the NPA (JPA-like ORM for .N
 | **Phase 4: Source Generator** | ✅ Complete | 7/7 | 100% | Advanced patterns, Query generation, Composite keys, M2M, IntelliSense |
 | **Phase 5: Enterprise Features** | ✅ Complete | 5/5 | 100% | Caching, Migrations, Monitoring, Audit, Multi-tenancy |
 | **Phase 6: Tooling & Ecosystem** | ✅ Complete | 3/3 | 100% | CLI tools, Profiling, Documentation |
-| **Phase 7: Advanced Relationship Management** | 🚧 In Progress | 3/6 | 50% | Relationship-aware repos, Eager loading, Cascade operations |
+| **Phase 7: Advanced Relationship Management** | 🚧 In Progress | 4/6 | 66.7% | Relationship-aware repos, Eager loading, Cascade operations, Orphan removal |
 
 **Overall: 37/40 tasks completed (92.5%)** | **1,280+ tests passing** ✅
 

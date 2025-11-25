@@ -28,4 +28,11 @@ public sealed class OneToOneAttribute : Attribute
     /// If false, the foreign key column will be marked as NOT NULL.
     /// </summary>
     public bool Optional { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether orphan removal should be applied.
+    /// If true, when the relationship is cleared or replaced, the orphaned entity will be deleted from the database.
+    /// Default is false.
+    /// </summary>
+    public bool OrphanRemoval { get; set; } = false;
 }

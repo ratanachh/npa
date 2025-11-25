@@ -867,6 +867,12 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine(GenerateCascadeOperationOverrides(info));
         }
 
+        // Generate orphan removal override for UpdateAsync (Phase 7.5)
+        if (info.HasOrphanRemovalRelationships)
+        {
+            sb.AppendLine(GenerateOrphanRemovalUpdateOverride(info));
+        }
+
         // Generate relationship query methods (Phase 7.6)
         if (info.Relationships is { Count: > 0 })
         {
@@ -3221,6 +3227,263 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
+    // Phase 7.5: Generate orphan removal override for UpdateAsync
+    private static string GenerateOrphanRemovalUpdateOverride(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+        var orphanRemovalRelationships = info.OrphanRemovalRelationships;
+
+        sb.AppendLine("        #region Orphan Removal Support (Phase 7.5)");
+        sb.AppendLine();
+        sb.AppendLine($"        /// <summary>");
+        sb.AppendLine($"        /// Updates an entity with orphan removal support.");
+        sb.AppendLine($"        /// Automatically deletes orphaned child entities that are no longer referenced.");
+        sb.AppendLine($"        /// Orphan removal enabled for: {string.Join(", ", orphanRemovalRelationships.Select(r => r.PropertyName))}");
+        sb.AppendLine($"        /// </summary>");
+        sb.AppendLine($"        public override async Task UpdateAsync({info.EntityType} entity)");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            if (entity == null) throw new ArgumentNullException(nameof(entity));");
+        sb.AppendLine();
+        
+        var keyPropertyName = GetKeyPropertyName(info);
+        
+        // Load existing entity with relationships to compare
+        sb.AppendLine($"            // Load existing entity to detect orphaned relationships");
+        sb.AppendLine($"            var existing = await GetByIdAsync(entity.{keyPropertyName});");
+        sb.AppendLine($"            if (existing == null)");
+        sb.AppendLine($"                throw new InvalidOperationException($\"{info.EntityType} with id {{entity.{keyPropertyName}}} not found\");");
+        sb.AppendLine();
+
+        // Process each orphan removal relationship
+        // Note: ManyToOne relationships are NOT supported for orphan removal because:
+        // - They are the inverse side of OneToMany (the "many" side)
+        // - Removing the relationship only sets the FK to null, doesn't delete the parent
+        // - The parent entity should not be deleted when a child removes the reference
+        foreach (var rel in orphanRemovalRelationships)
+        {
+            if (rel.Type == Models.RelationshipType.ManyToMany)
+            {
+                // ManyToMany: Collection orphan removal (uses join table)
+                GenerateManyToManyOrphanRemoval(sb, info, rel, keyPropertyName);
+            }
+            else if (rel.IsCollection)
+            {
+                // OneToMany: Collection orphan removal
+                GenerateOneToManyOrphanRemoval(sb, info, rel, keyPropertyName);
+            }
+            else if (rel.Type == Models.RelationshipType.OneToOne)
+            {
+                // OneToOne: Single entity orphan removal
+                GenerateOneToOneOrphanRemoval(sb, info, rel, keyPropertyName);
+            }
+            // ManyToOne is explicitly NOT supported - see comment above
+        }
+
+        sb.AppendLine($"            // Update the main entity");
+        sb.AppendLine($"            await base.UpdateAsync(entity);");
+        sb.AppendLine($"        }}");
+        sb.AppendLine();
+        sb.AppendLine("        #endregion");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
+    private static void GenerateOneToManyOrphanRemoval(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata rel, string keyPropertyName)
+    {
+        // Determine FK column name from MappedBy or convention
+        var fkColumn = rel.MappedBy != null
+            ? $"{info.EntityType.Split('.').Last()}Id"
+            : $"{rel.TargetEntityType}Id";
+        
+        var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+        var relatedKeyPropertyName = GetKeyPropertyName(info, rel.TargetEntityType);
+        
+        sb.AppendLine($"            // Orphan removal for {rel.PropertyName} collection (OneToMany)");
+        sb.AppendLine($"            if (entity.{rel.PropertyName} != null)");
+        sb.AppendLine($"            {{");
+        sb.AppendLine($"                var currentItems = entity.{rel.PropertyName}.ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                // Load existing items from database");
+        sb.AppendLine($"                var fkColumnName = \"{fkColumn}\";");
+        sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumnName}} = @ParentId\";");
+        sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{rel.TargetEntityFullType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                // Identify orphaned items (in existing but not in current)");
+        sb.AppendLine($"                var currentIds = currentItems.Where(i => i.{relatedKeyPropertyName} != default).Select(i => i.{relatedKeyPropertyName}).ToHashSet();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                // Delete orphaned items");
+        sb.AppendLine($"                foreach (var existing in existingItems)");
+        sb.AppendLine($"                {{");
+        sb.AppendLine($"                    if (!currentIds.Contains(existing.{relatedKeyPropertyName}))");
+        sb.AppendLine($"                    {{");
+        sb.AppendLine($"                        await _entityManager.RemoveAsync(existing);");
+        sb.AppendLine($"                    }}");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"            }}");
+        sb.AppendLine($"            else");
+        sb.AppendLine($"            {{");
+        sb.AppendLine($"                // Collection is null - delete all existing items (orphan removal)");
+        sb.AppendLine($"                var fkColumnName = \"{fkColumn}\";");
+        sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumnName}} = @ParentId\";");
+        sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{rel.TargetEntityFullType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                foreach (var existing in existingItems)");
+        sb.AppendLine($"                {{");
+        sb.AppendLine($"                    await _entityManager.RemoveAsync(existing);");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"            }}");
+        sb.AppendLine();
+    }
+
+    private static void GenerateOneToOneOrphanRemoval(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata rel, string keyPropertyName)
+    {
+        var relatedKeyPropertyName = GetKeyPropertyName(info, rel.TargetEntityType);
+        var relatedTableName = GetTableNameFromMetadata(info, rel.TargetEntityType) ?? rel.TargetEntityType;
+        
+        // Determine FK column - for OneToOne, it could be on either side
+        var fkColumn = rel.JoinColumn?.Name;
+        if (string.IsNullOrEmpty(fkColumn))
+        {
+            // If owner side, FK is on target entity pointing to this entity
+            if (rel.IsOwner)
+            {
+                fkColumn = $"{info.EntityType.Split('.').Last()}Id";
+            }
+            else
+            {
+                // Inverse side - FK is on this entity pointing to target
+                fkColumn = $"{rel.TargetEntityType}Id";
+            }
+        }
+        
+        sb.AppendLine($"            // Orphan removal for {rel.PropertyName} (OneToOne)");
+        sb.AppendLine($"            ");
+        if (rel.IsOwner)
+        {
+            // Owner side: FK is on target entity
+            sb.AppendLine($"            // Load existing related entity (owner side - FK on target)");
+            sb.AppendLine($"            var fkColumnName = \"{fkColumn}\";");
+            sb.AppendLine($"            var existingSql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumnName}} = @ParentId\";");
+            sb.AppendLine($"            var existingRelated = await _connection.QueryFirstOrDefaultAsync<{rel.TargetEntityFullType}>(existingSql, new {{ ParentId = entity.{keyPropertyName} }});");
+        }
+        else
+        {
+            // Inverse side: Check existing entity's relationship
+            sb.AppendLine($"            // Load existing related entity (inverse side)");
+            sb.AppendLine($"            var existingRelated = existing.{rel.PropertyName} != null ? await _entityManager.FindAsync<{rel.TargetEntityFullType}>(existing.{rel.PropertyName}.{relatedKeyPropertyName}) : null;");
+        }
+        sb.AppendLine($"            ");
+        sb.AppendLine($"            // Check if relationship was cleared or replaced");
+        sb.AppendLine($"            if (existingRelated != null)");
+        sb.AppendLine($"            {{");
+        sb.AppendLine($"                if (entity.{rel.PropertyName} == null)");
+        sb.AppendLine($"                {{");
+        sb.AppendLine($"                    // Relationship cleared - delete orphan (orphan removal)");
+        sb.AppendLine($"                    await _entityManager.RemoveAsync(existingRelated);");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"                else if (entity.{rel.PropertyName}.{relatedKeyPropertyName} != existingRelated.{relatedKeyPropertyName})");
+        sb.AppendLine($"                {{");
+        sb.AppendLine($"                    // Relationship replaced - delete old orphan (orphan removal)");
+        sb.AppendLine($"                    await _entityManager.RemoveAsync(existingRelated);");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"            }}");
+        sb.AppendLine();
+    }
+
+    private static void GenerateManyToManyOrphanRemoval(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata rel, string keyPropertyName)
+    {
+        // ManyToMany uses a join table, so we need to:
+        // 1. Get current items from the collection
+        // 2. Get existing items from join table
+        // 3. Find items that were removed (in existing but not in current)
+        // 4. Check if removed items are referenced by other entities
+        // 5. Delete only if not referenced elsewhere (true orphan removal)
+        
+        var joinTable = rel.JoinTable;
+        string joinTableName;
+        string ownerKeyColumn;
+        string targetKeyColumn;
+        var relatedKeyPropertyName = GetKeyPropertyName(info, rel.TargetEntityType);
+        
+        if (joinTable == null)
+        {
+            // Fallback to convention-based join table name
+            var entityName = info.EntityType.Split('.').Last();
+            var relatedName = rel.TargetEntityType.Split('.').Last();
+            joinTableName = $"{entityName}{relatedName}";
+            ownerKeyColumn = $"{entityName}Id";
+            targetKeyColumn = $"{relatedName}Id";
+        }
+        else
+        {
+            // Use join table metadata if available
+            joinTableName = string.IsNullOrEmpty(joinTable.Schema)
+                ? joinTable.Name
+                : $"{joinTable.Schema}.{joinTable.Name}";
+            ownerKeyColumn = joinTable.JoinColumns.FirstOrDefault() ?? $"{info.EntityType.Split('.').Last()}Id";
+            targetKeyColumn = joinTable.InverseJoinColumns.FirstOrDefault() ?? $"{rel.TargetEntityType.Split('.').Last()}Id";
+        }
+        
+        sb.AppendLine($"            // Orphan removal for {rel.PropertyName} collection (ManyToMany)");
+        sb.AppendLine($"            // Note: ManyToMany orphan removal checks if entities are referenced elsewhere");
+        sb.AppendLine($"            if (entity.{rel.PropertyName} != null)");
+        sb.AppendLine($"            {{");
+        sb.AppendLine($"                var currentItems = entity.{rel.PropertyName}.ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                // Load existing relationships from join table");
+        sb.AppendLine($"                var sql = $\"SELECT {targetKeyColumn} FROM {joinTableName} WHERE {ownerKeyColumn} = @ParentId\";");
+        sb.AppendLine($"                var existingRelatedIds = (await _connection.QueryAsync<{info.KeyType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                var currentIds = currentItems.Where(i => i.{relatedKeyPropertyName} != default).Select(i => i.{relatedKeyPropertyName}).ToHashSet();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                // Find removed items (in existing but not in current)");
+        sb.AppendLine($"                var removedIds = existingRelatedIds.Except(currentIds).ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                // For each removed item, check if it's referenced by other entities");
+        sb.AppendLine($"                foreach (var removedId in removedIds)");
+        sb.AppendLine($"                {{");
+        sb.AppendLine($"                    // Check if this entity is referenced by other entities in the join table");
+        sb.AppendLine($"                    var checkSql = $\"SELECT COUNT(*) FROM {joinTableName} WHERE {targetKeyColumn} = @RemovedId AND {ownerKeyColumn} != @ParentId\";");
+        sb.AppendLine($"                    var referenceCount = await _connection.QuerySingleAsync<int>(checkSql, new {{ RemovedId = removedId, ParentId = entity.{keyPropertyName} }});");
+        sb.AppendLine($"                    ");
+        sb.AppendLine($"                    // If not referenced elsewhere, delete the orphaned entity");
+        sb.AppendLine($"                    if (referenceCount == 0)");
+        sb.AppendLine($"                    {{");
+        sb.AppendLine($"                        var orphanedEntity = await _entityManager.FindAsync<{rel.TargetEntityFullType}>(removedId);");
+        sb.AppendLine($"                        if (orphanedEntity != null)");
+        sb.AppendLine($"                        {{");
+        sb.AppendLine($"                            await _entityManager.RemoveAsync(orphanedEntity);");
+        sb.AppendLine($"                        }}");
+        sb.AppendLine($"                    }}");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"            }}");
+        sb.AppendLine($"            else");
+        sb.AppendLine($"            {{");
+        sb.AppendLine($"                // Collection is null - check all existing relationships for orphan removal");
+        sb.AppendLine($"                var sql = $\"SELECT {targetKeyColumn} FROM {joinTableName} WHERE {ownerKeyColumn} = @ParentId\";");
+        sb.AppendLine($"                var existingRelatedIds = (await _connection.QueryAsync<{info.KeyType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
+        sb.AppendLine($"                ");
+        sb.AppendLine($"                foreach (var relatedId in existingRelatedIds)");
+        sb.AppendLine($"                {{");
+        sb.AppendLine($"                    // Check if this entity is referenced by other entities");
+        sb.AppendLine($"                    var checkSql = $\"SELECT COUNT(*) FROM {joinTableName} WHERE {targetKeyColumn} = @RelatedId AND {ownerKeyColumn} != @ParentId\";");
+        sb.AppendLine($"                    var referenceCount = await _connection.QuerySingleAsync<int>(checkSql, new {{ RelatedId = relatedId, ParentId = entity.{keyPropertyName} }});");
+        sb.AppendLine($"                    ");
+        sb.AppendLine($"                    // If not referenced elsewhere, delete the orphaned entity");
+        sb.AppendLine($"                    if (referenceCount == 0)");
+        sb.AppendLine($"                    {{");
+        sb.AppendLine($"                        var orphanedEntity = await _entityManager.FindAsync<{rel.TargetEntityFullType}>(relatedId);");
+        sb.AppendLine($"                        if (orphanedEntity != null)");
+        sb.AppendLine($"                        {{");
+        sb.AppendLine($"                            await _entityManager.RemoveAsync(orphanedEntity);");
+        sb.AppendLine($"                        }}");
+        sb.AppendLine($"                    }}");
+        sb.AppendLine($"                }}");
+        sb.AppendLine($"            }}");
+        sb.AppendLine();
+    }
+
     // Phase 7.6: Generate relationship query methods
     private static string GenerateRelationshipQueryMethods(RepositoryInfo info)
     {
@@ -3709,6 +3972,10 @@ internal class RepositoryInfo
     // Cascade operations
     public bool HasCascadeRelationships => Relationships != null && Relationships.Any(r => r.CascadeTypes != 0);
     public List<Models.RelationshipMetadata> CascadeRelationships => Relationships?.Where(r => r.CascadeTypes != 0).ToList() ?? new();
+
+    // Orphan removal support (Phase 7.5)
+    public bool HasOrphanRemovalRelationships => Relationships != null && Relationships.Any(r => r.OrphanRemoval);
+    public List<Models.RelationshipMetadata> OrphanRemovalRelationships => Relationships?.Where(r => r.OrphanRemoval).ToList() ?? new();
 }
 
 internal class MultiTenantInfo

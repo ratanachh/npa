@@ -212,6 +212,7 @@ public sealed class MetadataProvider : IMetadataProvider
                     MappedBy = oneToOne.MappedBy,
                     CascadeType = oneToOne.Cascade,
                     FetchType = oneToOne.Fetch,
+                    OrphanRemoval = oneToOne.OrphanRemoval,
                     IsOptional = oneToOne.Optional,
                     IsOwner = string.IsNullOrEmpty(oneToOne.MappedBy)
                 };

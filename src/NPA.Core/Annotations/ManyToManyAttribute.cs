@@ -42,6 +42,15 @@ public sealed class ManyToManyAttribute : Attribute
     public FetchType Fetch { get; set; } = FetchType.Lazy;
 
     /// <summary>
+    /// Gets or sets whether orphan removal should be applied.
+    /// If true, when an entity is removed from the collection and it's not referenced by any other entity,
+    /// it will be deleted from the database.
+    /// Note: This checks if the entity is referenced elsewhere before deletion.
+    /// Default is false.
+    /// </summary>
+    public bool OrphanRemoval { get; set; } = false;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ManyToManyAttribute"/> class.
     /// </summary>
     public ManyToManyAttribute()
