@@ -91,19 +91,22 @@ namespace NPA.Core.Annotations
     public sealed class OneToOneAttribute : System.Attribute
     {
         public string? MappedBy { get; set; }
+        public CascadeType Cascade { get; set; } = CascadeType.None;
         public FetchType Fetch { get; set; } = FetchType.Eager;
+        public bool Optional { get; set; } = true;
+        public bool OrphanRemoval { get; set; } = false;
     }
     
     [System.AttributeUsage(System.AttributeTargets.Property)]
     public sealed class OneToManyAttribute : System.Attribute
     {
-        public string? MappedBy { get; set; }
+        public string MappedBy { get; set; } = string.Empty;
         public CascadeType Cascade { get; set; } = CascadeType.None;
         public FetchType Fetch { get; set; } = FetchType.Lazy;
         public bool OrphanRemoval { get; set; } = false;
         
         public OneToManyAttribute() { }
-        public OneToManyAttribute(string mappedBy) { MappedBy = mappedBy; }
+        public OneToManyAttribute(string mappedBy) { MappedBy = mappedBy ?? throw new System.ArgumentNullException(nameof(mappedBy)); }
     }
     
     public enum FetchType
@@ -135,29 +138,37 @@ namespace NPA.Core.Annotations
     [System.AttributeUsage(System.AttributeTargets.Property)]
     public sealed class ManyToManyAttribute : System.Attribute
     {
-        public string? MappedBy { get; set; }
+        public string MappedBy { get; set; } = string.Empty;
+        public CascadeType Cascade { get; set; } = CascadeType.None;
+        public FetchType Fetch { get; set; } = FetchType.Lazy;
+        public bool OrphanRemoval { get; set; } = false;
+        
+        public ManyToManyAttribute() { }
+        public ManyToManyAttribute(string mappedBy) { MappedBy = mappedBy ?? throw new System.ArgumentNullException(nameof(mappedBy)); }
     }
     
-    [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false)]
+    [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = true)]
     public sealed class JoinColumnAttribute : System.Attribute
     {
-        public string Name { get; }
-        public string? ReferencedColumnName { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string ReferencedColumnName { get; set; } = ""id"";
         public bool Nullable { get; set; } = true;
         public bool Unique { get; set; } = false;
         public bool Insertable { get; set; } = true;
         public bool Updatable { get; set; } = true;
-        public JoinColumnAttribute(string name) { Name = name; }
+        public JoinColumnAttribute() { }
+        public JoinColumnAttribute(string name) { Name = name ?? throw new System.ArgumentNullException(nameof(name)); }
     }
     
     [System.AttributeUsage(System.AttributeTargets.Property)]
     public sealed class JoinTableAttribute : System.Attribute
     {
-        public string Name { get; }
-        public string? Schema { get; set; }
-        public string[]? JoinColumns { get; set; }
-        public string[]? InverseJoinColumns { get; set; }
-        public JoinTableAttribute(string name) { Name = name; }
+        public string Name { get; set; } = string.Empty;
+        public string Schema { get; set; } = string.Empty;
+        public string[] JoinColumns { get; set; } = System.Array.Empty<string>();
+        public string[] InverseJoinColumns { get; set; } = System.Array.Empty<string>();
+        public JoinTableAttribute() { }
+        public JoinTableAttribute(string name) { Name = name ?? throw new System.ArgumentNullException(nameof(name)); }
     }
     
     [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
@@ -191,10 +202,10 @@ namespace NPA.Core.Annotations
         var references = new[]
         {
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(RepositoryAttribute).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(NPA.Core.Repositories.IRepository<,>).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location)
+            MetadataReference.CreateFromFile(typeof(Core.Repositories.IRepository<,>).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
         };
 
         return CSharpCompilation.Create(

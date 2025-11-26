@@ -8,14 +8,17 @@ Implement automatic orphan removal to delete child entities that are no longer r
 ## Objectives
 - ✅ Implement orphan removal configuration
 - ✅ Generate automatic orphan detection logic
-- ✅ Support orphan removal for all relationship types
+- ✅ Support orphan removal for OneToMany, OneToOne, and ManyToMany relationships
 - ✅ Ensure transactional consistency
+- ✅ Handle inverse-side OneToOne relationships correctly
+- ✅ Fix key type mismatches in ManyToMany orphan removal
 
 ## Tasks
 
 ### 1. Orphan Removal Configuration
 - [x] Create `OrphanRemoval` property for relationship attributes
-- [x] Integrate with OneToOne and OneToMany relationships
+- [x] Integrate with OneToOne, OneToMany, and ManyToMany relationships
+- [x] Explicitly exclude ManyToOne relationships (not suitable for orphan removal)
 - [x] Define orphan detection rules
 - [x] Implement configuration validation
 
@@ -58,6 +61,8 @@ Implement automatic orphan removal to delete child entities that are no longer r
    - Detection when relationship is replaced (different entity)
    - Automatic deletion of orphaned entities
    - Support for both owner and inverse sides
+   - **Fixed**: Inverse-side relationships now correctly query the database for FK values instead of relying on eager loading
+   - Handles cases where `GetByIdAsync` doesn't eagerly load related entities
 
 3. **UpdateAsync Override**
    - Generated override of `UpdateAsync` when entities have orphan removal relationships
@@ -65,9 +70,18 @@ Implement automatic orphan removal to delete child entities that are no longer r
    - Detects and deletes orphaned entities before updating
    - Works independently of cascade operations
 
-4. **Attribute Support**
+4. **ManyToMany Orphan Removal**
+   - Detection of removed items from many-to-many collections
+   - Automatic deletion of orphaned entities from join table
+   - Checks for references by other entities before deletion
+   - **Fixed**: Uses correct key type for related entities (not the current entity's key type)
+   - Proper handling of join table queries with correct type casting
+
+5. **Attribute Support**
    - `OneToManyAttribute.OrphanRemoval` property
-   - `OneToOneAttribute.OrphanRemoval` property (new in Phase 7.5)
+   - `OneToOneAttribute.OrphanRemoval` property
+   - `ManyToManyAttribute.OrphanRemoval` property
+   - **Note**: `ManyToOneAttribute` does NOT support orphan removal (explicitly excluded)
    - Proper extraction in RelationshipExtractor
    - Metadata provider support
 
@@ -82,11 +96,13 @@ Implement automatic orphan removal to delete child entities that are no longer r
 ### Test Coverage
 
 - ✅ OneToMany orphan removal tests
-- ✅ OneToOne orphan removal tests
+- ✅ OneToOne orphan removal tests (including inverse-side relationships)
+- ✅ ManyToMany orphan removal tests
 - ✅ Multiple relationships support
 - ✅ Collection clear operations
 - ✅ Null collection handling
 - ✅ Verification that UpdateAsync is overridden correctly
+- ✅ Key type mismatch fixes for ManyToMany relationships
 
 ## Example Usage
 
@@ -248,89 +264,96 @@ public class User
     public int Id { get; set; }
     
     // Profile will be deleted if cleared or changed
-    [OneToOne(MappedBy = "User")]
-    [Cascade(CascadeType.All)]
-    [OrphanRemoval(true)]
+    [OneToOne(OrphanRemoval = true)]
+    [JoinColumn("profile_id")]
     public UserProfile Profile { get; set; }
 }
 
-// Generated update method:
-public async Task UpdateAsync(User user)
+// Generated update method (handles both owner and inverse sides):
+public override async Task UpdateAsync(TestNamespace.User entity)
 {
-    using var transaction = await _connection.BeginTransactionAsync();
-    try
+    // ... standard update logic ...
+    
+    // Orphan removal for Profile (OneToOne)
+    // For inverse-side relationships, we query the FK value directly from the database
+    // because GetByIdAsync doesn't eagerly load relationships
+    var fkColumnName = "profile_id";
+    var fkValueSql = $"SELECT {fkColumnName} FROM users WHERE id = @ParentId";
+    var fkValue = await _connection.QueryFirstOrDefaultAsync<int>(
+        fkValueSql, 
+        new { ParentId = entity.Id });
+    
+    var existingRelated = fkValue != null && fkValue != 0 
+        ? await _connection.QueryFirstOrDefaultAsync<UserProfile>(
+            $"SELECT * FROM user_profiles WHERE id = @FkValue", 
+            new { FkValue = fkValue }) 
+        : null;
+    
+    // Detect orphan: existing related entity that's no longer referenced
+    if (existingRelated != null && entity.Profile == null)
     {
-        // Load existing user
-        var existing = await GetByIdWithProfileAsync(user.Id);
-        
-        // Update user
-        const string updateUserSql = @"
-            UPDATE users 
-            SET username = @Username,
-                email = @Email
-            WHERE id = @Id";
-        
-        await _connection.ExecuteAsync(updateUserSql, user, transaction);
-        
-        // Handle Profile with orphan removal
-        if (existing.Profile != null && user.Profile == null)
-        {
-            // Profile was cleared - delete it (orphan removal)
-            const string deleteProfileSql = "DELETE FROM user_profiles WHERE user_id = @userId";
-            await _connection.ExecuteAsync(
-                deleteProfileSql, 
-                new { userId = user.Id }, 
-                transaction);
-        }
-        else if (existing.Profile != null && 
-                 user.Profile != null && 
-                 existing.Profile.Id != user.Profile.Id)
-        {
-            // Profile was replaced - delete old one (orphan removal)
-            const string deleteOldProfileSql = "DELETE FROM user_profiles WHERE id = @id";
-            await _connection.ExecuteAsync(
-                deleteOldProfileSql, 
-                new { id = existing.Profile.Id }, 
-                transaction);
-            
-            // Insert or update new profile
-            var profileRepo = _repositoryFactory.GetRepository<UserProfile, int>();
-            if (user.Profile.Id > 0)
-                await profileRepo.UpdateAsync(user.Profile);
-            else
-                await profileRepo.AddAsync(user.Profile);
-        }
-        
-        await transaction.CommitAsync();
+        // Relationship was cleared - delete orphaned entity
+        await _entityManager.RemoveAsync(existingRelated);
     }
-    catch
+    else if (existingRelated != null && 
+             entity.Profile != null && 
+             existingRelated.Id != entity.Profile.Id)
     {
-        await transaction.RollbackAsync();
-        throw;
+        // Relationship was replaced - delete old entity
+        await _entityManager.RemoveAsync(existingRelated);
     }
 }
 ```
 
-### Orphan Removal Attribute
+### Orphan Removal Attribute Properties
 ```csharp
-public class OrphanRemovalAttribute : Attribute
-{
-    public bool Enabled { get; }
-    
-    public OrphanRemovalAttribute(bool enabled = true)
-    {
-        Enabled = enabled;
-    }
-}
+// OrphanRemoval is integrated as a property in relationship attributes:
 
-// Usage in relationship attributes:
 [AttributeUsage(AttributeTargets.Property)]
 public class OneToManyAttribute : Attribute
 {
-    public string? MappedBy { get; set; }
+    public string MappedBy { get; set; } = string.Empty;
     public FetchType Fetch { get; set; } = FetchType.Lazy;
     public bool OrphanRemoval { get; set; } = false; // Integrated property
 }
+
+[AttributeUsage(AttributeTargets.Property)]
+public class OneToOneAttribute : Attribute
+{
+    public string? MappedBy { get; set; }
+    public FetchType Fetch { get; set; } = FetchType.Eager;
+    public bool OrphanRemoval { get; set; } = false; // Integrated property
+}
+
+[AttributeUsage(AttributeTargets.Property)]
+public class ManyToManyAttribute : Attribute
+{
+    public string MappedBy { get; set; } = string.Empty;
+    public bool OrphanRemoval { get; set; } = false; // Integrated property
+}
+
+// Note: ManyToOneAttribute does NOT support OrphanRemoval
+// (ManyToOne relationships are owned by the child entity, not the parent)
+```
+
+### ManyToMany Orphan Removal Example
+```csharp
+[Entity]
+public class User
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToMany(OrphanRemoval = true)]
+    [JoinTable("user_roles", "user_id", "role_id")]
+    public ICollection<Role> Roles { get; set; }
+}
+
+// Generated code handles:
+// 1. Query existing related IDs from join table using correct key type
+// 2. Compare with current collection to find orphans
+// 3. Check if orphaned entities are referenced by other entities
+// 4. Delete orphaned entities only if not referenced elsewhere
 ```
 
 ## Acceptance Criteria
@@ -342,8 +365,23 @@ public class OneToManyAttribute : Attribute
 - [x] Performance optimized for bulk operations
 - [x] No accidental deletions (false positives)
 - [x] Works with cascade operations
+- [x] Inverse-side OneToOne relationships handled correctly
+- [x] ManyToMany orphan removal with correct key types
+- [x] ManyToOne relationships explicitly excluded (not suitable for orphan removal)
 
 **All acceptance criteria met!** ✅
+
+## Bug Fixes
+
+### Bug 1: Inverse OneToOne Orphan Removal
+**Issue**: When orphan removal is enabled on an inverse-side OneToOne relationship (with `MappedBy`), the generated code attempted to access `existing.{PropertyName}`, but `existing` is loaded via `GetByIdAsync`, which doesn't eagerly load related entities by default. This caused the relationship property to be null, preventing orphan detection from working.
+
+**Fix**: For inverse OneToOne relationships, the code now queries the current entity's table for the FK value and then queries the target entity directly, ensuring orphan detection works correctly.
+
+### Bug 2: ManyToMany Key Type Mismatch
+**Issue**: The ManyToMany orphan removal code generation used `info.KeyType` when querying related entity IDs from the join table, but it should use the related entity's key type. If the related entity has a different key type than the current entity (e.g., current is `int`, related is `Guid`), this caused a type mismatch when comparing IDs.
+
+**Fix**: The code now uses `GetRelatedEntityKeyType` helper method to ensure correct type casting in queries.
 
 ## Dependencies
 - Phase 7.1: Relationship-Aware Repository Generation

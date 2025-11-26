@@ -146,7 +146,6 @@ public static class RelationshipExtractor
         if (oneToManyAttr != null)
         {
             var orphanArg = oneToManyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
-            // Check that we found the OrphanRemoval argument and it has a boolean value
             if (orphanArg.Key == "OrphanRemoval" && orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
@@ -158,7 +157,6 @@ public static class RelationshipExtractor
         if (oneToOneAttr != null)
         {
             var orphanArg = oneToOneAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
-            // Check that we found the OrphanRemoval argument and it has a boolean value
             if (orphanArg.Key == "OrphanRemoval" && orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
@@ -170,7 +168,6 @@ public static class RelationshipExtractor
         if (manyToManyAttr != null)
         {
             var orphanArg = manyToManyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
-            // Check that we found the OrphanRemoval argument and it has a boolean value
             if (orphanArg.Key == "OrphanRemoval" && orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
