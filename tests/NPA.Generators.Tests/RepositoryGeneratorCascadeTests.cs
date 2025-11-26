@@ -5,7 +5,7 @@ using Xunit;
 namespace NPA.Generators.Tests;
 
 /// <summary>
-/// Tests for Phase 7.3: Cascade Operations Enhancement.
+/// Tests: Cascade Operations Enhancement.
 /// Verifies that the generator creates cascade-aware methods
 /// like AddWithCascadeAsync, UpdateWithCascadeAsync, and DeleteWithCascadeAsync.
 /// </summary>

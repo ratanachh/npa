@@ -146,29 +146,32 @@ public static class RelationshipExtractor
         if (oneToManyAttr != null)
         {
             var orphanArg = oneToManyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
-            if (orphanArg.Value.Value is bool orphanValue)
+            // Check that we found the OrphanRemoval argument and it has a boolean value
+            if (orphanArg.Key == "OrphanRemoval" && orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
 
-        // Check OneToOneAttribute (Phase 7.5)
+        // Check OneToOneAttribute
         var oneToOneAttr = propertySymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "OneToOneAttribute");
         
         if (oneToOneAttr != null)
         {
             var orphanArg = oneToOneAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
-            if (orphanArg.Value.Value is bool orphanValue)
+            // Check that we found the OrphanRemoval argument and it has a boolean value
+            if (orphanArg.Key == "OrphanRemoval" && orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
 
-        // Check ManyToManyAttribute (Phase 7.5 - extended support)
+        // Check ManyToManyAttribute (extended support)
         var manyToManyAttr = propertySymbol.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "ManyToManyAttribute");
         
         if (manyToManyAttr != null)
         {
             var orphanArg = manyToManyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "OrphanRemoval");
-            if (orphanArg.Value.Value is bool orphanValue)
+            // Check that we found the OrphanRemoval argument and it has a boolean value
+            if (orphanArg.Key == "OrphanRemoval" && orphanArg.Value.Value is bool orphanValue)
                 return orphanValue;
         }
 

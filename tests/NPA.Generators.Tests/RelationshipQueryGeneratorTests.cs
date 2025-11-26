@@ -6,7 +6,7 @@ namespace NPA.Generators.Tests;
 
 /// <summary>
 /// Tests for relationship query methods generation.
-/// Phase 7.6: Relationship Query Methods
+/// Relationship Query Methods
 /// </summary>
 public class RelationshipQueryGeneratorTests : GeneratorTestBase
 {

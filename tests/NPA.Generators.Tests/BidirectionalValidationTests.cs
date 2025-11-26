@@ -6,7 +6,7 @@ namespace NPA.Generators.Tests;
 
 /// <summary>
 /// Tests for bidirectional relationship validation method generation.
-/// Phase 7.4: Bidirectional Relationship Management - Validation
+/// Bidirectional Relationship Management - Validation
 /// </summary>
 public class BidirectionalValidationTests : GeneratorTestBase
 {

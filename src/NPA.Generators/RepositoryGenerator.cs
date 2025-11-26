@@ -680,7 +680,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
         context.AddSource($"{repositoryName}Implementation.g.cs", SourceText.From(code, Encoding.UTF8));
 
-        // Generate partial interface for relationship query methods (Phase 7.6)
+        // Generate partial interface for relationship query methods
         if (info.Relationships.Count > 0)
         {
             var interfaceCode = GeneratePartialInterface(info);
@@ -855,25 +855,25 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine(GenerateRelationshipAwareMethods(info));
         }
 
-        // Generate eager loading overrides (Phase 7.2)
+        // Generate eager loading overrides
         if (info.HasEagerRelationships)
         {
             sb.AppendLine(GenerateEagerLoadingOverrides(info));
         }
 
-        // Generate cascade operation overrides (Phase 7.3)
+        // Generate cascade operation overrides
         if (info.HasCascadeRelationships)
         {
             sb.AppendLine(GenerateCascadeOperationOverrides(info));
         }
 
-        // Generate orphan removal override for UpdateAsync (Phase 7.5)
+        // Generate orphan removal override for UpdateAsync
         if (info.HasOrphanRemovalRelationships)
         {
             sb.AppendLine(GenerateOrphanRemovalUpdateOverride(info));
         }
 
-        // Generate relationship query methods (Phase 7.6)
+        // Generate relationship query methods
         if (info.Relationships is { Count: > 0 })
         {
             sb.AppendLine(GenerateRelationshipQueryMethods(info));
@@ -2390,7 +2390,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         return string.Join(", ", columns);
     }
 
-    // Phase 7.1: Relationship extraction and code generation
+    // Relationship extraction and code generation
     private static List<Models.RelationshipMetadata> ExtractRelationships(Compilation compilation, string entityTypeName)
     {
         var relationships = new List<Models.RelationshipMetadata>();
@@ -2608,7 +2608,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("            return result.FirstOrDefault();");
     }
 
-    // Phase 7.2: Generate eager loading overrides
+    // Generate eager loading overrides
     private static string GenerateEagerLoadingOverrides(RepositoryInfo info)
     {
         var sb = new StringBuilder();
@@ -3227,13 +3227,13 @@ public class RepositoryGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    // Phase 7.5: Generate orphan removal override for UpdateAsync
+    // Generate orphan removal override for UpdateAsync
     private static string GenerateOrphanRemovalUpdateOverride(RepositoryInfo info)
     {
         var sb = new StringBuilder();
         var orphanRemovalRelationships = info.OrphanRemovalRelationships;
 
-        sb.AppendLine("        #region Orphan Removal Support (Phase 7.5)");
+        sb.AppendLine("        #region Orphan Removal Support");
         sb.AppendLine();
         sb.AppendLine($"        /// <summary>");
         sb.AppendLine($"        /// Updates an entity with orphan removal support.");
@@ -3369,9 +3369,22 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
         else
         {
-            // Inverse side: Check existing entity's relationship
-            sb.AppendLine($"            // Load existing related entity (inverse side)");
-            sb.AppendLine($"            var existingRelated = existing.{rel.PropertyName} != null ? await _entityManager.FindAsync<{rel.TargetEntityFullType}>(existing.{rel.PropertyName}.{relatedKeyPropertyName}) : null;");
+            // Inverse side: FK is on current entity, query target entity using FK value
+            // Note: existing.{rel.PropertyName} may be null because GetByIdAsync doesn't eagerly load relationships
+            // So we need to query the current entity's table to get the FK value, then query the target entity
+            var currentTableName = GetTableNameFromMetadata(info, info.EntityType) ?? GetTableName(info.EntityType);
+            var relatedKeyType = GetRelatedEntityKeyType(info, rel.TargetEntityType);
+            var defaultKeyValue = relatedKeyType == "Guid" ? "Guid.Empty" : relatedKeyType == "int" ? "0" : relatedKeyType == "long" ? "0L" : $"default({relatedKeyType})";
+            sb.AppendLine($"            // Load existing related entity (inverse side - FK on current entity)");
+            sb.AppendLine($"            // Query current entity's table to get FK value, then query target entity");
+            sb.AppendLine($"            var fkColumnName = \"{fkColumn}\";");
+            sb.AppendLine($"            var fkValueSql = $\"SELECT {{fkColumnName}} FROM {currentTableName} WHERE {GetKeyPropertyName(info)} = @ParentId\";");
+            sb.AppendLine($"            var fkValue = await _connection.QueryFirstOrDefaultAsync<{relatedKeyType}>(fkValueSql, new {{ ParentId = entity.{keyPropertyName} }});");
+            // Check if FK value is valid (not null for reference types, not default for value types)
+            // For reference types (string), null check is sufficient. For value types, check against default.
+            var isReferenceType = relatedKeyType == "string";
+            var fkValueCheck = isReferenceType ? "fkValue != null" : $"fkValue != null && fkValue != {defaultKeyValue}";
+            sb.AppendLine($"            var existingRelated = {fkValueCheck} ? await _connection.QueryFirstOrDefaultAsync<{rel.TargetEntityFullType}>($\"SELECT * FROM {relatedTableName} WHERE {relatedKeyPropertyName} = @FkValue\", new {{ FkValue = fkValue }}) : null;");
         }
         sb.AppendLine($"            ");
         sb.AppendLine($"            // Check if relationship was cleared or replaced");
@@ -3405,6 +3418,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         string ownerKeyColumn;
         string targetKeyColumn;
         var relatedKeyPropertyName = GetKeyPropertyName(info, rel.TargetEntityType);
+        var relatedKeyType = GetRelatedEntityKeyType(info, rel.TargetEntityType);
         
         if (joinTable == null)
         {
@@ -3433,7 +3447,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"                ");
         sb.AppendLine($"                // Load existing relationships from join table");
         sb.AppendLine($"                var sql = $\"SELECT {targetKeyColumn} FROM {joinTableName} WHERE {ownerKeyColumn} = @ParentId\";");
-        sb.AppendLine($"                var existingRelatedIds = (await _connection.QueryAsync<{info.KeyType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
+        sb.AppendLine($"                var existingRelatedIds = (await _connection.QueryAsync<{relatedKeyType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
         sb.AppendLine($"                ");
         sb.AppendLine($"                var currentIds = currentItems.Where(i => i.{relatedKeyPropertyName} != default).Select(i => i.{relatedKeyPropertyName}).ToHashSet();");
         sb.AppendLine($"                ");
@@ -3462,7 +3476,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            {{");
         sb.AppendLine($"                // Collection is null - check all existing relationships for orphan removal");
         sb.AppendLine($"                var sql = $\"SELECT {targetKeyColumn} FROM {joinTableName} WHERE {ownerKeyColumn} = @ParentId\";");
-        sb.AppendLine($"                var existingRelatedIds = (await _connection.QueryAsync<{info.KeyType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
+        sb.AppendLine($"                var existingRelatedIds = (await _connection.QueryAsync<{relatedKeyType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
         sb.AppendLine($"                ");
         sb.AppendLine($"                foreach (var relatedId in existingRelatedIds)");
         sb.AppendLine($"                {{");
@@ -3484,7 +3498,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
-    // Phase 7.6: Generate relationship query methods
+    // Generate relationship query methods
     private static string GenerateRelationshipQueryMethods(RepositoryInfo info)
     {
         var sb = new StringBuilder();
@@ -3583,7 +3597,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
-    // Phase 7.6: Generate separate interface for relationship query methods
+    // Generate separate interface for relationship query methods
     private static string GeneratePartialInterface(RepositoryInfo info)
     {
         var sb = new StringBuilder();
@@ -3973,7 +3987,7 @@ internal class RepositoryInfo
     public bool HasCascadeRelationships => Relationships != null && Relationships.Any(r => r.CascadeTypes != 0);
     public List<Models.RelationshipMetadata> CascadeRelationships => Relationships?.Where(r => r.CascadeTypes != 0).ToList() ?? new();
 
-    // Orphan removal support (Phase 7.5)
+    // Orphan removal support
     public bool HasOrphanRemovalRelationships => Relationships != null && Relationships.Any(r => r.OrphanRemoval);
     public List<Models.RelationshipMetadata> OrphanRemovalRelationships => Relationships?.Where(r => r.OrphanRemoval).ToList() ?? new();
 }

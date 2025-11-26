@@ -2,14 +2,14 @@ using System;
 using Phase7Demo;
 
 Console.WriteLine("╔════════════════════════════════════════════════════════════════╗");
-Console.WriteLine("║     NPA Phase 7: Advanced Relationship Management Demo        ║");
+Console.WriteLine("║     NPA: Advanced Relationship Management Demo        ║");
 Console.WriteLine("╚════════════════════════════════════════════════════════════════╝");
 Console.WriteLine();
 
 // ============================================================================
-// Phase 7.1: Relationship-Aware Repository Generation
+// Relationship-Aware Repository Generation
 // ============================================================================
-Console.WriteLine("═══ Phase 7.1: Relationship-Aware Repository Generation ═══");
+Console.WriteLine("═══ Relationship-Aware Repository Generation ═══");
 Console.WriteLine();
 Console.WriteLine("✓ Generated GetByIdWith{Property}Async() methods for eager relationships");
 Console.WriteLine("✓ Generated Load{Property}Async() methods for lazy relationships");
@@ -23,9 +23,9 @@ Console.WriteLine("  • Task<Customer?> LoadCustomerAsync(Order order)      // 
 Console.WriteLine();
 
 // ============================================================================
-// Phase 7.2: Eager Loading Support
+// Eager Loading Support
 // ============================================================================
-Console.WriteLine("═══ Phase 7.2: Eager Loading Support ═══");
+Console.WriteLine("═══ Eager Loading Support ═══");
 Console.WriteLine();
 Console.WriteLine("✓ Automatic eager loading for FetchType.Eager relationships");
 Console.WriteLine("✓ Override GetByIdAsync() with LEFT JOIN for eager relationships");
@@ -38,9 +38,9 @@ Console.WriteLine("  • Task<IEnumerable<Order>> GetByIdsAsync(IEnumerable<int>
 Console.WriteLine();
 
 // ============================================================================
-// Phase 7.3: Cascade Operations Enhancement
+// Cascade Operations Enhancement
 // ============================================================================
-Console.WriteLine("═══ Phase 7.3: Cascade Operations Enhancement ═══");
+Console.WriteLine("═══ Cascade Operations Enhancement ═══");
 Console.WriteLine();
 Console.WriteLine("✓ AddWithCascadeAsync() - Cascade persist (parent-first, child-after)");
 Console.WriteLine("✓ UpdateWithCascadeAsync() - Cascade merge with orphan removal");
@@ -55,9 +55,9 @@ Console.WriteLine("  • Task DeleteWithCascadeAsync(int id)                    
 Console.WriteLine();
 
 // ============================================================================
-// Phase 7.4: Bidirectional Relationship Management
+// Bidirectional Relationship Management
 // ============================================================================
-Console.WriteLine("═══ Phase 7.4: Bidirectional Relationship Management ═══");
+Console.WriteLine("═══ Bidirectional Relationship Management ═══");
 Console.WriteLine();
 
 Console.WriteLine("Demo 1: OneToMany/ManyToOne Bidirectional Synchronization");
@@ -137,10 +137,10 @@ Console.WriteLine("╔═══════════════════�
 Console.WriteLine("║                    Generated Features Summary                  ║");
 Console.WriteLine("╚════════════════════════════════════════════════════════════════╝");
 Console.WriteLine();
-Console.WriteLine("Phase 7.1: Relationship-Aware Repositories        ✅ COMPLETE");
-Console.WriteLine("Phase 7.2: Eager Loading Support                  ✅ COMPLETE (Basic)");
-Console.WriteLine("Phase 7.3: Cascade Operations                     ✅ COMPLETE");
-Console.WriteLine("Phase 7.4: Bidirectional Synchronization          ✅ COMPLETE");
+Console.WriteLine("1: Relationship-Aware Repositories        [OK] COMPLETE");
+Console.WriteLine("2: Eager Loading Support                  [OK] COMPLETE (Basic)");
+Console.WriteLine("3: Cascade Operations                     [OK] COMPLETE");
+Console.WriteLine("4: Bidirectional Synchronization          [OK] COMPLETE");
 Console.WriteLine();
 Console.WriteLine("📁 Check obj/generated folder for all generated code!");
 Console.WriteLine();
@@ -155,4 +155,4 @@ Console.WriteLine("  • OrderItemRelationshipHelper.g.cs        (bidirectional 
 Console.WriteLine("  • UserRelationshipHelper.g.cs             (bidirectional sync)");
 Console.WriteLine("  • UserProfileRelationshipHelper.g.cs      (bidirectional sync)");
 Console.WriteLine();
-Console.WriteLine("✨ All Phase 7 features demonstrated successfully!");
+Console.WriteLine("✨ All features demonstrated successfully!");

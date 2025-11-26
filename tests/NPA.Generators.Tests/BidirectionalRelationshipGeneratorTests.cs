@@ -6,7 +6,7 @@ namespace NPA.Generators.Tests;
 
 /// <summary>
 /// Tests for bidirectional relationship synchronization helper generation.
-/// Phase 7.4: Bidirectional Relationship Management
+/// Bidirectional Relationship Management
 /// </summary>
 public class BidirectionalRelationshipGeneratorTests : GeneratorTestBase
 {
