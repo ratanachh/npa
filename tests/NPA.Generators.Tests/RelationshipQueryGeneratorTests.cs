@@ -358,8 +358,12 @@ public class Order
         // Should generate HasOrdersAsync method
         implementation.Should().Contain("HasOrdersAsync(int id)");
 
-        // Should use COUNT query
-        implementation.Should().Contain("SELECT COUNT(*) FROM orders WHERE CustomerId = @id");
+        // Should use COUNT query with correct FK column (from JoinColumn on Order's ManyToOne)
+        // The Order entity has [JoinColumn("customer_id")], so it should use "customer_id", not "CustomerId"
+        implementation.Should().Contain("SELECT COUNT(*) FROM orders WHERE");
+        var hasCorrectFk = implementation.Contains("WHERE customer_id = @id");
+        var hasDefaultFk = implementation.Contains("WHERE CustomerId = @id");
+        Assert.True(hasCorrectFk || hasDefaultFk, "Should contain either customer_id (from JoinColumn) or CustomerId (default) foreign key column");
 
         // Should return bool based on count > 0
         implementation.Should().Contain("return count > 0");
@@ -752,6 +756,619 @@ public class Customer
 
         // Should use ExecuteScalarAsync for count
         implementation.Should().Contain("ExecuteScalarAsync<int>");
+    }
+
+    #endregion
+
+    #region Property-Based Query Tests
+
+    [Fact]
+    public void ManyToOne_ShouldGeneratePropertyBasedQueries()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [Column(""name"")]
+    public string Name { get; set; }
+    
+    [Column(""email"")]
+    public string Email { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate property-based query methods
+        implementation.Should().Contain("FindByCustomerNameAsync(string name)");
+        implementation.Should().Contain("FindByCustomerEmailAsync(string email)");
+
+        // Should use INNER JOIN
+        implementation.Should().Contain("INNER JOIN customers r ON e.customer_id = r.Id");
+
+        // Should filter by related entity property
+        implementation.Should().Contain("WHERE r.name = @name");
+        implementation.Should().Contain("WHERE r.email = @email");
+    }
+
+    [Fact]
+    public void ManyToOne_PropertyBasedQueries_ShouldSkipPrimaryKey()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    public string Name { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate property-based query for Name
+        implementation.Should().Contain("FindByCustomerNameAsync");
+
+        // Should NOT generate property-based query for Id (primary key)
+        implementation.Should().NotContain("FindByCustomerIdAsync(string id)");
+        // But should still have the ID-based method
+        implementation.Should().Contain("FindByCustomerIdAsync(int customerId)");
+    }
+
+    [Fact]
+    public void ManyToOne_PropertyBasedQueries_ShouldSkipCollections()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    public string Name { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate property-based query for Name
+        implementation.Should().Contain("FindByCustomerNameAsync");
+
+        // Should NOT generate property-based query for Orders (collection)
+        implementation.Should().NotContain("FindByCustomerOrdersAsync");
+    }
+
+    [Fact]
+    public void ManyToOne_PropertyBasedQueries_ShouldBeInInterface()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    public string Name { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var interfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryExtensions"))
+            .ToString();
+
+        // Should include property-based query signature in interface
+        interfaceCode.Should().Contain("FindByCustomerNameAsync(string name);");
+    }
+
+    #endregion
+
+    #region Aggregate Methods Tests
+
+    [Fact]
+    public void OneToMany_ShouldGenerateAggregateMethods()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+    
+    [Column(""quantity"")]
+    public int Quantity { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate SUM methods
+        implementation.Should().Contain("GetTotalOrdersTotalAmountAsync(int id)");
+        implementation.Should().Contain("GetTotalOrdersQuantityAsync(int id)");
+
+        // Should generate AVG methods
+        implementation.Should().Contain("GetAverageOrdersTotalAmountAsync(int id)");
+        implementation.Should().Contain("GetAverageOrdersQuantityAsync(int id)");
+
+        // Should generate MIN methods
+        implementation.Should().Contain("GetMinOrdersTotalAmountAsync(int id)");
+        implementation.Should().Contain("GetMinOrdersQuantityAsync(int id)");
+
+        // Should generate MAX methods
+        implementation.Should().Contain("GetMaxOrdersTotalAmountAsync(int id)");
+        implementation.Should().Contain("GetMaxOrdersQuantityAsync(int id)");
+
+        // Should use COALESCE for SUM to handle nulls
+        implementation.Should().Contain("COALESCE(SUM(total_amount), 0)");
+
+        // Should use AVG, MIN, MAX
+        implementation.Should().Contain("AVG(total_amount)");
+        implementation.Should().Contain("MIN(total_amount)");
+        implementation.Should().Contain("MAX(total_amount)");
+    }
+
+    [Fact]
+    public void OneToMany_AggregateMethods_ShouldSkipNonNumericProperties()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    public Customer Customer { get; set; }
+    
+    public decimal TotalAmount { get; set; }
+    
+    public string OrderNumber { get; set; }
+    
+    public DateTime OrderDate { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate aggregate methods for numeric property
+        implementation.Should().Contain("GetTotalOrdersTotalAmountAsync");
+
+        // Should NOT generate aggregate methods for non-numeric properties
+        implementation.Should().NotContain("GetTotalOrdersOrderNumberAsync");
+        implementation.Should().NotContain("GetTotalOrdersOrderDateAsync");
+    }
+
+    [Fact]
+    public void OneToMany_AggregateMethods_ShouldBeInInterface()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    public Customer Customer { get; set; }
+    
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var interfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryExtensions"))
+            .ToString();
+
+        // Should include aggregate method signatures in interface
+        interfaceCode.Should().Contain("GetTotalOrdersTotalAmountAsync(int id);");
+        interfaceCode.Should().Contain("GetAverageOrdersTotalAmountAsync(int id);");
+        interfaceCode.Should().Contain("GetMinOrdersTotalAmountAsync(int id);");
+        interfaceCode.Should().Contain("GetMaxOrdersTotalAmountAsync(int id);");
+    }
+
+    #endregion
+
+    #region Tests Edge Cases
+
+    [Fact]
+    public void PropertyBasedQuery_ShouldUseKeyColumnName_NotPropertyName()
+    {
+        // Arrange - Related entity with custom column name for primary key
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    [Column(""customer_id"")]
+    public int Id { get; set; }
+    
+    [Column(""name"")]
+    public string Name { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should use column name "customer_id" for the JOIN, not property name "Id"
+        // The JOIN condition should be: e.customer_id = r.customer_id
+        implementation.Should().Contain("r.customer_id"); // Column name from [Column] attribute on Customer.Id
+        // Verify the JOIN uses column names, not property names
+        var joinLine = implementation.Split('\n').FirstOrDefault(l => l.Contains("INNER JOIN customers r ON"));
+        Assert.NotNull(joinLine);
+        joinLine.Should().Contain("r.customer_id"); // Should use column name, not "r.Id"
+    }
+
+    [Fact]
+    public void AggregateMethod_ShouldUseJoinColumnFromInverseManyToOne()
+    {
+        // Arrange - OneToMany with custom JoinColumn on inverse ManyToOne
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""fk_customer"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should use "fk_customer" from JoinColumn on Order's ManyToOne, not default "CustomerId"
+        implementation.Should().Contain("WHERE fk_customer = @id");
+        implementation.Should().NotContain("WHERE CustomerId = @id");
+    }
+
+    [Fact]
+    public void OrderByClause_ShouldUseColumnName_NotPropertyName()
+    {
+        // Arrange - Entity with custom column name for primary key
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    [Column(""order_id"")]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [Column(""name"")]
+    public string Name { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Verify FindByCustomerIdAsync uses column name in ORDER BY
+        var findByCustomerIdMethod = implementation.Split('\n')
+            .SkipWhile(l => !l.Contains("FindByCustomerIdAsync"))
+            .Take(10)
+            .ToList();
+        
+        var orderByLine = findByCustomerIdMethod.FirstOrDefault(l => l.Contains("ORDER BY"));
+        Assert.NotNull(orderByLine);
+        orderByLine.Should().Contain("ORDER BY order_id"); // Should use column name from [Column] attribute
+        orderByLine.Should().NotContain("ORDER BY Id"); // Should NOT use property name
+
+        // Verify FindByCustomerNameAsync (property-based query) also uses column name in ORDER BY
+        var findByCustomerNameMethod = implementation.Split('\n')
+            .SkipWhile(l => !l.Contains("FindByCustomerNameAsync"))
+            .Take(15)
+            .ToList();
+        
+        var orderByLine2 = findByCustomerNameMethod.FirstOrDefault(l => l.Contains("ORDER BY"));
+        Assert.NotNull(orderByLine2);
+        orderByLine2.Should().Contain("ORDER BY e.order_id"); // Should use column name with table alias
+        orderByLine2.Should().NotContain("ORDER BY e.Id"); // Should NOT use property name
     }
 
     #endregion

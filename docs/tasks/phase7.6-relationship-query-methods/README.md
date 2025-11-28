@@ -5,21 +5,30 @@ Generate specialized query methods for navigating and querying entities based on
 
 ## Status Summary
 
-**Current Status**: ✅ **PARTIALLY IMPLEMENTED** (Basic Methods Complete)
+**Current Status**: ✅ **MOSTLY IMPLEMENTED** (Core Features Complete)
 
 ### ✅ What's Implemented
-- **ManyToOne Relationships**: `FindBy{Property}IdAsync()` and `CountBy{Property}IdAsync()` methods
-- **OneToMany Relationships**: `Has{Property}Async()` and `Count{Property}Async()` methods
+- **ManyToOne Relationships**: 
+  - `FindBy{Property}IdAsync()` - Find entities by related entity ID
+  - `CountBy{Property}IdAsync()` - Count entities by related entity ID
+  - `FindBy{Property}{PropertyName}Async()` - Find entities by related entity properties (e.g., `FindByCustomerNameAsync`)
+- **OneToMany Relationships**: 
+  - `Has{Property}Async()` - Check if entity has related children
+  - `Count{Property}Async()` - Count related children
+  - `GetTotal{Property}{PropertyName}Async()` - SUM aggregate for numeric properties
+  - `GetAverage{Property}{PropertyName}Async()` - AVG aggregate for numeric properties
+  - `GetMin{Property}{PropertyName}Async()` - MIN aggregate for numeric properties
+  - `GetMax{Property}{PropertyName}Async()` - MAX aggregate for numeric properties
 - **Interface Generation**: Separate partial interfaces for relationship query methods
-- **Efficient Queries**: Direct WHERE clauses with no N+1 problems
+- **Efficient Queries**: Direct WHERE clauses and JOIN queries with no N+1 problems
+- **Type Safety**: Uses correct key types from related entities
 
 ### 📋 What's Planned
-- Property-based queries (e.g., `FindByCustomerNameAsync`)
-- Aggregate methods (SUM, AVG, MIN, MAX, GROUP BY)
 - Advanced filters (date ranges, amounts, subqueries)
 - Pagination and sorting support
 - Multi-level navigation
-- Complex relationship filters
+- Complex relationship filters (OR/AND combinations)
+- GROUP BY aggregations across multiple entities
 
 ## Objectives
 - ✅ Generate relationship navigation query methods (basic - ID-based only)
@@ -33,33 +42,38 @@ Generate specialized query methods for navigating and querying entities based on
 
 ### ✅ Completed Features
 
-#### 1. Navigation Query Methods (Basic)
+#### 1. Navigation Query Methods
 - ✅ Generate `FindBy{PropertyName}IdAsync` methods for ManyToOne relationships
 - ✅ Support finding entities by parent foreign key
-- ⚠️ Limited to ID-based queries (not property-based yet)
+- ✅ Generate `FindBy{PropertyName}{PropertyName}Async` methods for property-based queries
+- ✅ Support filtering by related entity properties using JOIN queries
+- ✅ Automatically generates methods for all simple properties of related entities
 
-#### 2. Collection Query Methods (Basic)
+#### 2. Collection Query Methods
 - ✅ Generate `Has{PropertyName}Async` methods for OneToMany relationships
 - ✅ Generate `Count{PropertyName}Async` methods for OneToMany relationships
-- ⚠️ Limited to existence and count checks
+- ✅ Support existence and count checks
 
-#### 3. Relationship Existence Methods (Basic)
+#### 3. Relationship Existence Methods
 - ✅ Generate `Has{PropertyName}Async` methods
 - ✅ Efficient existence queries using COUNT
-- ⚠️ Single relationship checks only (no multiple relationship support yet)
+- ✅ Optimized queries with no N+1 problems
 
-#### 4. Count Methods (Basic)
+#### 4. Count and Aggregate Methods
 - ✅ Generate `CountBy{PropertyName}IdAsync` for ManyToOne relationships
 - ✅ Generate `Count{PropertyName}Async` for OneToMany relationships
-- ⚠️ Basic count only (no aggregates or statistics yet)
+- ✅ Generate `GetTotal{Property}{PropertyName}Async` for SUM aggregations
+- ✅ Generate `GetAverage{Property}{PropertyName}Async` for AVG aggregations
+- ✅ Generate `GetMin{Property}{PropertyName}Async` for MIN aggregations
+- ✅ Generate `GetMax{Property}{PropertyName}Async` for MAX aggregations
+- ✅ Automatically generates aggregate methods for all numeric properties
 
 ### 📋 Planned Features
 
 #### 1. Navigation Query Methods (Advanced)
-- [ ] Generate methods to find entities by related entity properties (e.g., `FindByCustomerNameAsync`)
+- ✅ Generate methods to find entities by related entity properties (e.g., `FindByCustomerNameAsync`)
 - [ ] Support navigation through multiple levels
 - [ ] Implement pagination for relationship queries
-- [ ] Support filtering by related entity properties
 
 #### 2. Collection Query Methods (Advanced)
 - [ ] Create `FindAllByRelatedEntityAsync` methods
@@ -72,10 +86,10 @@ Generate specialized query methods for navigating and querying entities based on
 - [ ] Enhanced existence queries with additional filters
 
 #### 4. Count and Aggregate Methods (Advanced)
-- [ ] Create `GetRelationshipStatisticsAsync` methods
-- [ ] Support aggregation functions on relationships (SUM, AVG, MIN, MAX)
-- [ ] Implement grouped counts and statistics
-- [ ] Generate methods like `GetTotalOrderAmountAsync`
+- ✅ Support aggregation functions on relationships (SUM, AVG, MIN, MAX)
+- ✅ Generate methods like `GetTotalOrderAmountAsync`, `GetAverageOrderAmountAsync`, etc.
+- [ ] Create `GetRelationshipStatisticsAsync` methods with GROUP BY
+- [ ] Implement grouped counts and statistics across multiple entities
 
 #### 5. Advanced Relationship Queries
 - [ ] Generate methods for complex relationship filters
@@ -207,21 +221,18 @@ public async Task<int> CountOrdersAsync(int id)
 }
 ```
 
-### 📋 Planned Code Examples (Not Yet Implemented)
+### ✅ Implemented Code Examples
 
 #### Find By Related Entity Properties
 ```csharp
-// 📋 Planned: Find by related entity property (requires JOIN)
-public async Task<IEnumerable<Order>> FindByCustomerNameAsync(string customerName)
+// ✅ Implemented: Find by related entity property (uses JOIN)
+public async Task<IEnumerable<Order>> FindByCustomerNameAsync(string name)
 {
-    const string sql = @"
-        SELECT o.*
-        FROM orders o
-        INNER JOIN customers c ON c.id = o.customer_id
-        WHERE c.name = @customerName
-        ORDER BY o.order_date DESC";
-    
-    return await _connection.QueryAsync<Order>(sql, new { customerName });
+    var sql = @"SELECT e.* FROM orders e
+                INNER JOIN customers r ON e.customer_id = r.Id
+                WHERE r.name = @name
+                ORDER BY e.Id";
+    return await _connection.QueryAsync<Order>(sql, new { name });
 }
 ```
 
@@ -265,17 +276,37 @@ public async Task<IEnumerable<Order>> FindWithMinimumItemsAsync(int minItems)
 
 #### Aggregate Methods
 ```csharp
-// 📋 Planned: Aggregate functions on relationships
-public async Task<decimal> GetTotalOrderAmountAsync(int customerId)
+// ✅ Implemented: Aggregate functions on relationships
+public async Task<decimal> GetTotalOrdersTotalAmountAsync(int id)
 {
-    const string sql = @"
-        SELECT COALESCE(SUM(total_amount), 0)
-        FROM orders
-        WHERE customer_id = @customerId";
-    
-    return await _connection.ExecuteScalarAsync<decimal>(sql, new { customerId });
+    var sql = $"SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE CustomerId = @id";
+    return await _connection.ExecuteScalarAsync<decimal>(sql, new { id });
 }
 
+public async Task<decimal?> GetAverageOrdersTotalAmountAsync(int id)
+{
+    var sql = $"SELECT AVG(total_amount) FROM orders WHERE CustomerId = @id";
+    return await _connection.ExecuteScalarAsync<decimal?>(sql, new { id });
+}
+
+public async Task<decimal?> GetMinOrdersTotalAmountAsync(int id)
+{
+    var sql = $"SELECT MIN(total_amount) FROM orders WHERE CustomerId = @id";
+    return await _connection.ExecuteScalarAsync<decimal?>(sql, new { id });
+}
+
+public async Task<decimal?> GetMaxOrdersTotalAmountAsync(int id)
+{
+    var sql = $"SELECT MAX(total_amount) FROM orders WHERE CustomerId = @id";
+    return await _connection.ExecuteScalarAsync<decimal?>(sql, new { id });
+}
+```
+
+### 📋 Planned Code Examples (Not Yet Implemented)
+
+#### GROUP BY Aggregations
+```csharp
+// 📋 Planned: GROUP BY aggregations across multiple entities
 public async Task<Dictionary<int, int>> GetOrderCountsByCustomerAsync()
 {
     const string sql = @"

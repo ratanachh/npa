@@ -125,7 +125,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             MultiTenantInfo = multiTenantInfo,
             EntityMetadata = entityMetadata,
             EntitiesMetadata = entitiesMetadata,
-            Relationships = relationships
+            Relationships = relationships,
+            Compilation = semanticModel.Compilation
         };
     }
 
@@ -3515,6 +3516,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 GenerateFindByParentMethod(sb, info, relationship, tableName);
                 GenerateCountByParentMethod(sb, info, relationship, tableName);
+                // Generate property-based queries (e.g., FindByCustomerNameAsync)
+                GeneratePropertyBasedQueries(sb, info, relationship, tableName);
             }
 
             // Generate Has/Count methods for OneToMany relationships (check if parent has children)
@@ -3522,6 +3525,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 GenerateHasChildrenMethod(sb, info, relationship);
                 GenerateCountChildrenMethod(sb, info, relationship);
+                // Generate aggregate methods for numeric properties
+                GenerateAggregateMethods(sb, info, relationship);
             }
         }
 
@@ -3535,7 +3540,7 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
-        var keyPropertyName = GetKeyPropertyName(info);
+        var keyColumnName = GetKeyColumnName(info);
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
@@ -3543,7 +3548,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName})");
         sb.AppendLine("        {");
-        sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {keyPropertyName}\";");
+        sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {keyColumnName}\";");
         sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName} }});");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -3569,7 +3574,9 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateHasChildrenMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
         var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relationship.TargetEntityType;
-        var foreignKeyColumn = $"{info.EntityType.Split('.').Last()}Id";
+        var parentEntityName = info.EntityType.Split('.').Last();
+        // Get FK column from inverse ManyToOne relationship
+        var foreignKeyColumn = GetForeignKeyColumnForOneToMany(info, relationship, parentEntityName);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Checks if the entity has any {relationship.PropertyName}.");
@@ -3586,7 +3593,9 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateCountChildrenMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
         var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relationship.TargetEntityType;
-        var foreignKeyColumn = $"{info.EntityType.Split('.').Last()}Id";
+        var parentEntityName = info.EntityType.Split('.').Last();
+        // Get FK column from inverse ManyToOne relationship
+        var foreignKeyColumn = GetForeignKeyColumnForOneToMany(info, relationship, parentEntityName);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Counts the number of {relationship.PropertyName} for the entity.");
@@ -3597,6 +3606,170 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            return await _connection.ExecuteScalarAsync<int>(sql, new {{ id }});");
         sb.AppendLine("        }");
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates property-based query methods for ManyToOne relationships.
+    /// For example, FindByCustomerNameAsync, FindByCustomerEmailAsync, etc.
+    /// </summary>
+    private static void GeneratePropertyBasedQueries(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
+    {
+        // Get related entity metadata
+        var relatedEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(relatedEntitySimpleName, out var relatedMetadata))
+        {
+            return; // Can't generate property-based queries without metadata
+        }
+
+        if (relatedMetadata.Properties == null)
+        {
+            return;
+        }
+
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
+        var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedEntitySimpleName;
+        var keyColumnName = GetKeyColumnName(info);
+        // Use column name instead of property name for the JOIN condition
+        var relatedKeyColumnName = GetKeyColumnName(info, relationship.TargetEntityType);
+
+        // Generate query methods for each property of the related entity (excluding primary key and relationships)
+        foreach (var property in relatedMetadata.Properties)
+        {
+            // Skip primary key, relationships, and complex types
+            if (property.IsPrimaryKey)
+                continue;
+
+            // Skip if property type is a collection or complex object (likely a relationship)
+            if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") || 
+                property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                continue;
+
+            var propertyParamName = ToCamelCase(property.Name);
+            var methodName = $"FindBy{relationship.PropertyName}{property.Name}Async";
+
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.{property.Name}.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName})");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE r.{property.ColumnName} = @{propertyParamName}");
+            sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName} }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+    }
+
+    /// <summary>
+    /// Generates aggregate methods for OneToMany relationships.
+    /// For example, GetTotalOrderAmountAsync, GetAverageOrderAmountAsync, etc.
+    /// </summary>
+    private static void GenerateAggregateMethods(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Get child entity metadata
+        var childEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(childEntitySimpleName, out var childMetadata))
+        {
+            return; // Can't generate aggregate methods without metadata
+        }
+
+        if (childMetadata.Properties == null)
+        {
+            return;
+        }
+
+        var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? childEntitySimpleName;
+        var parentEntityName = info.EntityType.Split('.').Last();
+        
+        // For OneToMany, the JoinColumn is on the inverse ManyToOne relationship
+        // Find the FK column from the child entity's ManyToOne relationship
+        var foreignKeyColumn = GetForeignKeyColumnForOneToMany(info, relationship, parentEntityName);
+
+        // Generate aggregate methods for each numeric property of the child entity
+        foreach (var property in childMetadata.Properties)
+        {
+            // Skip primary key, relationships, and non-numeric types
+            if (property.IsPrimaryKey)
+                continue;
+
+            if (!IsNumericType(property.TypeName))
+                continue;
+
+            // Skip if property type is a collection or complex object
+            if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") || 
+                property.TypeName.Contains("IEnumerable"))
+                continue;
+
+            var propertyName = property.Name;
+            var propertyColumnName = property.ColumnName;
+            var returnType = property.TypeName.TrimEnd('?'); // Remove nullable marker for return type
+
+            // Generate SUM method
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the sum of {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<{returnType}> GetTotal{relationship.PropertyName}{propertyName}Async({info.KeyType} id)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = $\"SELECT COALESCE(SUM({propertyColumnName}), 0) FROM {childTableName} WHERE {foreignKeyColumn} = @id\";");
+            sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{returnType}>(sql, new {{ id }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate AVG method
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the average of {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<{returnType}?> GetAverage{relationship.PropertyName}{propertyName}Async({info.KeyType} id)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = $\"SELECT AVG({propertyColumnName}) FROM {childTableName} WHERE {foreignKeyColumn} = @id\";");
+            sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{returnType}?>(sql, new {{ id }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate MIN method
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the minimum {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<{returnType}?> GetMin{relationship.PropertyName}{propertyName}Async({info.KeyType} id)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = $\"SELECT MIN({propertyColumnName}) FROM {childTableName} WHERE {foreignKeyColumn} = @id\";");
+            sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{returnType}?>(sql, new {{ id }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate MAX method
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the maximum {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<{returnType}?> GetMax{relationship.PropertyName}{propertyName}Async({info.KeyType} id)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = $\"SELECT MAX({propertyColumnName}) FROM {childTableName} WHERE {foreignKeyColumn} = @id\";");
+            sb.AppendLine($"            return await _connection.ExecuteScalarAsync<{returnType}?>(sql, new {{ id }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+    }
+
+    /// <summary>
+    /// Checks if a type is a simple type that can be used in WHERE clauses.
+    /// </summary>
+    private static bool IsSimpleType(string typeName)
+    {
+        var simpleTypes = new[] { "string", "int", "long", "decimal", "double", "float", "bool", "DateTime", "Guid", "byte", "short", "char" };
+        var normalizedType = typeName.TrimEnd('?'); // Remove nullable marker
+        return simpleTypes.Contains(normalizedType) || normalizedType.StartsWith("System.");
+    }
+
+    /// <summary>
+    /// Checks if a type is numeric and can be used in aggregate functions.
+    /// </summary>
+    private static bool IsNumericType(string typeName)
+    {
+        var numericTypes = new[] { "int", "long", "decimal", "double", "float", "byte", "short", "System.Int32", "System.Int64", "System.Decimal", "System.Double", "System.Single", "System.Byte", "System.Int16" };
+        var normalizedType = typeName.TrimEnd('?'); // Remove nullable marker
+        return numericTypes.Contains(normalizedType) || normalizedType.StartsWith("System.Int") || normalizedType.StartsWith("System.Decimal") || normalizedType.StartsWith("System.Double") || normalizedType.StartsWith("System.Single");
     }
 
     // Generate separate interface for relationship query methods
@@ -3641,6 +3814,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 GenerateFindByParentSignature(sb, info, relationship);
                 GenerateCountByParentSignature(sb, info, relationship);
+                GeneratePropertyBasedQuerySignatures(sb, info, relationship);
             }
 
             // Generate Has/Count method signatures for OneToMany relationships
@@ -3648,6 +3822,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             {
                 GenerateHasChildrenSignature(sb, info, relationship);
                 GenerateCountChildrenSignature(sb, info, relationship);
+                GenerateAggregateMethodSignatures(sb, info, relationship);
             }
         }
 
@@ -3737,6 +3912,46 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
+    /// <summary>
+    /// Generates property-based query method signatures for the interface.
+    /// </summary>
+    private static void GeneratePropertyBasedQuerySignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Get related entity metadata
+        var relatedEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(relatedEntitySimpleName, out var relatedMetadata))
+        {
+            return; // Can't generate signatures without metadata
+        }
+
+        if (relatedMetadata.Properties == null)
+        {
+            return;
+        }
+
+        // Generate signatures for each property of the related entity
+        foreach (var property in relatedMetadata.Properties)
+        {
+            // Skip primary key, relationships, and complex types
+            if (property.IsPrimaryKey)
+                continue;
+
+            // Skip if property type is a collection or complex object
+            if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") || 
+                property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                continue;
+
+            var propertyParamName = ToCamelCase(property.Name);
+            var methodName = $"FindBy{relationship.PropertyName}{property.Name}Async";
+
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.{property.Name}.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName});");
+            sb.AppendLine();
+        }
+    }
+
     private static void GenerateHasChildrenSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
         sb.AppendLine("        /// <summary>");
@@ -3753,6 +3968,71 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        Task<int> Count{relationship.PropertyName}Async({info.KeyType} id);");
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates aggregate method signatures for the interface.
+    /// </summary>
+    private static void GenerateAggregateMethodSignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Get child entity metadata
+        var childEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(childEntitySimpleName, out var childMetadata))
+        {
+            return; // Can't generate signatures without metadata
+        }
+
+        if (childMetadata.Properties == null)
+        {
+            return;
+        }
+
+        // Generate signatures for each numeric property of the child entity
+        foreach (var property in childMetadata.Properties)
+        {
+            // Skip primary key, relationships, and non-numeric types
+            if (property.IsPrimaryKey)
+                continue;
+
+            if (!IsNumericType(property.TypeName))
+                continue;
+
+            // Skip if property type is a collection or complex object
+            if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") || 
+                property.TypeName.Contains("IEnumerable"))
+                continue;
+
+            var propertyName = property.Name;
+            var returnType = property.TypeName.TrimEnd('?'); // Remove nullable marker for return type
+
+            // Generate SUM signature
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the sum of {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<{returnType}> GetTotal{relationship.PropertyName}{propertyName}Async({info.KeyType} id);");
+            sb.AppendLine();
+
+            // Generate AVG signature
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the average of {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<{returnType}?> GetAverage{relationship.PropertyName}{propertyName}Async({info.KeyType} id);");
+            sb.AppendLine();
+
+            // Generate MIN signature
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the minimum {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<{returnType}?> GetMin{relationship.PropertyName}{propertyName}Async({info.KeyType} id);");
+            sb.AppendLine();
+
+            // Generate MAX signature
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Gets the maximum {relationship.PropertyName}.{propertyName} for the entity.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<{returnType}?> GetMax{relationship.PropertyName}{propertyName}Async({info.KeyType} id);");
+            sb.AppendLine();
+        }
     }
 
     private static void GenerateAddWithCascadeSignature(StringBuilder sb, RepositoryInfo info, List<Models.RelationshipMetadata> cascades, string entityName)
@@ -3962,6 +4242,108 @@ public class RepositoryGenerator : IIncrementalGenerator
         // Default to "Id" if we can't determine
         return "Id";
     }
+
+    /// <summary>
+    /// Gets the primary key column name for an entity. Returns "Id" if not found.
+    /// </summary>
+    private static string GetKeyColumnName(RepositoryInfo info, string? entityTypeName = null)
+    {
+        EntityMetadataInfo? metadata = info.EntityMetadata;
+
+        if (!string.IsNullOrEmpty(entityTypeName))
+        {
+            var simpleName = entityTypeName!.Split('.').Last();
+            if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(simpleName, out var m))
+            {
+                metadata = m;
+            }
+        }
+
+        if (metadata?.Properties != null)
+        {
+            var keyProperty = metadata.Properties.FirstOrDefault(p => p.IsPrimaryKey);
+            if (keyProperty != null)
+            {
+                return keyProperty.ColumnName;
+            }
+        }
+
+        // Default to "Id" if we can't determine
+        return "Id";
+    }
+
+    /// <summary>
+    /// Gets the foreign key column name for a OneToMany relationship.
+    /// The JoinColumn is defined on the inverse ManyToOne relationship, not on the OneToMany.
+    /// </summary>
+    private static string GetForeignKeyColumnForOneToMany(RepositoryInfo info, Models.RelationshipMetadata oneToManyRelationship, string parentEntityName)
+    {
+        // If JoinColumn is specified on the OneToMany (shouldn't normally happen, but check first)
+        if (oneToManyRelationship.JoinColumn != null && !string.IsNullOrEmpty(oneToManyRelationship.JoinColumn.Name))
+        {
+            return oneToManyRelationship.JoinColumn.Name;
+        }
+
+        // The JoinColumn is on the child entity's ManyToOne relationship
+        // We need to find the child entity's ManyToOne relationship that points back to the parent
+        // The MappedBy property tells us the property name on the child entity
+        if (string.IsNullOrEmpty(oneToManyRelationship.MappedBy))
+        {
+            // No MappedBy means we can't determine the inverse relationship
+            // Fall back to default naming convention
+            return $"{parentEntityName}Id";
+        }
+
+        // Extract relationships from child entity to get the JoinColumn from ManyToOne
+        if (info.Compilation != null)
+        {
+            // Try both full type and simple type name
+            var childEntityFullType = oneToManyRelationship.TargetEntityFullType;
+            var childEntitySimpleNameForExtraction = oneToManyRelationship.TargetEntityType.Split('.').Last();
+            
+            // Try full type first, then simple name
+            var childRelationships = ExtractRelationships(info.Compilation, childEntityFullType);
+            if (childRelationships.Count == 0)
+            {
+                // Try with just the simple name (might need namespace)
+                childRelationships = ExtractRelationships(info.Compilation, childEntitySimpleNameForExtraction);
+            }
+            
+            // Find the ManyToOne relationship that matches MappedBy
+            var inverseManyToOne = childRelationships.FirstOrDefault(r => 
+                r.Type == Models.RelationshipType.ManyToOne && 
+                r.PropertyName.Equals(oneToManyRelationship.MappedBy, StringComparison.OrdinalIgnoreCase));
+            
+            if (inverseManyToOne != null && inverseManyToOne.JoinColumn != null && !string.IsNullOrEmpty(inverseManyToOne.JoinColumn.Name))
+            {
+                return inverseManyToOne.JoinColumn.Name;
+            }
+        }
+
+        // Fallback: Try to find the FK property on the child entity
+        // The FK property name is typically {MappedBy}Id (e.g., "CustomerId" if MappedBy is "Customer")
+        var childEntitySimpleName = oneToManyRelationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata != null && info.EntitiesMetadata.TryGetValue(childEntitySimpleName, out var childMetadata))
+        {
+            if (childMetadata.Properties != null)
+            {
+                // Look for a property that matches the FK naming pattern
+                var fkPropertyName = $"{oneToManyRelationship.MappedBy}Id";
+                var fkProperty = childMetadata.Properties.FirstOrDefault(p => 
+                    p.Name.Equals(fkPropertyName, StringComparison.OrdinalIgnoreCase) ||
+                    p.Name.Equals(oneToManyRelationship.MappedBy, StringComparison.OrdinalIgnoreCase));
+
+                if (fkProperty != null)
+                {
+                    // Use the column name from the FK property
+                    return fkProperty.ColumnName;
+                }
+            }
+        }
+
+        // Fall back to default naming convention
+        return $"{parentEntityName}Id";
+    }
 }
 
 internal class RepositoryInfo
@@ -3982,6 +4364,9 @@ internal class RepositoryInfo
     // Relationship-aware repository generation
     public List<Models.RelationshipMetadata> Relationships { get; set; } = new();
     public bool HasRelationships => Relationships != null && Relationships.Count > 0;
+    
+    // Compilation for extracting relationships from related entities
+    public Compilation? Compilation { get; set; }
 
     // Eager loading support
     public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == Models.FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
