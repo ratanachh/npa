@@ -158,15 +158,21 @@ This document provides a comprehensive review of all Phase 7 features, comparing
 - ✅ Phase 7.3: Cascade Operations Enhancement
 - ✅ Phase 7.4: Bidirectional Relationship Management
 
+### Partially Completed Phases
+- ✅ Phase 7.6: Relationship Query Methods (Basic Methods Complete)
+  - ✅ ManyToOne: `FindBy{Property}IdAsync`, `CountBy{Property}IdAsync`
+  - ✅ OneToMany: `Has{Property}Async`, `Count{Property}Async`
+  - 📋 Planned: Property-based queries, aggregates, advanced filters
+
 ### Planned Phases
 - 📋 Phase 7.5: Orphan Removal (separate from cascade - planned)
-- 📋 Phase 7.6: Relationship Query Methods (planned)
 
 ### Test Coverage Summary
 - Phase 7.1: ✅ Comprehensive tests
 - Phase 7.2: ✅ Comprehensive tests
 - Phase 7.3: ✅ Comprehensive tests
 - Phase 7.4: ✅ 10+ tests covering all scenarios
+- Phase 7.6: ✅ Basic tests for relationship query methods
 
 ### Sample Projects
 - ✅ Phase7Demo - Comprehensive demonstration of all Phase 7 features
@@ -191,11 +197,44 @@ This document provides a comprehensive review of all Phase 7 features, comparing
 4. ✅ Nullability handling is correct
 5. ✅ Error handling is comprehensive
 
+## Phase 7.6: Relationship Query Methods ⚠️ PARTIAL
+
+### Documentation Status
+- ✅ README exists and accurately reflects current implementation
+- ✅ Examples show both implemented and planned features
+- ✅ Status correctly marked as PARTIALLY IMPLEMENTED
+
+### Implementation Status
+- ✅ `FindBy{Property}IdAsync` methods generated for ManyToOne relationships
+- ✅ `CountBy{Property}IdAsync` methods generated for ManyToOne relationships
+- ✅ `Has{Property}Async` methods generated for OneToMany relationships
+- ✅ `Count{Property}Async` methods generated for OneToMany relationships
+- ✅ Separate partial interfaces generated (`{Repository}Partial`)
+- ⚠️ Limited to ID-based queries (no property-based queries yet)
+- ⚠️ No aggregate methods (SUM, AVG, etc.)
+- ⚠️ No advanced filters (date ranges, amounts, subqueries)
+
+### Code Verification
+**Location**: `src/NPA.Generators/RepositoryGenerator.cs`
+- Lines 3502-3532: `GenerateRelationshipQueryMethods` ✅
+- Lines 3534-3549: `GenerateFindByParentMethod` ✅
+- Lines 3551-3565: `GenerateCountByParentMethod` ✅
+- Lines 3567-3582: `GenerateHasChildrenMethod` ✅
+- Lines 3584-3598: `GenerateCountChildrenMethod` ✅
+
+### Test Coverage
+- ✅ `RelationshipQueryGeneratorTests.cs` - Basic method generation tests
+- ⚠️ Integration tests needed for advanced features (when implemented)
+
+### Alignment: ✅ Documentation accurately reflects partial implementation
+
+---
+
 ## Conclusion
 
-**All Phase 7 core features are complete and working correctly.** The documentation is accurate and comprehensive, with only the main Phase 7 document needing a status update for Phase 7.4. The implementation matches the documentation, and all tests are passing.
+**Most Phase 7 core features are complete and working correctly.** Phase 7.6 has basic relationship query methods implemented, with advanced features planned. The documentation is accurate and comprehensive, clearly distinguishing between implemented and planned features.
 
-**Overall Grade: A+** ✅
+**Overall Grade: A** ✅
 
-All features are production-ready and well-tested.
+Core features are production-ready and well-tested. Phase 7.6 basic methods are functional, with advanced features planned for future implementation.
 

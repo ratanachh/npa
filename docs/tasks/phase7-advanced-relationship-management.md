@@ -117,21 +117,30 @@ Phase 7 focuses on comprehensive relationship management in the ORM framework, i
 - Safety validations
 
 ### Phase 7.6: Relationship Query Methods
-**Status**: 📋 Planned
+**Status**: ✅ **PARTIALLY IMPLEMENTED** (Basic Methods Complete)
 
 **Description**: Generate specialized query methods for navigating and filtering by relationships.
 
-**Key Features**:
-- Navigation query methods
-- Relationship existence checks
-- Count and aggregate methods
-- Complex relationship filters
+**Implemented Features**:
+- ✅ Basic navigation query methods (`FindBy{Property}IdAsync` for ManyToOne)
+- ✅ Relationship existence checks (`Has{Property}Async` for OneToMany)
+- ✅ Basic count methods (`CountBy{Property}IdAsync`, `Count{Property}Async`)
+- ✅ Efficient SQL queries (no N+1 problems)
+
+**Planned Features**:
+- 📋 Property-based queries (e.g., `FindByCustomerNameAsync`)
+- 📋 Aggregate methods (SUM, AVG, MIN, MAX, GROUP BY)
+- 📋 Complex relationship filters (date ranges, amounts, subqueries)
+- 📋 Pagination and sorting support
+- 📋 Multi-level navigation
 
 **Deliverables**:
-- Generated navigation methods
-- Existence check methods
-- Aggregate query methods
-- Optimized relationship queries
+- ✅ Generated navigation methods (basic - ID-based)
+- ✅ Existence check methods
+- ✅ Basic count methods
+- ✅ Optimized relationship queries (basic)
+- 📋 Aggregate query methods (planned)
+- 📋 Advanced relationship filters (planned)
 
 ## Benefits
 
