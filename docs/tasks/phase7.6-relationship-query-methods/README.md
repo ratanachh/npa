@@ -7,6 +7,8 @@ Generate specialized query methods for navigating and querying entities based on
 
 **Current Status**: ✅ **MOSTLY IMPLEMENTED** (Core Features Complete)
 
+**Latest Update**: ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names.
+
 ### ✅ What's Implemented
 - **ManyToOne Relationships**: 
   - `FindBy{Property}IdAsync()` - Find entities by related entity ID
@@ -31,10 +33,10 @@ Generate specialized query methods for navigating and querying entities based on
 - GROUP BY aggregations across multiple entities
 
 ## Objectives
-- ✅ Generate relationship navigation query methods (basic - ID-based only)
-- [ ] Support filtering by related entity properties (planned)
-- ✅ Implement exists/count methods for relationships (basic)
-- ✅ Create optimized relationship queries (basic - direct WHERE clauses)
+- ✅ Generate relationship navigation query methods (ID-based and property-based)
+- ✅ Support filtering by related entity properties (✅ Implemented)
+- ✅ Implement exists/count methods for relationships
+- ✅ Create optimized relationship queries (direct WHERE clauses and JOIN queries)
 
 ## Implementation Status
 
@@ -143,6 +145,10 @@ public interface IOrderRepository : IRepository<Order, int>, IOrderRepositoryPar
     Task<IEnumerable<Order>> FindByCustomerIdAsync(int customerId);
     Task<int> CountByCustomerIdAsync(int customerId);
     
+    // ✅ Property-based queries (ManyToOne)
+    Task<IEnumerable<Order>> FindByCustomerNameAsync(string name);
+    Task<IEnumerable<Order>> FindByCustomerCountryAsync(string country);
+    
     // ✅ Relationship existence (OneToMany - via Customer repository)
     // Note: These are generated on the parent entity (Customer)
 }
@@ -152,15 +158,21 @@ public interface ICustomerRepository : IRepository<Customer, int>, ICustomerRepo
     // ✅ Relationship existence and count (OneToMany)
     Task<bool> HasOrdersAsync(int id);
     Task<int> CountOrdersAsync(int id);
+    
+    // ✅ Aggregate methods (OneToMany)
+    Task<decimal> GetTotalOrdersTotalAmountAsync(int id);
+    Task<decimal?> GetAverageOrdersTotalAmountAsync(int id);
+    Task<decimal?> GetMinOrdersTotalAmountAsync(int id);
+    Task<decimal?> GetMaxOrdersTotalAmountAsync(int id);
 }
 ```
 
 ### Planned Methods (📋 Not Yet Implemented)
 
 ```csharp
-// 📋 Planned: Navigation by related entity properties
-Task<IEnumerable<Order>> FindByCustomerNameAsync(string customerName);
-Task<IEnumerable<Order>> FindByCustomerCountryAsync(string country);
+// ✅ Implemented: Navigation by related entity properties
+// Task<IEnumerable<Order>> FindByCustomerNameAsync(string customerName); // ✅ Now implemented
+// Task<IEnumerable<Order>> FindByCustomerCountryAsync(string country); // ✅ Now implemented
 
 // 📋 Planned: Advanced relationship queries
 Task<IEnumerable<Order>> FindByCustomerAndDateRangeAsync(
@@ -178,8 +190,11 @@ Task<IEnumerable<Customer>> FindWithOrdersAsync();
 Task<IEnumerable<Customer>> FindWithoutOrdersAsync();
 Task<IEnumerable<Customer>> FindWithOrderCountAsync(int minOrderCount);
 
-// 📋 Planned: Aggregate methods
-Task<decimal> GetTotalOrderAmountAsync(int customerId);
+// ✅ Implemented: Basic aggregate methods (on OneToMany relationships)
+// Task<decimal> GetTotalOrdersTotalAmountAsync(int id); // ✅ Now implemented
+// Task<decimal?> GetAverageOrdersTotalAmountAsync(int id); // ✅ Now implemented
+
+// 📋 Planned: GROUP BY aggregations
 Task<Dictionary<int, decimal>> GetTotalOrderAmountsByCustomerAsync();
 Task<Dictionary<int, int>> GetOrderCountsByCustomerAsync();
 ```
@@ -191,15 +206,16 @@ Task<Dictionary<int, int>> GetOrderCountsByCustomerAsync();
 #### Find By Related Entity (ManyToOne)
 ```csharp
 // Generated for Order entity with ManyToOne Customer relationship
+// Note: ORDER BY uses the actual column name from [Column] attribute, not property name
 public async Task<IEnumerable<Order>> FindByCustomerIdAsync(int customerId)
 {
-    var sql = "SELECT * FROM Order WHERE customer_id = @customerId ORDER BY Id";
+    var sql = "SELECT * FROM orders WHERE customer_id = @customerId ORDER BY order_id";
     return await _connection.QueryAsync<Order>(sql, new { customerId });
 }
 
 public async Task<int> CountByCustomerIdAsync(int customerId)
 {
-    var sql = "SELECT COUNT(*) FROM Order WHERE customer_id = @customerId";
+    var sql = "SELECT COUNT(*) FROM orders WHERE customer_id = @customerId";
     return await _connection.ExecuteScalarAsync<int>(sql, new { customerId });
 }
 ```
@@ -226,12 +242,13 @@ public async Task<int> CountOrdersAsync(int id)
 #### Find By Related Entity Properties
 ```csharp
 // ✅ Implemented: Find by related entity property (uses JOIN)
+// Note: ORDER BY and JOIN conditions use actual column names from [Column] attributes
 public async Task<IEnumerable<Order>> FindByCustomerNameAsync(string name)
 {
     var sql = @"SELECT e.* FROM orders e
-                INNER JOIN customers r ON e.customer_id = r.Id
+                INNER JOIN customers r ON e.customer_id = r.customer_id
                 WHERE r.name = @name
-                ORDER BY e.Id";
+                ORDER BY e.order_id";
     return await _connection.QueryAsync<Order>(sql, new { name });
 }
 ```
@@ -327,10 +344,14 @@ The relationship query methods are generated in:
 - **File**: `src/NPA.Generators/RepositoryGenerator.cs`
 - **Method**: `GenerateRelationshipQueryMethods()` (lines 3502-3532)
 - **Helper Methods**:
-  - `GenerateFindByParentMethod()` - For ManyToOne relationships
-  - `GenerateCountByParentMethod()` - For ManyToOne relationships
-  - `GenerateHasChildrenMethod()` - For OneToMany relationships
-  - `GenerateCountChildrenMethod()` - For OneToMany relationships
+  - `GenerateFindByParentMethod()` - For ManyToOne relationships (ID-based queries)
+  - `GenerateCountByParentMethod()` - For ManyToOne relationships (count queries)
+  - `GenerateHasChildrenMethod()` - For OneToMany relationships (existence checks)
+  - `GenerateCountChildrenMethod()` - For OneToMany relationships (count queries)
+  - `GeneratePropertyBasedQueries()` - For ManyToOne relationships (property-based queries with JOINs)
+  - `GenerateAggregateMethods()` - For OneToMany relationships (SUM, AVG, MIN, MAX)
+  - `GetKeyColumnName()` - Retrieves actual column name for primary keys (respects `[Column]` attributes)
+  - `GetForeignKeyColumnForOneToMany()` - Retrieves foreign key column from inverse ManyToOne relationship
 
 ### Interface Generation
 
@@ -341,13 +362,22 @@ The methods are declared in a separate partial interface:
 
 ### Current Limitations
 
-1. **ID-Based Queries Only**: Currently only supports finding by foreign key IDs, not by related entity properties
-2. **No JOIN Queries**: Does not generate methods that require JOINs to filter by related entity properties
-3. **No Aggregates**: Does not generate SUM, AVG, MIN, MAX, or GROUP BY queries
+1. ✅ **Property-Based Queries**: Now supports finding by related entity properties (e.g., `FindByCustomerNameAsync`)
+2. ✅ **JOIN Queries**: Generates methods that use JOINs to filter by related entity properties
+3. ✅ **Aggregates**: Generates SUM, AVG, MIN, MAX methods (GROUP BY aggregations still planned)
 4. **No Complex Filters**: Does not support date ranges, amount filters, or subquery-based filters
 5. **No Pagination**: Generated methods do not support pagination parameters
-6. **No Sorting Options**: Sorting is fixed (by primary key) and not configurable
+6. **Fixed Sorting**: Sorting is fixed (by primary key column name) and not configurable
 7. **Single Relationship Only**: Does not support queries across multiple relationships
+
+### Column Name Handling
+
+✅ **Correctly Handles Custom Column Names**: The generator correctly uses column names from `[Column]` attributes in:
+- **JOIN conditions**: Uses the related entity's primary key column name (not property name)
+- **ORDER BY clauses**: Uses the current entity's primary key column name (not property name)
+- **WHERE clauses**: Uses property column names for filtering
+
+This ensures that when entities have custom column names via `[Column]` attributes, the generated SQL queries use the correct database column names, preventing runtime query failures.
 
 ## Acceptance Criteria
 
@@ -361,12 +391,12 @@ The methods are declared in a separate partial interface:
 
 ### 📋 Remaining Criteria
 - [ ] Navigation methods generated for all relationship types (OneToOne, ManyToMany)
-- [ ] Methods to find by related entity properties (not just IDs)
+- [x] Methods to find by related entity properties (✅ Implemented: `FindBy{Property}{PropertyName}Async`)
 - [ ] Pagination support where appropriate
-- [ ] Aggregate functions work correctly (SUM, AVG, MIN, MAX, GROUP BY)
+- [x] Aggregate functions work correctly (✅ SUM, AVG, MIN, MAX implemented; GROUP BY planned)
 - [ ] Complex filters properly implemented (date ranges, amounts, subqueries)
 - [ ] Support for multi-level navigation
-- [ ] Configurable sorting options
+- [ ] Configurable sorting options (currently fixed to primary key column)
 - [ ] Support for OR/AND combinations in relationship queries
 
 ## Dependencies
@@ -380,14 +410,18 @@ The methods are declared in a separate partial interface:
 - ✅ Unit tests for basic query generation (`RelationshipQueryGeneratorTests.cs`)
 - ✅ Tests verify method signatures in generated interfaces
 - ✅ Tests verify implementation class implements partial interface
+- ✅ Tests verify property-based queries use correct JOIN conditions with column names
+- ✅ Tests verify aggregate methods use correct foreign key column names
+- ✅ Tests verify ORDER BY clauses use column names instead of property names
+- ✅ Tests verify custom `[Column]` attributes are correctly handled in SQL generation
 
 ### 📋 Remaining Test Requirements
 - [ ] Integration tests for all generated methods
 - [ ] Performance tests for complex queries
 - [ ] Tests for edge cases (empty collections, null relationships)
-- [ ] Tests for aggregate functions accuracy (when implemented)
+- [x] Tests for aggregate functions accuracy (✅ Basic tests implemented)
 - [ ] Tests for pagination and sorting (when implemented)
-- [ ] Tests for JOIN-based queries (when implemented)
+- [x] Tests for JOIN-based queries (✅ Property-based query tests implemented)
 - [ ] Tests for subquery-based filters (when implemented)
 
 ## Performance Considerations
@@ -396,6 +430,8 @@ The methods are declared in a separate partial interface:
 - ✅ Direct WHERE clauses (no unnecessary JOINs for ID-based queries)
 - ✅ Efficient COUNT queries for existence checks
 - ✅ No N+1 query problems (single query per method call)
+- ✅ Correct column name resolution (uses `[Column]` attributes for SQL generation)
+- ✅ Efficient JOIN queries for property-based queries (single query with INNER JOIN)
 
 ### 📋 Planned Optimizations
 - [ ] Use indexes on foreign keys (documentation/guidance)
@@ -424,9 +460,10 @@ The methods are declared in a separate partial interface:
 ## Next Steps
 
 ### Immediate Priorities
-1. **Property-Based Queries**: Implement `FindBy{RelatedEntity}{Property}Async` methods (e.g., `FindByCustomerNameAsync`)
-2. **Aggregate Methods**: Implement SUM, AVG, MIN, MAX, and GROUP BY queries
+1. ✅ **Property-Based Queries**: ✅ Implemented `FindBy{RelatedEntity}{Property}Async` methods (e.g., `FindByCustomerNameAsync`)
+2. ✅ **Aggregate Methods**: ✅ Implemented SUM, AVG, MIN, MAX methods (GROUP BY queries still planned)
 3. **Advanced Filters**: Support date ranges, amount filters, and subquery-based filters
+4. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names
 
 ### Future Enhancements
 1. **Pagination Support**: Add skip/take parameters to collection queries
