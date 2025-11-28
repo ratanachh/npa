@@ -9,9 +9,12 @@ Generate specialized query methods for navigating and querying entities based on
 
 **Latest Updates**: 
 - ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names
+- ✅ Fixed fully qualified type name bugs - parameter names and FK column names now use simple type names
 - ✅ Implemented GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX grouped by parent entity)
 - ✅ Implemented Advanced Filters (date ranges, amount filters, subquery-based filters)
 - ✅ Implemented Pagination Support (skip/take parameters for all collection queries)
+- ✅ Implemented Configurable Sorting (orderBy and ascending parameters for all pagination overloads)
+- ✅ Implemented Inverse Relationship Queries (FindWith/Without/WithCount methods for OneToMany relationships)
 
 ### ✅ What's Implemented
 - **ManyToOne Relationships**: 
@@ -38,12 +41,17 @@ Generate specialized query methods for navigating and querying entities based on
   - All collection query methods have pagination overloads with `skip` and `take` parameters
   - Uses SQL `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` syntax (SQL Server, PostgreSQL, SQLite compatible)
   - Backward compatible - original methods without pagination still available
+- **Configurable Sorting**:
+  - All pagination overloads support optional `orderBy` and `ascending` parameters
+  - Property-to-column mapping dictionary generated at compile time for runtime column name resolution
+  - Defaults to primary key column if `orderBy` is null or empty
+  - Supports ascending/descending sort direction
+  - Respects `[Column]` attributes for custom column names
 - **Interface Generation**: Separate partial interfaces for relationship query methods
 - **Efficient Queries**: Direct WHERE clauses and JOIN queries with no N+1 problems
 - **Type Safety**: Uses correct key types from related entities
 
 ### 📋 What's Planned
-- Configurable sorting (currently fixed to primary key column)
 - Multi-level navigation
 - Complex relationship filters (OR/AND combinations)
 
@@ -528,7 +536,9 @@ This ensures that when entities have custom column names via `[Column]` attribut
 3. ✅ **GROUP BY Aggregations**: ✅ Implemented COUNT, SUM, AVG, MIN, MAX methods grouped by parent entity
 4. ✅ **Advanced Filters**: ✅ Implemented date ranges, amount filters, and subquery-based filters
 5. ✅ **Pagination Support**: ✅ Implemented skip/take overloads for all collection query methods
-6. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names
+6. ✅ **Configurable Sorting**: ✅ Implemented orderBy and ascending parameters for all pagination overloads
+7. ✅ **Inverse Relationship Queries**: ✅ Implemented FindWith/Without/WithCount methods for OneToMany relationships
+8. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names; ✅ Fixed fully qualified type name handling
 
 ### Future Enhancements
 1. **Pagination Support**: Add skip/take parameters to collection queries

@@ -874,6 +874,9 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine(GenerateOrphanRemovalUpdateOverride(info));
         }
 
+        // Generate property-to-column mapping helper for sorting
+        sb.AppendLine(GeneratePropertyColumnMapping(info));
+
         // Generate relationship query methods
         if (info.Relationships is { Count: > 0 })
         {
@@ -3499,6 +3502,44 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
+    /// <summary>
+    /// Generates a static dictionary mapping property names to column names for sorting support.
+    /// </summary>
+    private static string GeneratePropertyColumnMapping(RepositoryInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("        #region Property-to-Column Mapping");
+        sb.AppendLine();
+        sb.AppendLine("        private static readonly Dictionary<string, string> _propertyColumnMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)");
+        sb.AppendLine("        {");
+
+        if (info.EntityMetadata?.Properties != null)
+        {
+            foreach (var property in info.EntityMetadata.Properties)
+            {
+                if (!string.IsNullOrEmpty(property.Name) && !string.IsNullOrEmpty(property.ColumnName))
+                {
+                    sb.AppendLine($"            {{ \"{property.Name}\", \"{property.ColumnName}\" }},");
+                }
+            }
+        }
+
+        sb.AppendLine("        };");
+        sb.AppendLine();
+        sb.AppendLine("        private static string GetColumnNameForProperty(string? propertyName, string defaultColumnName)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (string.IsNullOrEmpty(propertyName))");
+        sb.AppendLine("                return defaultColumnName;");
+        sb.AppendLine();
+        sb.AppendLine("            return _propertyColumnMap.TryGetValue(propertyName, out var columnName) ? columnName : propertyName;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        #endregion");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
+
     // Generate relationship query methods
     private static string GenerateRelationshipQueryMethods(RepositoryInfo info)
     {
@@ -3520,6 +3561,8 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GeneratePropertyBasedQueries(sb, info, relationship, tableName);
                 // Generate advanced filters (date ranges, amount filters)
                 GenerateAdvancedFilters(sb, info, relationship, tableName);
+                // Generate complex filters (OR/AND combinations)
+                GenerateComplexFilters(sb, info, relationship, tableName);
             }
 
             // Generate Has/Count methods for OneToMany relationships (check if parent has children)
@@ -3533,8 +3576,13 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GenerateGroupByAggregateMethods(sb, info, relationship);
                 // Generate subquery-based filters
                 GenerateSubqueryFilters(sb, info, relationship);
+                // Generate inverse relationship queries (FindWith/Without/WithCount)
+                GenerateInverseRelationshipQueries(sb, info, relationship);
             }
         }
+
+        // Generate multi-level navigation queries (e.g., OrderItem → Order → Customer)
+        GenerateMultiLevelNavigationQueries(sb, info, tableName);
 
         sb.AppendLine("        #endregion");
         sb.AppendLine();
@@ -3544,8 +3592,9 @@ public class RepositoryGenerator : IIncrementalGenerator
 
     private static void GenerateFindByParentMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
     {
-        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
-        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
+        var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
         var keyColumnName = GetKeyColumnName(info);
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
@@ -3574,12 +3623,31 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, skip, take }});");
         sb.AppendLine("        }");
         sb.AppendLine();
+
+        // Generate method with pagination and sorting
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with pagination and sorting support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"{paramName}\">The {relationship.PropertyName} identifier.</param>");
+        sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+        sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+        sb.AppendLine("        /// <param name=\"orderBy\">Property name to order by. Defaults to primary key if null or empty.</param>");
+        sb.AppendLine("        /// <param name=\"ascending\">Sort direction. True for ascending, false for descending.</param>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName}, int skip, int take, string? orderBy = null, bool ascending = true)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+        sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+        sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, skip, take }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
     }
 
     private static void GenerateCountByParentMethod(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
     {
-        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
-        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
+        var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
@@ -3648,7 +3716,8 @@ public class RepositoryGenerator : IIncrementalGenerator
             return;
         }
 
-        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedEntitySimpleName;
         var keyColumnName = GetKeyColumnName(info);
         // Use column name instead of property name for the JOIN condition
@@ -3699,6 +3768,27 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
             sb.AppendLine("        }");
             sb.AppendLine();
+
+            // Generate method with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName}.{property.Name} with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{propertyParamName}\">The {property.Name} value.</param>");
+            sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+            sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+            sb.AppendLine("        /// <param name=\"orderBy\">Property name to order by. Defaults to primary key if null or empty.</param>");
+            sb.AppendLine("        /// <param name=\"ascending\">Sort direction. True for ascending, false for descending.</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+            sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+            sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE r.{property.ColumnName} = @{propertyParamName}");
+            sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
         }
     }
 
@@ -3721,12 +3811,13 @@ public class RepositoryGenerator : IIncrementalGenerator
             return;
         }
 
-        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
         var relatedTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? relatedEntitySimpleName;
         var keyColumnName = GetKeyColumnName(info);
         var relatedKeyColumnName = GetKeyColumnName(info, relationship.TargetEntityType);
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
-        var relatedKeyParamName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var relatedKeyParamName = ToCamelCase(targetEntitySimpleName) + "Id";
 
         // Generate date range filters for DateTime properties on the current entity
         foreach (var property in info.EntityMetadata.Properties)
@@ -3780,6 +3871,31 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, start{property.Name}, end{property.Name}, skip, take }});");
             sb.AppendLine("        }");
             sb.AppendLine();
+
+            // Generate date range filter with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{relatedKeyParamName}\">The {relationship.PropertyName} identifier.</param>");
+            sb.AppendLine($"        /// <param name=\"start{property.Name}\">Start date.</param>");
+            sb.AppendLine($"        /// <param name=\"end{property.Name}\">End date.</param>");
+            sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+            sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+            sb.AppendLine("        /// <param name=\"orderBy\">Property name to order by. Defaults to primary key if null or empty.</param>");
+            sb.AppendLine("        /// <param name=\"ascending\">Sort direction. True for ascending, false for descending.</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}And{property.Name}RangeAsync({relatedKeyType} {relatedKeyParamName}, DateTime start{property.Name}, DateTime end{property.Name}, int skip, int take, string? orderBy = null, bool ascending = true)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+            sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+            sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
+            sb.AppendLine($"                    AND e.{propertyColumnName} >= @start{property.Name}");
+            sb.AppendLine($"                    AND e.{propertyColumnName} <= @end{property.Name}");
+            sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, start{property.Name}, end{property.Name}, skip, take }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
         }
 
         // Generate amount/quantity filters for numeric properties on the current entity
@@ -3829,6 +3945,29 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
             sb.AppendLine($"                    AND e.{propertyColumnName} >= @min{property.Name}");
             sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, min{property.Name}, skip, take }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate minimum amount filter with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with {property.Name} greater than or equal to the specified value, with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{relatedKeyParamName}\">The {relationship.PropertyName} identifier.</param>");
+            sb.AppendLine($"        /// <param name=\"min{property.Name}\">Minimum {property.Name} value.</param>");
+            sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+            sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+            sb.AppendLine("        /// <param name=\"orderBy\">Property name to order by. Defaults to primary key if null or empty.</param>");
+            sb.AppendLine("        /// <param name=\"ascending\">Sort direction. True for ascending, false for descending.</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> Find{relationship.PropertyName}{property.Name}AboveAsync({relatedKeyType} {relatedKeyParamName}, {returnType} min{property.Name}, int skip, int take, string? orderBy = null, bool ascending = true)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+            sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+            sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
+            sb.AppendLine($"                    AND e.{propertyColumnName} >= @min{property.Name}");
+            sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, min{property.Name}, skip, take }});");
             sb.AppendLine("        }");
             sb.AppendLine();
@@ -3892,6 +4031,439 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("            return await _connection.QueryAsync<" + info.EntityType + ">(sql, new { minCount, skip, take });");
         sb.AppendLine("        }");
         sb.AppendLine();
+
+        // Generate FindWithMinimum{Property}Async with pagination and sorting
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}, with pagination and sorting support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine("        /// <param name=\"minCount\">Minimum number of {relationship.PropertyName}.</param>");
+        sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+        sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+        sb.AppendLine("        /// <param name=\"orderBy\">Property name to order by. Defaults to primary key if null or empty.</param>");
+        sb.AppendLine("        /// <param name=\"ascending\">Sort direction. True for ascending, false for descending.</param>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindWithMinimum{relationship.PropertyName}Async(int minCount, int skip, int take, string? orderBy = null, bool ascending = true)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+        sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+        sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+        sb.AppendLine($"                WHERE (");
+        sb.AppendLine($"                    SELECT COUNT(*)");
+        sb.AppendLine($"                    FROM {childTableName} c");
+        sb.AppendLine($"                    WHERE c.{foreignKeyColumn} = e.{keyColumnName}");
+        sb.AppendLine($"                ) >= @minCount");
+        sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+        sb.AppendLine("            return await _connection.QueryAsync<" + info.EntityType + ">(sql, new { minCount, skip, take });");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates inverse relationship query methods for OneToMany relationships.
+    /// For example, FindWithOrdersAsync, FindWithoutOrdersAsync, FindWithOrderCountAsync.
+    /// These methods are generated on the parent entity (e.g., Customer) to find entities based on their child relationships.
+    /// </summary>
+    private static void GenerateInverseRelationshipQueries(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Get child entity metadata
+        var childEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(childEntitySimpleName, out var childMetadata))
+        {
+            return; // Can't generate inverse queries without metadata
+        }
+
+        var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? childEntitySimpleName;
+        var parentEntityName = info.EntityType.Split('.').Last();
+        var tableName = GetTableNameFromMetadata(info, info.EntityType) ?? parentEntityName;
+        var keyColumnName = GetKeyColumnName(info);
+        
+        // For OneToMany, the JoinColumn is on the inverse ManyToOne relationship
+        var foreignKeyColumn = GetForeignKeyColumnForOneToMany(info, relationship, parentEntityName);
+
+        // Generate FindWith{Property}Async - finds parents that have at least one child
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities that have at least one {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindWith{relationship.PropertyName}Async()");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = @\"SELECT DISTINCT e.* FROM {tableName} e");
+        sb.AppendLine($"                INNER JOIN {childTableName} c ON c.{foreignKeyColumn} = e.{keyColumnName}");
+        sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // Generate FindWithout{Property}Async - finds parents that have no children
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities that have no {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindWithout{relationship.PropertyName}Async()");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+        sb.AppendLine($"                WHERE NOT EXISTS (");
+        sb.AppendLine($"                    SELECT 1");
+        sb.AppendLine($"                    FROM {childTableName} c");
+        sb.AppendLine($"                    WHERE c.{foreignKeyColumn} = e.{keyColumnName}");
+        sb.AppendLine($"                )");
+        sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // Generate FindWith{Property}CountAsync - finds parents with at least N children
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"minCount\">Minimum number of {relationship.PropertyName}.</param>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindWith{relationship.PropertyName}CountAsync(int minCount)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+        sb.AppendLine($"                WHERE (");
+        sb.AppendLine($"                    SELECT COUNT(*)");
+        sb.AppendLine($"                    FROM {childTableName} c");
+        sb.AppendLine($"                    WHERE c.{foreignKeyColumn} = e.{keyColumnName}");
+        sb.AppendLine($"                ) >= @minCount");
+        sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ minCount }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates multi-level navigation queries.
+    /// For example, FindByCustomerNameAsync on OrderItemRepository navigates: OrderItem → Order → Customer
+    /// Currently supports 2-level navigation through ManyToOne relationships.
+    /// </summary>
+    private static void GenerateMultiLevelNavigationQueries(StringBuilder sb, RepositoryInfo info, string tableName)
+    {
+        if (info.EntitiesMetadata == null || info.EntitiesMetadata.Count == 0)
+            return; // Can't generate multi-level queries without metadata
+
+        var entityName = info.EntityType.Split('.').Last();
+        var keyColumnName = GetKeyColumnName(info);
+
+        // Find 2-level navigation paths: Current Entity → Intermediate Entity → Target Entity
+        // Only support ManyToOne → ManyToOne chains for now
+        foreach (var firstLevelRel in info.Relationships)
+        {
+            if (firstLevelRel.Type != Models.RelationshipType.ManyToOne)
+                continue;
+
+            var intermediateEntitySimpleName = firstLevelRel.TargetEntityType.Split('.').Last();
+            
+            // For multi-level navigation, we need to find entities that the intermediate entity relates to.
+            // Since we don't have relationship metadata for intermediate entities, we'll check all entities
+            // in metadata and generate queries assuming they might be reachable through the intermediate entity.
+            // This is a simplified approach - in practice, we'd need full relationship metadata for all entities.
+            
+            // Check all entities in metadata to see if they could be targets of a second-level relationship
+            foreach (var entityMetadataEntry in info.EntitiesMetadata)
+            {
+                var targetEntitySimpleName = entityMetadataEntry.Key;
+                var targetMetadata = entityMetadataEntry.Value;
+                
+                // Skip if target is the same as intermediate (no second level needed)
+                if (targetEntitySimpleName == intermediateEntitySimpleName)
+                    continue;
+                
+                // Skip if target is the current entity (can't navigate to itself)
+                if (targetEntitySimpleName == entityName)
+                    continue;
+                
+                // Skip if we don't have properties for the target
+                if (targetMetadata.Properties == null || targetMetadata.Properties.Count == 0)
+                    continue;
+                
+                // Extract relationships from the intermediate entity to find its relationship to the target entity
+                // For example, when generating OrderItem → Order → Customer, we need Order's relationship to Customer
+                Models.RelationshipMetadata? secondLevelRel = null;
+                if (info.Compilation != null)
+                {
+                    // Try to extract relationships from the intermediate entity
+                    var intermediateEntityFullType = firstLevelRel.TargetEntityFullType;
+                    var intermediateEntitySimpleNameForExtraction = intermediateEntitySimpleName;
+                    
+                    var intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntityFullType);
+                    if (intermediateRelationships.Count == 0)
+                    {
+                        // Try with just the simple name (might need namespace)
+                        intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntitySimpleNameForExtraction);
+                    }
+                    
+                    // Find the ManyToOne relationship from intermediate entity to target entity
+                    secondLevelRel = intermediateRelationships.FirstOrDefault(r => 
+                        r.Type == Models.RelationshipType.ManyToOne && 
+                        r.TargetEntityType.Split('.').Last() == targetEntitySimpleName);
+                }
+                
+                // Only generate queries if the intermediate entity actually has a relationship to the target entity
+                if (secondLevelRel == null)
+                    continue;
+
+                // Use JoinColumn from the intermediate entity's relationship
+                var secondLevelFkColumn = secondLevelRel.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
+                var secondLevelKeyColumn = GetKeyColumnName(info, targetEntitySimpleName);
+
+                // Generate property-based queries for target entity properties
+                if (targetMetadata.Properties == null)
+                    continue;
+                    
+                foreach (var property in targetMetadata.Properties)
+                {
+                    if (property.IsPrimaryKey)
+                        continue;
+
+                    if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
+                        property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                        continue;
+
+                    var methodName = $"FindBy{firstLevelRel.PropertyName}{targetEntitySimpleName}{property.Name}Async";
+                    var propertyParamName = ToCamelCase(property.Name);
+
+                    // Build SQL with two JOINs
+                    var intermediateTableName = GetTableNameFromMetadata(info, firstLevelRel.TargetEntityType) ?? intermediateEntitySimpleName;
+                    var targetTableName = GetTableNameFromMetadata(info, targetEntitySimpleName) ?? targetEntitySimpleName;
+                    
+                    var firstFkColumn = firstLevelRel.JoinColumn?.Name ?? $"{intermediateEntitySimpleName}Id";
+                    var firstKeyColumn = GetKeyColumnName(info, firstLevelRel.TargetEntityType);
+                    
+                    // Use the pre-calculated FK column and key column
+                    var secondFkColumn = secondLevelFkColumn;
+                    var secondKeyColumn = secondLevelKeyColumn;
+
+                    // Generate method without pagination
+                    sb.AppendLine("        /// <summary>");
+                    sb.AppendLine($"        /// Finds all {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}.");
+                    sb.AppendLine("        /// </summary>");
+                    sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName})");
+                    sb.AppendLine("        {");
+                    sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+                    sb.AppendLine($"                INNER JOIN {intermediateTableName} r1 ON e.{firstFkColumn} = r1.{firstKeyColumn}");
+                    sb.AppendLine($"                INNER JOIN {targetTableName} r2 ON r1.{secondFkColumn} = r2.{secondKeyColumn}");
+                    sb.AppendLine($"                WHERE r2.{property.ColumnName} = @{propertyParamName}");
+                    sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
+                    sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName} }});");
+                    sb.AppendLine("        }");
+                    sb.AppendLine();
+
+                    // Generate method with pagination
+                    sb.AppendLine("        /// <summary>");
+                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination support.");
+                    sb.AppendLine("        /// </summary>");
+                    sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take)");
+                    sb.AppendLine("        {");
+                    sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+                    sb.AppendLine($"                INNER JOIN {intermediateTableName} r1 ON e.{firstFkColumn} = r1.{firstKeyColumn}");
+                    sb.AppendLine($"                INNER JOIN {targetTableName} r2 ON r1.{secondFkColumn} = r2.{secondKeyColumn}");
+                    sb.AppendLine($"                WHERE r2.{property.ColumnName} = @{propertyParamName}");
+                    sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+                    sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
+                    sb.AppendLine("        }");
+                    sb.AppendLine();
+
+                    // Generate method with pagination and sorting
+                    sb.AppendLine("        /// <summary>");
+                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination and sorting support.");
+                    sb.AppendLine("        /// </summary>");
+                    sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true)");
+                    sb.AppendLine("        {");
+                    sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+                    sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+                    sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+                    sb.AppendLine($"                INNER JOIN {intermediateTableName} r1 ON e.{firstFkColumn} = r1.{firstKeyColumn}");
+                    sb.AppendLine($"                INNER JOIN {targetTableName} r2 ON r1.{secondFkColumn} = r2.{secondKeyColumn}");
+                    sb.AppendLine($"                WHERE r2.{property.ColumnName} = @{propertyParamName}");
+                    sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+                    sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
+                    sb.AppendLine("        }");
+                    sb.AppendLine();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Generates complex filter queries with OR/AND combinations for ManyToOne relationships.
+    /// For example, FindByCustomerOrSupplierAsync, FindByCustomerAndStatusAsync.
+    /// </summary>
+    private static void GenerateComplexFilters(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
+    {
+        if (info.Relationships.Count < 2)
+            return; // Need at least 2 relationships for OR/AND combinations
+
+        var entityName = info.EntityType.Split('.').Last();
+        var keyColumnName = GetKeyColumnName(info);
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
+        var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
+        var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
+
+        // Generate OR combinations: FindBy{Property1}Or{Property2}Async
+        foreach (var otherRel in info.Relationships)
+        {
+            if (otherRel == relationship || otherRel.Type != Models.RelationshipType.ManyToOne)
+                continue;
+
+            var otherEntitySimpleName = otherRel.TargetEntityType.Split('.').Last();
+            var otherFkColumn = otherRel.JoinColumn?.Name ?? $"{otherEntitySimpleName}Id";
+            var otherKeyType = GetRelatedEntityKeyType(info, otherRel.TargetEntityType);
+            var otherParamName = ToCamelCase(otherEntitySimpleName) + "Id";
+
+            // Generate FindBy{Property1}Or{Property2}Async
+            var orMethodName = $"FindBy{relationship.PropertyName}Or{otherRel.PropertyName}Async";
+            
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{paramName}\">The {relationship.PropertyName} identifier (nullable).</param>");
+            sb.AppendLine($"        /// <param name=\"{otherParamName}\">The {otherRel.PropertyName} identifier (nullable).</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName})");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var conditions = new List<string>();");
+            sb.AppendLine($"            var parameters = new Dictionary<string, object>();");
+            sb.AppendLine();
+            sb.AppendLine($"            if ({paramName}.HasValue)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                conditions.Add(\"{foreignKeyColumn} = @{paramName}\");");
+            sb.AppendLine($"                parameters.Add(\"{paramName}\", {paramName}.Value);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+            sb.AppendLine($"            if ({otherParamName}.HasValue)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                conditions.Add(\"{otherFkColumn} = @{otherParamName}\");");
+            sb.AppendLine($"                parameters.Add(\"{otherParamName}\", {otherParamName}.Value);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+            sb.AppendLine($"            if (conditions.Count == 0)");
+            sb.AppendLine($"                return Enumerable.Empty<{info.EntityType}>();");
+            sb.AppendLine();
+            sb.AppendLine($"            var whereClause = string.Join(\" OR \", conditions);");
+            sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName} WHERE {{whereClause}} ORDER BY {keyColumnName}\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, parameters);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate FindBy{Property1}Or{Property2}Async with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var conditions = new List<string>();");
+            sb.AppendLine($"            var parameters = new Dictionary<string, object> {{ {{ \"skip\", skip }}, {{ \"take\", take }} }};");
+            sb.AppendLine();
+            sb.AppendLine($"            if ({paramName}.HasValue)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                conditions.Add(\"{foreignKeyColumn} = @{paramName}\");");
+            sb.AppendLine($"                parameters.Add(\"{paramName}\", {paramName}.Value);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+            sb.AppendLine($"            if ({otherParamName}.HasValue)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                conditions.Add(\"{otherFkColumn} = @{otherParamName}\");");
+            sb.AppendLine($"                parameters.Add(\"{otherParamName}\", {otherParamName}.Value);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+            sb.AppendLine($"            if (conditions.Count == 0)");
+            sb.AppendLine($"                return Enumerable.Empty<{info.EntityType}>();");
+            sb.AppendLine();
+            sb.AppendLine($"            var whereClause = string.Join(\" OR \", conditions);");
+            sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName} WHERE {{whereClause}} ORDER BY {keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, parameters);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate FindBy{Property1}Or{Property2}Async with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take, string? orderBy = null, bool ascending = true)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+            sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+            sb.AppendLine($"            var conditions = new List<string>();");
+            sb.AppendLine($"            var parameters = new Dictionary<string, object> {{ {{ \"skip\", skip }}, {{ \"take\", take }} }};");
+            sb.AppendLine();
+            sb.AppendLine($"            if ({paramName}.HasValue)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                conditions.Add(\"{foreignKeyColumn} = @{paramName}\");");
+            sb.AppendLine($"                parameters.Add(\"{paramName}\", {paramName}.Value);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+            sb.AppendLine($"            if ({otherParamName}.HasValue)");
+            sb.AppendLine($"            {{");
+            sb.AppendLine($"                conditions.Add(\"{otherFkColumn} = @{otherParamName}\");");
+            sb.AppendLine($"                parameters.Add(\"{otherParamName}\", {otherParamName}.Value);");
+            sb.AppendLine($"            }}");
+            sb.AppendLine();
+            sb.AppendLine($"            if (conditions.Count == 0)");
+            sb.AppendLine($"                return Enumerable.Empty<{info.EntityType}>();");
+            sb.AppendLine();
+            sb.AppendLine($"            var whereClause = string.Join(\" OR \", conditions);");
+            sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName} WHERE {{whereClause}} ORDER BY {{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, parameters);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+        }
+
+        // Generate AND combinations with entity properties: FindBy{Property}And{PropertyName}Async
+        if (info.EntityMetadata?.Properties != null)
+        {
+            foreach (var property in info.EntityMetadata.Properties)
+            {
+                if (property.IsPrimaryKey)
+                    continue;
+
+                if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
+                    property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                    continue;
+
+                var propertyParamName = ToCamelCase(property.Name);
+                var andMethodName = $"FindBy{relationship.PropertyName}And{property.Name}Async";
+
+                // Generate FindBy{Property}And{PropertyName}Async
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} and {property.Name}.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        /// <param name=\"{paramName}\">The {relationship.PropertyName} identifier.</param>");
+                sb.AppendLine($"        /// <param name=\"{propertyParamName}\">The {property.Name} value.</param>");
+                sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {andMethodName}({relatedKeyType} {paramName}, {property.TypeName} {propertyParamName})");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var sql = @\"SELECT * FROM {tableName}");
+                sb.AppendLine($"                WHERE {foreignKeyColumn} = @{paramName} AND {property.ColumnName} = @{propertyParamName}");
+                sb.AppendLine($"                ORDER BY {keyColumnName}\";");
+                sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, {propertyParamName} }});");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+
+                // Generate FindBy{Property}And{PropertyName}Async with pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name}, with pagination support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {andMethodName}({relatedKeyType} {paramName}, {property.TypeName} {propertyParamName}, int skip, int take)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var sql = @\"SELECT * FROM {tableName}");
+                sb.AppendLine($"                WHERE {foreignKeyColumn} = @{paramName} AND {property.ColumnName} = @{propertyParamName}");
+                sb.AppendLine($"                ORDER BY {keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+                sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, {propertyParamName}, skip, take }});");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+
+                // Generate FindBy{Property}And{PropertyName}Async with pagination and sorting
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name}, with pagination and sorting support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {andMethodName}({relatedKeyType} {paramName}, {property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+                sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+                sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName}");
+                sb.AppendLine($"                WHERE {foreignKeyColumn} = @{paramName} AND {property.ColumnName} = @{propertyParamName}");
+                sb.AppendLine($"                ORDER BY {{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+                sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, {propertyParamName}, skip, take }});");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+            }
+        }
     }
 
     /// <summary>
@@ -4168,6 +4740,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GenerateCountByParentSignature(sb, info, relationship);
                 GeneratePropertyBasedQuerySignatures(sb, info, relationship);
                 GenerateAdvancedFilterSignatures(sb, info, relationship);
+                GenerateComplexFilterSignatures(sb, info, relationship);
             }
 
             // Generate Has/Count method signatures for OneToMany relationships
@@ -4178,8 +4751,12 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GenerateAggregateMethodSignatures(sb, info, relationship);
                 GenerateGroupByAggregateMethodSignatures(sb, info, relationship);
                 GenerateSubqueryFilterSignatures(sb, info, relationship);
+                GenerateInverseRelationshipQuerySignatures(sb, info, relationship);
             }
         }
+
+        // Generate multi-level navigation query signatures
+        GenerateMultiLevelNavigationQuerySignatures(sb, info);
 
         // Generate cascade operation method signatures if applicable
         var persistCascades = info.CascadeRelationships.Where(r => (r.CascadeTypes & Models.CascadeType.Persist) != 0).ToList();
@@ -4245,7 +4822,8 @@ public class RepositoryGenerator : IIncrementalGenerator
 
     private static void GenerateFindByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
-        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         // Signature without pagination
@@ -4261,11 +4839,19 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName}, int skip, int take);");
         sb.AppendLine();
+
+        // Signature with pagination and sorting
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with pagination and sorting support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName}, int skip, int take, string? orderBy = null, bool ascending = true);");
+        sb.AppendLine();
     }
 
     private static void GenerateCountByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
-        var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
@@ -4319,6 +4905,13 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName}.{property.Name} with pagination support.");
             sb.AppendLine("        /// </summary>");
             sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take);");
+            sb.AppendLine();
+
+            // Signature with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName}.{property.Name} with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
             sb.AppendLine();
         }
     }
@@ -4493,7 +5086,8 @@ public class RepositoryGenerator : IIncrementalGenerator
         }
 
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
-        var relatedKeyParamName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var relatedKeyParamName = ToCamelCase(targetEntitySimpleName) + "Id";
 
         // Generate date range filter signatures for DateTime properties
         foreach (var property in info.EntityMetadata.Properties)
@@ -4520,6 +5114,13 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range with pagination support.");
             sb.AppendLine("        /// </summary>");
             sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}And{property.Name}RangeAsync({relatedKeyType} {relatedKeyParamName}, DateTime start{property.Name}, DateTime end{property.Name}, int skip, int take);");
+            sb.AppendLine();
+
+            // Signature with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}And{property.Name}RangeAsync({relatedKeyType} {relatedKeyParamName}, DateTime start{property.Name}, DateTime end{property.Name}, int skip, int take, string? orderBy = null, bool ascending = true);");
             sb.AppendLine();
         }
 
@@ -4551,6 +5152,97 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine("        /// </summary>");
             sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> Find{relationship.PropertyName}{property.Name}AboveAsync({relatedKeyType} {relatedKeyParamName}, {returnType} min{property.Name}, int skip, int take);");
             sb.AppendLine();
+
+            // Signature with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with {property.Name} greater than or equal to the specified value, with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> Find{relationship.PropertyName}{property.Name}AboveAsync({relatedKeyType} {relatedKeyParamName}, {returnType} min{property.Name}, int skip, int take, string? orderBy = null, bool ascending = true);");
+            sb.AppendLine();
+        }
+    }
+
+    /// <summary>
+    /// Generates complex filter query method signatures for the interface.
+    /// </summary>
+    private static void GenerateComplexFilterSignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        if (info.Relationships.Count < 2)
+            return;
+
+        var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
+        var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
+
+        // Generate OR combination signatures
+        foreach (var otherRel in info.Relationships)
+        {
+            if (otherRel == relationship || otherRel.Type != Models.RelationshipType.ManyToOne)
+                continue;
+
+            var otherEntitySimpleName = otherRel.TargetEntityType.Split('.').Last();
+            var otherKeyType = GetRelatedEntityKeyType(info, otherRel.TargetEntityType);
+            var otherParamName = ToCamelCase(otherEntitySimpleName) + "Id";
+            var orMethodName = $"FindBy{relationship.PropertyName}Or{otherRel.PropertyName}Async";
+
+            // Signature without pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName});");
+            sb.AppendLine();
+
+            // Signature with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take);");
+            sb.AppendLine();
+
+            // Signature with pagination and sorting
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination and sorting support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
+            sb.AppendLine();
+        }
+
+        // Generate AND combination signatures with entity properties
+        if (info.EntityMetadata?.Properties != null)
+        {
+            foreach (var property in info.EntityMetadata.Properties)
+            {
+                if (property.IsPrimaryKey)
+                    continue;
+
+                if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
+                    property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                    continue;
+
+                var propertyParamName = ToCamelCase(property.Name);
+                var andMethodName = $"FindBy{relationship.PropertyName}And{property.Name}Async";
+
+                // Signature without pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} and {property.Name}.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {andMethodName}({relatedKeyType} {paramName}, {property.TypeName} {propertyParamName});");
+                sb.AppendLine();
+
+                // Signature with pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name}, with pagination support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {andMethodName}({relatedKeyType} {paramName}, {property.TypeName} {propertyParamName}, int skip, int take);");
+                sb.AppendLine();
+
+                // Signature with pagination and sorting
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name}, with pagination and sorting support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {andMethodName}({relatedKeyType} {paramName}, {property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
+                sb.AppendLine();
+            }
         }
     }
 
@@ -4572,6 +5264,128 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWithMinimum{relationship.PropertyName}Async(int minCount, int skip, int take);");
         sb.AppendLine();
+
+        // Signature with pagination and sorting
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}, with pagination and sorting support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWithMinimum{relationship.PropertyName}Async(int minCount, int skip, int take, string? orderBy = null, bool ascending = true);");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates inverse relationship query method signatures for the interface.
+    /// </summary>
+    private static void GenerateInverseRelationshipQuerySignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Signature for FindWith{Property}Async
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities that have at least one {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWith{relationship.PropertyName}Async();");
+        sb.AppendLine();
+
+        // Signature for FindWithout{Property}Async
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities that have no {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWithout{relationship.PropertyName}Async();");
+        sb.AppendLine();
+
+        // Signature for FindWith{Property}CountAsync
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWith{relationship.PropertyName}CountAsync(int minCount);");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Generates multi-level navigation query method signatures for the interface.
+    /// </summary>
+    private static void GenerateMultiLevelNavigationQuerySignatures(StringBuilder sb, RepositoryInfo info)
+    {
+        if (info.EntitiesMetadata == null || info.EntitiesMetadata.Count == 0)
+            return;
+
+        // Generate signatures for 2-level navigation paths
+        foreach (var firstLevelRel in info.Relationships)
+        {
+            if (firstLevelRel.Type != Models.RelationshipType.ManyToOne)
+                continue;
+
+            var intermediateEntitySimpleName = firstLevelRel.TargetEntityType.Split('.').Last();
+
+            // Check all entities in metadata as potential targets
+            foreach (var entityMetadataEntry in info.EntitiesMetadata)
+            {
+                var targetEntitySimpleName = entityMetadataEntry.Key;
+                var targetMetadata = entityMetadataEntry.Value;
+                
+                if (targetEntitySimpleName == intermediateEntitySimpleName)
+                    continue;
+                
+                if (targetMetadata.Properties == null)
+                    continue;
+
+                // Verify that the intermediate entity actually has a relationship to the target entity
+                // This ensures we only generate signatures for valid navigation paths
+                Models.RelationshipMetadata? secondLevelRel = null;
+                if (info.Compilation != null)
+                {
+                    var intermediateEntityFullType = firstLevelRel.TargetEntityFullType;
+                    var intermediateEntitySimpleNameForExtraction = intermediateEntitySimpleName;
+                    
+                    var intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntityFullType);
+                    if (intermediateRelationships.Count == 0)
+                    {
+                        intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntitySimpleNameForExtraction);
+                    }
+                    
+                    secondLevelRel = intermediateRelationships.FirstOrDefault(r => 
+                        r.Type == Models.RelationshipType.ManyToOne && 
+                        r.TargetEntityType.Split('.').Last() == targetEntitySimpleName);
+                }
+                
+                // Only generate signatures if the relationship actually exists
+                if (secondLevelRel == null)
+                    continue;
+
+                foreach (var property in targetMetadata.Properties)
+                {
+                    if (property.IsPrimaryKey)
+                        continue;
+
+                    if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
+                        property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                        continue;
+
+                    var methodName = $"FindBy{firstLevelRel.PropertyName}{targetEntitySimpleName}{property.Name}Async";
+                    var propertyParamName = ToCamelCase(property.Name);
+
+                    // Signature without pagination
+                    sb.AppendLine("        /// <summary>");
+                    sb.AppendLine($"        /// Finds all {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}.");
+                    sb.AppendLine("        /// </summary>");
+                    sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName});");
+                    sb.AppendLine();
+
+                    // Signature with pagination
+                    sb.AppendLine("        /// <summary>");
+                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination support.");
+                    sb.AppendLine("        /// </summary>");
+                    sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take);");
+                    sb.AppendLine();
+
+                    // Signature with pagination and sorting
+                    sb.AppendLine("        /// <summary>");
+                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination and sorting support.");
+                    sb.AppendLine("        /// </summary>");
+                    sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
+                    sb.AppendLine();
+                }
+            }
+        }
     }
 
     private static void GenerateAddWithCascadeSignature(StringBuilder sb, RepositoryInfo info, List<Models.RelationshipMetadata> cascades, string entityName)
@@ -5056,186 +5870,4 @@ internal class MethodAttributeInfo
     public bool AuditCaptureUser { get; set; } = true;
     public string? AuditDescription { get; set; }
     public bool AuditCaptureIpAddress { get; set; }
-}
-
-/// <summary>
-/// Equality comparer for RepositoryInfo to enable incremental generator caching.
-/// Only regenerates code when repository metadata actually changes.
-/// </summary>
-internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
-{
-    public bool Equals(RepositoryInfo? x, RepositoryInfo? y)
-    {
-        if (ReferenceEquals(x, y)) return true;
-        if (x is null || y is null) return false;
-
-        // Compare basic properties
-        if (x.InterfaceName != y.InterfaceName ||
-            x.FullInterfaceName != y.FullInterfaceName ||
-            x.Namespace != y.Namespace ||
-            x.EntityType != y.EntityType ||
-            x.KeyType != y.KeyType ||
-            x.HasCompositeKey != y.HasCompositeKey)
-            return false;
-
-        // Compare composite key properties
-        if (!x.CompositeKeyProperties.SequenceEqual(y.CompositeKeyProperties))
-            return false;
-
-        // Compare methods
-        if (x.Methods.Count != y.Methods.Count)
-            return false;
-
-        for (int i = 0; i < x.Methods.Count; i++)
-        {
-            if (!MethodInfoEquals(x.Methods[i], y.Methods[i]))
-                return false;
-        }
-
-        // Compare many-to-many relationships
-        if (x.ManyToManyRelationships.Count != y.ManyToManyRelationships.Count)
-            return false;
-
-        for (int i = 0; i < x.ManyToManyRelationships.Count; i++)
-        {
-            if (!ManyToManyRelationshipInfoEquals(x.ManyToManyRelationships[i], y.ManyToManyRelationships[i]))
-                return false;
-        }
-
-        // Compare multi-tenancy information
-        if (!MultiTenantInfoEquals(x.MultiTenantInfo, y.MultiTenantInfo))
-            return false;
-
-        return true;
-    }
-
-    public int GetHashCode(RepositoryInfo obj)
-    {
-        if (obj is null) return 0;
-
-        unchecked
-        {
-            int hash = 17;
-            hash = hash * 31 + (obj.InterfaceName?.GetHashCode() ?? 0);
-            hash = hash * 31 + (obj.FullInterfaceName?.GetHashCode() ?? 0);
-            hash = hash * 31 + (obj.Namespace?.GetHashCode() ?? 0);
-            hash = hash * 31 + (obj.EntityType?.GetHashCode() ?? 0);
-            hash = hash * 31 + (obj.KeyType?.GetHashCode() ?? 0);
-            hash = hash * 31 + obj.HasCompositeKey.GetHashCode();
-
-            foreach (var prop in obj.CompositeKeyProperties)
-                hash = hash * 31 + (prop?.GetHashCode() ?? 0);
-
-            foreach (var method in obj.Methods)
-                hash = hash * 31 + GetMethodInfoHashCode(method);
-
-            foreach (var rel in obj.ManyToManyRelationships)
-                hash = hash * 31 + GetManyToManyHashCode(rel);
-
-            if (obj.MultiTenantInfo != null)
-                hash = hash * 31 + GetMultiTenantHashCode(obj.MultiTenantInfo);
-
-            return hash;
-        }
-    }
-
-    private bool MethodInfoEquals(MethodInfo x, MethodInfo y)
-    {
-        if (x.Name != y.Name || x.ReturnType != y.ReturnType)
-            return false;
-
-        if (x.Parameters.Count != y.Parameters.Count)
-            return false;
-
-        for (int i = 0; i < x.Parameters.Count; i++)
-        {
-            if (x.Parameters[i].Name != y.Parameters[i].Name ||
-                x.Parameters[i].Type != y.Parameters[i].Type)
-                return false;
-        }
-
-        return MethodAttributeInfoEquals(x.Attributes, y.Attributes);
-    }
-
-    private bool MethodAttributeInfoEquals(MethodAttributeInfo x, MethodAttributeInfo y)
-    {
-        return x.HasQuery == y.HasQuery &&
-               x.QuerySql == y.QuerySql &&
-               x.NativeQuery == y.NativeQuery &&
-               x.HasStoredProcedure == y.HasStoredProcedure &&
-               x.ProcedureName == y.ProcedureName &&
-               x.Schema == y.Schema &&
-               x.HasMultiMapping == y.HasMultiMapping &&
-               x.KeyProperty == y.KeyProperty &&
-               x.SplitOn == y.SplitOn &&
-               x.HasBulkOperation == y.HasBulkOperation &&
-               x.BatchSize == y.BatchSize &&
-               x.UseTransaction == y.UseTransaction &&
-               x.CommandTimeout == y.CommandTimeout &&
-               x.Buffered == y.Buffered;
-    }
-
-    private bool ManyToManyRelationshipInfoEquals(ManyToManyRelationshipInfo x, ManyToManyRelationshipInfo y)
-    {
-        return x.PropertyName == y.PropertyName &&
-               x.PropertyType == y.PropertyType &&
-               x.CollectionElementType == y.CollectionElementType &&
-               x.JoinTableName == y.JoinTableName &&
-               x.JoinTableSchema == y.JoinTableSchema &&
-               x.JoinColumns.SequenceEqual(y.JoinColumns) &&
-               x.InverseJoinColumns.SequenceEqual(y.InverseJoinColumns) &&
-               x.MappedBy == y.MappedBy;
-    }
-
-    private bool MultiTenantInfoEquals(MultiTenantInfo? x, MultiTenantInfo? y)
-    {
-        if (x is null && y is null) return true;
-        if (x is null || y is null) return false;
-
-        return x.IsMultiTenant == y.IsMultiTenant &&
-               x.TenantIdProperty == y.TenantIdProperty &&
-               x.EnforceTenantIsolation == y.EnforceTenantIsolation &&
-               x.AllowCrossTenantQueries == y.AllowCrossTenantQueries;
-    }
-
-    private int GetMethodInfoHashCode(MethodInfo method)
-    {
-        unchecked
-        {
-            int hash = 17;
-            hash = hash * 31 + (method.Name?.GetHashCode() ?? 0);
-            hash = hash * 31 + (method.ReturnType?.GetHashCode() ?? 0);
-            foreach (var param in method.Parameters)
-            {
-                hash = hash * 31 + (param.Name?.GetHashCode() ?? 0);
-                hash = hash * 31 + (param.Type?.GetHashCode() ?? 0);
-            }
-            return hash;
-        }
-    }
-
-    private int GetManyToManyHashCode(ManyToManyRelationshipInfo rel)
-    {
-        unchecked
-        {
-            int hash = 17;
-            hash = hash * 31 + (rel.PropertyName?.GetHashCode() ?? 0);
-            hash = hash * 31 + (rel.CollectionElementType?.GetHashCode() ?? 0);
-            hash = hash * 31 + (rel.JoinTableName?.GetHashCode() ?? 0);
-            return hash;
-        }
-    }
-
-    private int GetMultiTenantHashCode(MultiTenantInfo info)
-    {
-        unchecked
-        {
-            int hash = 17;
-            hash = hash * 31 + info.IsMultiTenant.GetHashCode();
-            hash = hash * 31 + (info.TenantIdProperty?.GetHashCode() ?? 0);
-            hash = hash * 31 + info.EnforceTenantIsolation.GetHashCode();
-            hash = hash * 31 + info.AllowCrossTenantQueries.GetHashCode();
-            return hash;
-        }
-    }
 }

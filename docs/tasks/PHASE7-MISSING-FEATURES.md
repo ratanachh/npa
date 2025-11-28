@@ -91,21 +91,40 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
       int customerId, decimal minTotalAmount, int skip, int take);
   Task<IEnumerable<Customer>> FindWithMinimumOrdersAsync(int minCount, int skip, int take);
   ```
-- **Missing**: Configurable sorting (currently fixed to primary key column)
+- ✅ **Implemented**: Configurable sorting (orderBy and ascending parameters)
   ```csharp
-  // Not yet implemented
+  // ✅ Now implemented
   Task<IEnumerable<Order>> FindByCustomerIdAsync(
       int customerId, 
-      string orderBy = "OrderDate", 
+      int skip, 
+      int take,
+      string? orderBy = null, 
+      bool ascending = true);
+  Task<IEnumerable<Order>> FindByCustomerNameAsync(
+      string name, 
+      int skip, 
+      int take,
+      string? orderBy = null, 
+      bool ascending = true);
+  Task<IEnumerable<Order>> FindByCustomerAndOrderDateRangeAsync(
+      int customerId, 
+      DateTime startOrderDate, 
+      DateTime endOrderDate,
+      int skip, 
+      int take,
+      string? orderBy = null, 
       bool ascending = true);
   ```
 
-#### 4. Multi-Level Navigation
-- **Missing**: Queries across multiple relationship levels
+#### 4. Multi-Level Navigation ⚠️ PARTIALLY IMPLEMENTED
+- ⚠️ **Partially Implemented**: Basic 2-level navigation queries (e.g., OrderItem → Order → Customer)
+- **Limitation**: Requires relationship metadata for intermediate entities, which is not currently available
+- **Current Status**: Implementation generates queries assuming ManyToOne relationships exist on intermediate entities
+- **Example**:
   ```csharp
-  // Not yet implemented
-  Task<IEnumerable<OrderItem>> FindByCustomerNameAsync(string customerName);
-  // Would navigate: OrderItem → Order → Customer
+  // ⚠️ Partially implemented - may not work in all cases
+  Task<IEnumerable<OrderItem>> FindByOrderCustomerNameAsync(string customerName);
+  // Navigates: OrderItem → Order → Customer
   ```
 
 #### 5. Complex Relationship Filters
@@ -124,13 +143,13 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
       OrderStatus status);
   ```
 
-#### 6. Inverse Relationship Queries
-- **Missing**: Find entities with/without related entities
+#### 6. Inverse Relationship Queries ✅ COMPLETED
+- ✅ **Implemented**: Find entities with/without related entities
   ```csharp
-  // Not yet implemented (on Customer repository)
+  // ✅ Now implemented (on Customer repository)
   Task<IEnumerable<Customer>> FindWithOrdersAsync();
   Task<IEnumerable<Customer>> FindWithoutOrdersAsync();
-  Task<IEnumerable<Customer>> FindWithOrderCountAsync(int minOrderCount);
+  Task<IEnumerable<Customer>> FindWithOrdersCountAsync(int minCount);
   ```
 
 ---
@@ -143,9 +162,9 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 3. ✅ **Pagination Support** - ✅ COMPLETED (Skip/take parameters added to all collection queries)
 
 ### Medium Priority (Enhanced Functionality)
-4. **Configurable Sorting** - Improves flexibility
+4. ✅ **Configurable Sorting** - ✅ COMPLETED (orderBy and ascending parameters added to all collection queries)
 5. **Multi-Level Navigation** - Useful for complex queries
-6. **Inverse Relationship Queries** - Completes the query API
+6. ✅ **Inverse Relationship Queries** - ✅ COMPLETED (FindWith/Without/WithCount methods implemented)
 
 ### Low Priority (Nice to Have)
 7. **Complex OR/AND Filters** - Can be achieved with multiple queries
@@ -182,19 +201,21 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
   - **Impact**: Prevents incorrect SQL generation when navigation property names appear before FK properties in metadata
   - **Tests**: ✅ 2 comprehensive tests added to verify FK property preference
 
-### Pagination and Sorting ✅ COMPLETED (Pagination)
-- **Effort**: ✅ Completed (Pagination)
+### Pagination and Sorting ✅ COMPLETED
+- **Effort**: ✅ Completed
 - **Complexity**: Low-Medium
 - **Files Modified**: `RepositoryGenerator.cs`
-- **Changes**: ✅ Added pagination overloads (skip/take) to all collection query methods
-- **New Methods**: ✅ Pagination overloads for:
+- **Changes**: 
+  - ✅ Added pagination overloads (skip/take) to all collection query methods
+  - ✅ Added configurable sorting (orderBy, ascending) to all pagination overloads
+  - ✅ Generated property-to-column mapping dictionary for runtime column name resolution
+- **New Methods**: ✅ Pagination and sorting overloads for:
   - `FindBy{Property}IdAsync` (ManyToOne)
   - `FindBy{Property}{PropertyName}Async` (Property-based queries)
   - `FindBy{Property}And{PropertyName}RangeAsync` (Date range filters)
   - `Find{Property}{PropertyName}AboveAsync` (Amount filters)
   - `FindWithMinimum{Property}Async` (Subquery filters)
-- **Tests**: ✅ 6 comprehensive tests added
-- **Remaining**: Configurable sorting (still fixed to primary key column)
+- **Tests**: ✅ 9 comprehensive tests added (6 pagination + 3 sorting)
 
 ### Multi-Level Navigation
 - **Effort**: 4-5 days
@@ -208,8 +229,8 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - **Files to Modify**: `RepositoryGenerator.cs`
 - **New Methods**: `GenerateComplexFilterQueries()`
 
-**Total Estimated Effort Remaining**: 7-12 days (~1.5-2.5 weeks)
-(Reduced from 14-19 days after completing GROUP BY aggregations, advanced filters, and pagination support)
+**Total Estimated Effort Remaining**: 3-8 days (~1 week)
+(Reduced from 14-19 days after completing GROUP BY aggregations, advanced filters, pagination support, configurable sorting, and inverse relationship queries)
 
 ---
 
@@ -238,15 +259,17 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - [x] ✅ Test foreign key column detection prefers FK properties over navigation property names
 - [x] ✅ Test foreign key column detection uses JoinColumn from inverse ManyToOne relationship
 
-### Pagination and Sorting ✅ COMPLETED (Pagination)
+### Pagination and Sorting ✅ COMPLETED
 - [x] ✅ Test pagination with skip/take
 - [x] ✅ Test pagination overloads for all query types
 - [x] ✅ Test pagination uses correct column names
 - [x] ✅ Test pagination methods are in interface
-- [ ] Test sorting by different columns (not yet implemented)
-- [ ] Test ascending/descending order (not yet implemented)
+- [x] ✅ Test sorting by different columns
+- [x] ✅ Test ascending/descending order
+- [x] ✅ Test property-to-column mapping
+- [x] ✅ Test sorting methods are in interface
 - [ ] Test pagination with large datasets (integration test needed)
-- [ ] Test sorting with NULL values (not yet implemented)
+- [ ] Test sorting with NULL values (integration test needed)
 
 ### Multi-Level Navigation
 - [ ] Test 2-level navigation (A → B → C)
@@ -279,7 +302,7 @@ When implementing missing features, update:
 
 - **Phase 7.5 (Orphan Removal)** appears to be complete based on its README, but the comprehensive review document shows it as "planned". This may be a documentation inconsistency that should be resolved.
 
-- **Property-based queries, aggregate methods, GROUP BY aggregations, advanced filters, and pagination support** were recently implemented (December 2024) and are fully tested (43 relationship query tests passing).
+- **Property-based queries, aggregate methods, GROUP BY aggregations, advanced filters, pagination support, configurable sorting, and inverse relationship queries** were recently implemented (December 2024) and are fully tested (57 relationship query tests passing, including 5 tests for fully qualified type name bug fixes).
 
 - **Bug Fixes**: Two critical bugs were fixed:
   1. ORDER BY clause now correctly uses column names from `[Column]` attributes instead of property names
