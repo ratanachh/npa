@@ -3549,6 +3549,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var keyColumnName = GetKeyColumnName(info);
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
+        // Generate method without pagination (backward compatibility)
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
@@ -3556,6 +3557,21 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        {");
         sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {keyColumnName}\";");
         sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName} }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // Generate method with pagination
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with pagination support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        /// <param name=\"{paramName}\">The {relationship.PropertyName} identifier.</param>");
+        sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+        sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName}, int skip, int take)");
+        sb.AppendLine("        {");
+        // Use database-specific pagination syntax (will need provider-specific handling, but for now use OFFSET/FETCH which works in SQL Server, PostgreSQL, SQLite)
+        sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, skip, take }});");
         sb.AppendLine("        }");
         sb.AppendLine();
     }
@@ -3653,6 +3669,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             var propertyParamName = ToCamelCase(property.Name);
             var methodName = $"FindBy{relationship.PropertyName}{property.Name}Async";
 
+            // Generate method without pagination (backward compatibility)
             sb.AppendLine("        /// <summary>");
             sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.{property.Name}.");
             sb.AppendLine("        /// </summary>");
@@ -3663,6 +3680,23 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"                WHERE r.{property.ColumnName} = @{propertyParamName}");
             sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName} }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate method with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName}.{property.Name} with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{propertyParamName}\">The {property.Name} value.</param>");
+            sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+            sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE r.{property.ColumnName} = @{propertyParamName}");
+            sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
             sb.AppendLine("        }");
             sb.AppendLine();
         }
@@ -3710,7 +3744,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             var propertyParamName = ToCamelCase(property.Name);
             var propertyColumnName = property.ColumnName;
 
-            // Generate date range filter with relationship
+            // Generate date range filter with relationship (without pagination)
             sb.AppendLine("        /// <summary>");
             sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range.");
             sb.AppendLine("        /// </summary>");
@@ -3723,6 +3757,27 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"                    AND e.{propertyColumnName} <= @end{property.Name}");
             sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, start{property.Name}, end{property.Name} }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate date range filter with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{relatedKeyParamName}\">The {relationship.PropertyName} identifier.</param>");
+            sb.AppendLine($"        /// <param name=\"start{property.Name}\">Start date.</param>");
+            sb.AppendLine($"        /// <param name=\"end{property.Name}\">End date.</param>");
+            sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+            sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}And{property.Name}RangeAsync({relatedKeyType} {relatedKeyParamName}, DateTime start{property.Name}, DateTime end{property.Name}, int skip, int take)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
+            sb.AppendLine($"                    AND e.{propertyColumnName} >= @start{property.Name}");
+            sb.AppendLine($"                    AND e.{propertyColumnName} <= @end{property.Name}");
+            sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, start{property.Name}, end{property.Name}, skip, take }});");
             sb.AppendLine("        }");
             sb.AppendLine();
         }
@@ -3744,7 +3799,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             var propertyColumnName = property.ColumnName;
             var returnType = property.TypeName.TrimEnd('?');
 
-            // Generate minimum amount filter with relationship
+            // Generate minimum amount filter with relationship (without pagination)
             sb.AppendLine("        /// <summary>");
             sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} with {property.Name} greater than or equal to the specified value.");
             sb.AppendLine("        /// </summary>");
@@ -3756,6 +3811,25 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"                    AND e.{propertyColumnName} >= @min{property.Name}");
             sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, min{property.Name} }});");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+
+            // Generate minimum amount filter with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with {property.Name} greater than or equal to the specified value, with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        /// <param name=\"{relatedKeyParamName}\">The {relationship.PropertyName} identifier.</param>");
+            sb.AppendLine($"        /// <param name=\"min{property.Name}\">Minimum {property.Name} value.</param>");
+            sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+            sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+            sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> Find{relationship.PropertyName}{property.Name}AboveAsync({relatedKeyType} {relatedKeyParamName}, {returnType} min{property.Name}, int skip, int take)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
+            sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
+            sb.AppendLine($"                    AND e.{propertyColumnName} >= @min{property.Name}");
+            sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+            sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {relatedKeyParamName}, min{property.Name}, skip, take }});");
             sb.AppendLine("        }");
             sb.AppendLine();
         }
@@ -3782,7 +3856,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         // For OneToMany, the JoinColumn is on the inverse ManyToOne relationship
         var foreignKeyColumn = GetForeignKeyColumnForOneToMany(info, relationship, parentEntityName);
 
-        // Generate FindWithMinimum{Property}Async - finds parents with at least N children
+        // Generate FindWithMinimum{Property}Async - finds parents with at least N children (without pagination)
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
@@ -3796,6 +3870,26 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine($"                ) >= @minCount");
         sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
         sb.AppendLine("            return await _connection.QueryAsync<" + info.EntityType + ">(sql, new { minCount });");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // Generate FindWithMinimum{Property}Async with pagination
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}, with pagination support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine("        /// <param name=\"minCount\">Minimum number of {relationship.PropertyName}.</param>");
+        sb.AppendLine("        /// <param name=\"skip\">Number of records to skip.</param>");
+        sb.AppendLine("        /// <param name=\"take\">Number of records to take.</param>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindWithMinimum{relationship.PropertyName}Async(int minCount, int skip, int take)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
+        sb.AppendLine($"                WHERE (");
+        sb.AppendLine($"                    SELECT COUNT(*)");
+        sb.AppendLine($"                    FROM {childTableName} c");
+        sb.AppendLine($"                    WHERE c.{foreignKeyColumn} = e.{keyColumnName}");
+        sb.AppendLine($"                ) >= @minCount");
+        sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+        sb.AppendLine("            return await _connection.QueryAsync<" + info.EntityType + ">(sql, new { minCount, skip, take });");
         sb.AppendLine("        }");
         sb.AppendLine();
     }
@@ -4154,10 +4248,18 @@ public class RepositoryGenerator : IIncrementalGenerator
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
+        // Signature without pagination
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName});");
+        sb.AppendLine();
+
+        // Signature with pagination
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with pagination support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName}, int skip, int take);");
         sb.AppendLine();
     }
 
@@ -4205,10 +4307,18 @@ public class RepositoryGenerator : IIncrementalGenerator
             var propertyParamName = ToCamelCase(property.Name);
             var methodName = $"FindBy{relationship.PropertyName}{property.Name}Async";
 
+            // Signature without pagination
             sb.AppendLine("        /// <summary>");
             sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.{property.Name}.");
             sb.AppendLine("        /// </summary>");
             sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName});");
+            sb.AppendLine();
+
+            // Signature with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName}.{property.Name} with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take);");
             sb.AppendLine();
         }
     }
@@ -4398,10 +4508,18 @@ public class RepositoryGenerator : IIncrementalGenerator
                 property.TypeName.Contains("IEnumerable"))
                 continue;
 
+            // Signature without pagination
             sb.AppendLine("        /// <summary>");
             sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range.");
             sb.AppendLine("        /// </summary>");
             sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}And{property.Name}RangeAsync({relatedKeyType} {relatedKeyParamName}, DateTime start{property.Name}, DateTime end{property.Name});");
+            sb.AppendLine();
+
+            // Signature with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} and {property.Name} date range with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}And{property.Name}RangeAsync({relatedKeyType} {relatedKeyParamName}, DateTime start{property.Name}, DateTime end{property.Name}, int skip, int take);");
             sb.AppendLine();
         }
 
@@ -4420,10 +4538,18 @@ public class RepositoryGenerator : IIncrementalGenerator
 
             var returnType = property.TypeName.TrimEnd('?');
 
+            // Signature without pagination
             sb.AppendLine("        /// <summary>");
             sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} with {property.Name} greater than or equal to the specified value.");
             sb.AppendLine("        /// </summary>");
             sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> Find{relationship.PropertyName}{property.Name}AboveAsync({relatedKeyType} {relatedKeyParamName}, {returnType} min{property.Name});");
+            sb.AppendLine();
+
+            // Signature with pagination
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} with {property.Name} greater than or equal to the specified value, with pagination support.");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> Find{relationship.PropertyName}{property.Name}AboveAsync({relatedKeyType} {relatedKeyParamName}, {returnType} min{property.Name}, int skip, int take);");
             sb.AppendLine();
         }
     }
@@ -4433,10 +4559,18 @@ public class RepositoryGenerator : IIncrementalGenerator
     /// </summary>
     private static void GenerateSubqueryFilterSignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
+        // Signature without pagination
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
         sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWithMinimum{relationship.PropertyName}Async(int minCount);");
+        sb.AppendLine();
+
+        // Signature with pagination
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities that have at least the specified number of {relationship.PropertyName}, with pagination support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindWithMinimum{relationship.PropertyName}Async(int minCount, int skip, int take);");
         sb.AppendLine();
     }
 

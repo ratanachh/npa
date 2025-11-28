@@ -2241,4 +2241,364 @@ public class Order
     }
 
     #endregion
+
+    #region Pagination Support Tests
+
+    [Fact]
+    public void ManyToOne_FindByParent_ShouldGeneratePaginationOverload()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should have both overloads
+        implementation.Should().Contain("FindByCustomerIdAsync(int customerId)");
+        implementation.Should().Contain("FindByCustomerIdAsync(int customerId, int skip, int take)");
+        
+        // Pagination version should use OFFSET/FETCH
+        implementation.Should().Contain("OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY");
+    }
+
+    [Fact]
+    public void ManyToOne_PropertyBasedQuery_ShouldGeneratePaginationOverload()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [Column(""name"")]
+    public string Name { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should have both overloads for property-based query
+        implementation.Should().Contain("FindByCustomerNameAsync(string name)");
+        implementation.Should().Contain("FindByCustomerNameAsync(string name, int skip, int take)");
+        
+        // Pagination version should use OFFSET/FETCH
+        implementation.Should().Contain("OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY");
+    }
+
+    [Fact]
+    public void ManyToOne_AdvancedFilters_ShouldGeneratePaginationOverloads()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""order_date"")]
+    public DateTime OrderDate { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Date range filter should have pagination overload
+        implementation.Should().Contain("FindByCustomerAndOrderDateRangeAsync(int customerId, DateTime startOrderDate, DateTime endOrderDate)");
+        implementation.Should().Contain("FindByCustomerAndOrderDateRangeAsync(int customerId, DateTime startOrderDate, DateTime endOrderDate, int skip, int take)");
+        
+        // Amount filter should have pagination overload
+        implementation.Should().Contain("FindCustomerTotalAmountAboveAsync(int customerId, decimal minTotalAmount)");
+        implementation.Should().Contain("FindCustomerTotalAmountAboveAsync(int customerId, decimal minTotalAmount, int skip, int take)");
+        
+        // Both should use OFFSET/FETCH
+        implementation.Should().Contain("OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY");
+    }
+
+    [Fact]
+    public void OneToMany_SubqueryFilter_ShouldGeneratePaginationOverload()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should have both overloads
+        implementation.Should().Contain("FindWithMinimumOrdersAsync(int minCount)");
+        implementation.Should().Contain("FindWithMinimumOrdersAsync(int minCount, int skip, int take)");
+        
+        // Pagination version should use OFFSET/FETCH
+        implementation.Should().Contain("OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY");
+    }
+
+    [Fact]
+    public void PaginationMethods_ShouldBeInInterface()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""order_date"")]
+    public DateTime OrderDate { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var orderInterfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryExtensions"))
+            .ToString();
+
+        var customerInterfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryExtensions"))
+            .ToString();
+
+        // Should have pagination signatures in interfaces
+        orderInterfaceCode.Should().Contain("FindByCustomerIdAsync(int customerId, int skip, int take);");
+        orderInterfaceCode.Should().Contain("FindByCustomerAndOrderDateRangeAsync(int customerId, DateTime startOrderDate, DateTime endOrderDate, int skip, int take);");
+        customerInterfaceCode.Should().Contain("FindWithMinimumOrdersAsync(int minCount, int skip, int take);");
+    }
+
+    [Fact]
+    public void PaginationMethods_ShouldUseCorrectColumnNames()
+    {
+        // Arrange - Entity with custom column name for primary key
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    [Column(""order_id"")]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Pagination version should use column name "order_id" in ORDER BY, not property name "Id"
+        var paginationMethod = implementation.Split('\n')
+            .SkipWhile(l => !l.Contains("FindByCustomerIdAsync") || !l.Contains("skip"))
+            .Take(10)
+            .ToList();
+        
+        var orderByLine = paginationMethod.FirstOrDefault(l => l.Contains("ORDER BY"));
+        Assert.NotNull(orderByLine);
+        orderByLine.Should().Contain("ORDER BY order_id"); // Should use column name
+        orderByLine.Should().NotContain("ORDER BY Id"); // Should NOT use property name
+    }
+
+    #endregion
 }

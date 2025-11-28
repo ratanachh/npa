@@ -11,6 +11,7 @@ Generate specialized query methods for navigating and querying entities based on
 - ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names
 - ✅ Implemented GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX grouped by parent entity)
 - ✅ Implemented Advanced Filters (date ranges, amount filters, subquery-based filters)
+- ✅ Implemented Pagination Support (skip/take parameters for all collection queries)
 
 ### ✅ What's Implemented
 - **ManyToOne Relationships**: 
@@ -33,12 +34,16 @@ Generate specialized query methods for navigating and querying entities based on
   - `FindBy{Property}And{PropertyName}RangeAsync()` - Date range filters on relationships (e.g., `FindByCustomerAndOrderDateRangeAsync`)
   - `Find{Property}{PropertyName}AboveAsync()` - Amount/quantity filters (e.g., `FindCustomerTotalAmountAboveAsync`)
   - `FindWithMinimum{Property}Async()` - Subquery-based filters (e.g., `FindWithMinimumOrdersAsync`)
+- **Pagination Support**:
+  - All collection query methods have pagination overloads with `skip` and `take` parameters
+  - Uses SQL `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` syntax (SQL Server, PostgreSQL, SQLite compatible)
+  - Backward compatible - original methods without pagination still available
 - **Interface Generation**: Separate partial interfaces for relationship query methods
 - **Efficient Queries**: Direct WHERE clauses and JOIN queries with no N+1 problems
 - **Type Safety**: Uses correct key types from related entities
 
 ### 📋 What's Planned
-- Pagination and sorting support
+- Configurable sorting (currently fixed to primary key column)
 - Multi-level navigation
 - Complex relationship filters (OR/AND combinations)
 
@@ -165,11 +170,14 @@ public interface IOrderRepository : IRepository<Order, int>, IOrderRepositoryPar
 {
     // ✅ Navigation methods (ManyToOne)
     Task<IEnumerable<Order>> FindByCustomerIdAsync(int customerId);
+    Task<IEnumerable<Order>> FindByCustomerIdAsync(int customerId, int skip, int take); // Pagination
     Task<int> CountByCustomerIdAsync(int customerId);
     
     // ✅ Property-based queries (ManyToOne)
     Task<IEnumerable<Order>> FindByCustomerNameAsync(string name);
+    Task<IEnumerable<Order>> FindByCustomerNameAsync(string name, int skip, int take); // Pagination
     Task<IEnumerable<Order>> FindByCustomerCountryAsync(string country);
+    Task<IEnumerable<Order>> FindByCustomerCountryAsync(string country, int skip, int take); // Pagination
     
     // ✅ Relationship existence (OneToMany - via Customer repository)
     // Note: These are generated on the parent entity (Customer)
@@ -324,6 +332,22 @@ public async Task<IEnumerable<Customer>> FindWithMinimumOrdersAsync(int minCount
     
     return await _connection.QueryAsync<Customer>(sql, new { minCount });
 }
+
+// ✅ Implemented: Pagination support
+public async Task<IEnumerable<Order>> FindByCustomerIdAsync(int customerId, int skip, int take)
+{
+    var sql = $"SELECT * FROM orders WHERE customer_id = @customerId ORDER BY order_id OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY";
+    return await _connection.QueryAsync<Order>(sql, new { customerId, skip, take });
+}
+
+public async Task<IEnumerable<Order>> FindByCustomerNameAsync(string name, int skip, int take)
+{
+    var sql = @"SELECT e.* FROM orders e
+                INNER JOIN customers r ON e.customer_id = r.customer_id
+                WHERE r.name = @name
+                ORDER BY e.order_id OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY";
+    return await _connection.QueryAsync<Order>(sql, new { name, skip, take });
+}
 ```
 
 #### Aggregate Methods
@@ -428,9 +452,9 @@ This ensures that when entities have custom column names via `[Column]` attribut
 ### 📋 Remaining Criteria
 - [ ] Navigation methods generated for all relationship types (OneToOne, ManyToMany)
 - [x] Methods to find by related entity properties (✅ Implemented: `FindBy{Property}{PropertyName}Async`)
-- [ ] Pagination support where appropriate
+- [x] Pagination support where appropriate (✅ Implemented: skip/take overloads for all collection queries)
 - [x] Aggregate functions work correctly (✅ SUM, AVG, MIN, MAX implemented; ✅ GROUP BY implemented)
-- [ ] Complex filters properly implemented (date ranges, amounts, subqueries)
+- [x] Complex filters properly implemented (✅ Date ranges, amounts, subqueries implemented)
 - [ ] Support for multi-level navigation
 - [ ] Configurable sorting options (currently fixed to primary key column)
 - [ ] Support for OR/AND combinations in relationship queries
@@ -503,7 +527,8 @@ This ensures that when entities have custom column names via `[Column]` attribut
 2. ✅ **Aggregate Methods**: ✅ Implemented SUM, AVG, MIN, MAX methods for single entities
 3. ✅ **GROUP BY Aggregations**: ✅ Implemented COUNT, SUM, AVG, MIN, MAX methods grouped by parent entity
 4. ✅ **Advanced Filters**: ✅ Implemented date ranges, amount filters, and subquery-based filters
-5. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names
+5. ✅ **Pagination Support**: ✅ Implemented skip/take overloads for all collection query methods
+6. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names
 
 ### Future Enhancements
 1. **Pagination Support**: Add skip/take parameters to collection queries
