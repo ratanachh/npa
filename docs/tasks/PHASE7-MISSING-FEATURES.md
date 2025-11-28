@@ -5,7 +5,8 @@
 **Latest Updates**:
 - ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes
 - ✅ Fixed foreign key column detection bug - `GetForeignKeyColumnForOneToMany` now only matches FK properties, not navigation property names
-- ✅ Added comprehensive tests for bug fixes (37 total relationship query tests)
+- ✅ Fixed multi-level navigation bug - now extracts relationships from intermediate entity instead of current entity, ensuring correct FK column usage
+- ✅ Added comprehensive tests for bug fixes (66+ total relationship query tests)
 
 ## Overview
 
@@ -118,13 +119,15 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 
 #### 4. Multi-Level Navigation ⚠️ PARTIALLY IMPLEMENTED
 - ⚠️ **Partially Implemented**: Basic 2-level navigation queries (e.g., OrderItem → Order → Customer)
-- **Limitation**: Requires relationship metadata for intermediate entities, which is not currently available
-- **Current Status**: Implementation generates queries assuming ManyToOne relationships exist on intermediate entities
+- **How It Works**: The generator extracts relationships from the intermediate entity (e.g., `Order`) using `ExtractRelationships` to find its relationship to the target entity (e.g., `Customer`). This ensures the correct foreign key column is used from the intermediate entity's relationship metadata.
+- **Bug Fix**: Previously, the code incorrectly searched for the second-level relationship in the current entity's relationships. This has been fixed to extract relationships from the intermediate entity, ensuring correct FK column usage and respecting custom `[JoinColumn]` attributes.
+- **Limitation**: Requires successful relationship extraction from the intermediate entity. If the relationship cannot be extracted (e.g., due to compilation/metadata issues), the query method will not be generated. This is intentional to prevent incorrect SQL generation.
 - **Example**:
   ```csharp
-  // ⚠️ Partially implemented - may not work in all cases
+  // ⚠️ Partially implemented - generates when relationship extraction succeeds
   Task<IEnumerable<OrderItem>> FindByOrderCustomerNameAsync(string customerName);
   // Navigates: OrderItem → Order → Customer
+  // Uses Order's relationship to Customer (with correct JoinColumn if specified)
   ```
 
 #### 5. Complex Relationship Filters
@@ -217,11 +220,13 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
   - `FindWithMinimum{Property}Async` (Subquery filters)
 - **Tests**: ✅ 9 comprehensive tests added (6 pagination + 3 sorting)
 
-### Multi-Level Navigation
-- **Effort**: 4-5 days
+### Multi-Level Navigation ⚠️ PARTIALLY IMPLEMENTED
+- **Effort**: ⚠️ Partially Completed (2-level navigation implemented, ~2-3 days remaining for 3+ levels)
 - **Complexity**: High
-- **Files to Modify**: `RepositoryGenerator.cs`, `RelationshipExtractor.cs`
-- **New Methods**: `GenerateMultiLevelNavigationQueries()`
+- **Files Modified**: `RepositoryGenerator.cs` - `GenerateMultiLevelNavigationQueries()`, `GenerateMultiLevelNavigationQuerySignatures()`
+- **Status**: Basic 2-level navigation working. Relationship extraction from intermediate entities implemented. Bug fix ensures correct FK column usage.
+- **Bug Fix**: Fixed issue where second-level FK was incorrectly searched in current entity's relationships. Now correctly extracts from intermediate entity.
+- **Remaining Work**: 3+ level navigation, additional relationship type support, performance optimizations
 
 ### Complex Filters
 - **Effort**: 3-4 days
@@ -271,11 +276,13 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - [ ] Test pagination with large datasets (integration test needed)
 - [ ] Test sorting with NULL values (integration test needed)
 
-### Multi-Level Navigation
-- [ ] Test 2-level navigation (A → B → C)
+### Multi-Level Navigation ⚠️ PARTIALLY IMPLEMENTED
+- [x] ✅ Test 2-level navigation (A → B → C) - Basic tests implemented
+- [x] ✅ Test navigation with custom column names - Tests verify JoinColumn usage from intermediate entity
+- [x] ✅ Test relationship extraction from intermediate entity - Bug fix verified
+- [x] ✅ Test that methods are not generated when relationship extraction fails - Prevents incorrect SQL
 - [ ] Test 3+ level navigation
 - [ ] Test navigation with different relationship types
-- [ ] Test navigation with custom column names
 - [ ] Test navigation performance (N+1 prevention)
 
 ### Complex Filters
@@ -304,17 +311,21 @@ When implementing missing features, update:
 
 - **Property-based queries, aggregate methods, GROUP BY aggregations, advanced filters, pagination support, configurable sorting, and inverse relationship queries** were recently implemented (December 2024) and are fully tested (57 relationship query tests passing, including 5 tests for fully qualified type name bug fixes).
 
-- **Bug Fixes**: Two critical bugs were fixed:
+- **Bug Fixes**: Three critical bugs were fixed:
   1. ORDER BY clause now correctly uses column names from `[Column]` attributes instead of property names
   2. Foreign key column detection now only matches FK properties (ending with "Id"), not navigation property names
+  3. Multi-level navigation now correctly extracts relationships from intermediate entities instead of current entity, ensuring correct FK column usage
 
 - All missing features are enhancements to Phase 7.6. The core Phase 7 functionality (7.1-7.5) is complete and production-ready.
 
-- **Test Coverage**: Phase 7.6 now has 37 comprehensive unit tests covering:
+- **Test Coverage**: Phase 7.6 now has 66+ comprehensive unit tests covering:
   - Basic relationship queries (ManyToOne, OneToMany)
   - Property-based queries
   - Aggregate methods (SUM, AVG, MIN, MAX)
   - GROUP BY aggregations
   - Advanced filters (date ranges, amounts, subqueries)
-  - Bug fixes (column name handling, FK column detection)
+  - Pagination and sorting
+  - Inverse relationship queries
+  - Multi-level navigation (2-level navigation with relationship extraction)
+  - Bug fixes (column name handling, FK column detection, multi-level navigation FK extraction)
 

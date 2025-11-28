@@ -10,11 +10,13 @@ Generate specialized query methods for navigating and querying entities based on
 **Latest Updates**: 
 - ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names
 - ✅ Fixed fully qualified type name bugs - parameter names and FK column names now use simple type names
+- ✅ Fixed multi-level navigation bug - now extracts relationships from intermediate entity instead of current entity
 - ✅ Implemented GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX grouped by parent entity)
 - ✅ Implemented Advanced Filters (date ranges, amount filters, subquery-based filters)
 - ✅ Implemented Pagination Support (skip/take parameters for all collection queries)
 - ✅ Implemented Configurable Sorting (orderBy and ascending parameters for all pagination overloads)
 - ✅ Implemented Inverse Relationship Queries (FindWith/Without/WithCount methods for OneToMany relationships)
+- ⚠️ Partially Implemented Multi-Level Navigation (2-level navigation with relationship extraction from intermediate entities)
 
 ### ✅ What's Implemented
 - **ManyToOne Relationships**: 
@@ -52,7 +54,7 @@ Generate specialized query methods for navigating and querying entities based on
 - **Type Safety**: Uses correct key types from related entities
 
 ### 📋 What's Planned
-- Multi-level navigation
+- ⚠️ Multi-level navigation (Partially Implemented - 2-level navigation working, requires relationship extraction from intermediate entities)
 - Complex relationship filters (OR/AND combinations)
 
 ## Objectives
@@ -434,9 +436,10 @@ The methods are declared in a separate partial interface:
 3. ✅ **Aggregates**: Generates SUM, AVG, MIN, MAX methods for single entities
 4. ✅ **GROUP BY Aggregations**: Generates COUNT, SUM, AVG, MIN, MAX methods grouped by parent entity (returns Dictionary)
 5. ✅ **Advanced Filters**: Generates date range filters, amount/quantity filters, and subquery-based filters
-5. **No Pagination**: Generated methods do not support pagination parameters
-6. **Fixed Sorting**: Sorting is fixed (by primary key column name) and not configurable
-7. **Single Relationship Only**: Does not support queries across multiple relationships
+6. ✅ **Pagination**: ✅ Implemented - skip/take parameters added to all collection queries
+7. ✅ **Configurable Sorting**: ✅ Implemented - orderBy and ascending parameters for all pagination overloads
+8. ⚠️ **Multi-Level Navigation**: ⚠️ Partially Implemented - 2-level navigation working (e.g., OrderItem → Order → Customer). Requires successful relationship extraction from intermediate entities. If extraction fails, methods are not generated to prevent incorrect SQL.
+9. **Complex Filters**: OR/AND combinations not yet implemented
 
 ### Column Name Handling
 
@@ -446,6 +449,27 @@ The methods are declared in a separate partial interface:
 - **WHERE clauses**: Uses property column names for filtering
 
 This ensures that when entities have custom column names via `[Column]` attributes, the generated SQL queries use the correct database column names, preventing runtime query failures.
+
+### Multi-Level Navigation Details
+
+⚠️ **Partially Implemented**: 2-level navigation queries are supported (e.g., `OrderItem → Order → Customer`).
+
+**How It Works**:
+1. The generator identifies ManyToOne relationships on the current entity (first level)
+2. For each first-level relationship, it extracts relationships from the intermediate entity using `ExtractRelationships`
+3. It finds the ManyToOne relationship from the intermediate entity to potential target entities
+4. If found, it generates query methods using the correct FK column from the intermediate entity's relationship
+5. If not found, the method is not generated (prevents incorrect SQL)
+
+**Bug Fix Applied**:
+- **Previous Issue**: The code incorrectly searched for the second-level relationship in the current entity's relationships, leading to incorrect FK column names
+- **Fix**: Now correctly extracts relationships from the intermediate entity, ensuring proper FK column usage and respecting custom `[JoinColumn]` attributes
+- **Impact**: Multi-level navigation queries now use the correct foreign key columns from the intermediate entity's relationship metadata
+
+**Limitations**:
+- Requires successful relationship extraction from intermediate entities
+- Currently supports 2-level navigation only (3+ levels not yet implemented)
+- Methods are only generated when relationships can be successfully extracted
 
 ## Acceptance Criteria
 
@@ -463,8 +487,8 @@ This ensures that when entities have custom column names via `[Column]` attribut
 - [x] Pagination support where appropriate (✅ Implemented: skip/take overloads for all collection queries)
 - [x] Aggregate functions work correctly (✅ SUM, AVG, MIN, MAX implemented; ✅ GROUP BY implemented)
 - [x] Complex filters properly implemented (✅ Date ranges, amounts, subqueries implemented)
-- [ ] Support for multi-level navigation
-- [ ] Configurable sorting options (currently fixed to primary key column)
+- [x] Configurable sorting options (✅ Implemented: orderBy and ascending parameters for all pagination overloads)
+- [x] Support for multi-level navigation (⚠️ Partially Implemented: 2-level navigation with relationship extraction from intermediate entities)
 - [ ] Support for OR/AND combinations in relationship queries
 
 ## Dependencies
