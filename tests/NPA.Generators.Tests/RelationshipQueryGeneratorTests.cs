@@ -1372,4 +1372,873 @@ public class Customer
     }
 
     #endregion
+
+    #region GROUP BY Aggregate Tests
+
+    [Fact]
+    public void OneToMany_ShouldGenerateGroupByCountMethod()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate GROUP BY count method
+        implementation.Should().Contain("GetOrdersCountsByCustomerAsync()");
+        implementation.Should().Contain("Task<Dictionary<int, int>>");
+        implementation.Should().Contain("SELECT customer_id AS Key, COUNT(*) AS Value FROM orders GROUP BY customer_id");
+    }
+
+    [Fact]
+    public void OneToMany_ShouldGenerateGroupBySumMethod()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate GROUP BY SUM method
+        implementation.Should().Contain("GetTotalOrdersTotalAmountByCustomerAsync()");
+        implementation.Should().Contain("Task<Dictionary<int, decimal>>");
+        implementation.Should().Contain("SELECT customer_id AS Key, COALESCE(SUM(total_amount), 0) AS Value FROM orders GROUP BY customer_id");
+    }
+
+    [Fact]
+    public void OneToMany_ShouldGenerateGroupByAvgMinMaxMethods()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate AVG, MIN, MAX GROUP BY methods
+        implementation.Should().Contain("GetAverageOrdersTotalAmountByCustomerAsync()");
+        implementation.Should().Contain("GetMinOrdersTotalAmountByCustomerAsync()");
+        implementation.Should().Contain("GetMaxOrdersTotalAmountByCustomerAsync()");
+        
+        implementation.Should().Contain("Task<Dictionary<int, decimal?>>");
+        implementation.Should().Contain("AVG(total_amount)");
+        implementation.Should().Contain("MIN(total_amount)");
+        implementation.Should().Contain("MAX(total_amount)");
+    }
+
+    [Fact]
+    public void OneToMany_GroupByMethods_ShouldBeInInterface()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var interfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryExtensions"))
+            .ToString();
+
+        // Should have GROUP BY method signatures in interface
+        interfaceCode.Should().Contain("GetOrdersCountsByCustomerAsync()");
+        interfaceCode.Should().Contain("GetTotalOrdersTotalAmountByCustomerAsync()");
+        interfaceCode.Should().Contain("GetAverageOrdersTotalAmountByCustomerAsync()");
+        interfaceCode.Should().Contain("GetMinOrdersTotalAmountByCustomerAsync()");
+        interfaceCode.Should().Contain("GetMaxOrdersTotalAmountByCustomerAsync()");
+    }
+
+    [Fact]
+    public void OneToMany_GroupByMethods_ShouldUseCorrectForeignKeyColumn()
+    {
+        // Arrange - Custom JoinColumn on inverse ManyToOne
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""fk_customer"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should use custom JoinColumn name "fk_customer" in GROUP BY
+        implementation.Should().Contain("SELECT fk_customer AS Key");
+        implementation.Should().Contain("GROUP BY fk_customer");
+        implementation.Should().NotContain("GROUP BY customer_id");
+        implementation.Should().NotContain("GROUP BY CustomerId");
+    }
+
+    [Fact]
+    public void OneToMany_GroupByMethods_ShouldSkipNonNumericProperties()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    public decimal TotalAmount { get; set; }
+    public string OrderNumber { get; set; }
+    public DateTime OrderDate { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate GROUP BY methods for numeric property
+        implementation.Should().Contain("GetTotalOrdersTotalAmountByCustomerAsync");
+
+        // Should NOT generate GROUP BY methods for non-numeric properties
+        implementation.Should().NotContain("GetTotalOrdersOrderNumberByCustomerAsync");
+        implementation.Should().NotContain("GetTotalOrdersOrderDateByCustomerAsync");
+    }
+
+    #endregion
+
+    #region Advanced Filter Tests
+
+    [Fact]
+    public void ManyToOne_ShouldGenerateDateRangeFilter()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""order_date"")]
+    public DateTime OrderDate { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate date range filter method
+        implementation.Should().Contain("FindByCustomerAndOrderDateRangeAsync(int customerId, DateTime startOrderDate, DateTime endOrderDate)");
+        implementation.Should().Contain("WHERE e.customer_id = @customerId");
+        implementation.Should().Contain("AND e.order_date >= @startOrderDate");
+        implementation.Should().Contain("AND e.order_date <= @endOrderDate");
+    }
+
+    [Fact]
+    public void ManyToOne_ShouldGenerateAmountFilter()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate amount filter method
+        implementation.Should().Contain("FindCustomerTotalAmountAboveAsync(int customerId, decimal minTotalAmount)");
+        implementation.Should().Contain("WHERE e.customer_id = @customerId");
+        implementation.Should().Contain("AND e.total_amount >= @minTotalAmount");
+    }
+
+    [Fact]
+    public void OneToMany_ShouldGenerateSubqueryFilter()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate subquery filter method
+        implementation.Should().Contain("FindWithMinimumOrdersAsync(int minCount)");
+        implementation.Should().Contain("WHERE (");
+        implementation.Should().Contain("SELECT COUNT(*)");
+        implementation.Should().Contain("FROM orders c");
+        implementation.Should().Contain("WHERE c.customer_id = e.Id");
+        implementation.Should().Contain(") >= @minCount");
+    }
+
+    [Fact]
+    public void AdvancedFilters_ShouldBeInInterface()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""order_date"")]
+    public DateTime OrderDate { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var orderInterfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryExtensions"))
+            .ToString();
+
+        var customerInterfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryExtensions"))
+            .ToString();
+
+        // Should have date range filter signature in interface
+        orderInterfaceCode.Should().Contain("FindByCustomerAndOrderDateRangeAsync(int customerId, DateTime startOrderDate, DateTime endOrderDate);");
+        
+        // Should have amount filter signature in interface
+        orderInterfaceCode.Should().Contain("FindCustomerTotalAmountAboveAsync(int customerId, decimal minTotalAmount);");
+        
+        // Should have subquery filter signature in interface
+        customerInterfaceCode.Should().Contain("FindWithMinimumOrdersAsync(int minCount);");
+    }
+
+    [Fact]
+    public void AdvancedFilters_ShouldSkipNonDateTimeProperties_ForDateRange()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    public DateTime OrderDate { get; set; }
+    public string OrderNumber { get; set; }
+    public decimal TotalAmount { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate date range filter for DateTime property
+        implementation.Should().Contain("FindByCustomerAndOrderDateRangeAsync");
+
+        // Should NOT generate date range filters for non-DateTime properties
+        implementation.Should().NotContain("FindByCustomerAndOrderNumberRangeAsync");
+        implementation.Should().NotContain("FindByCustomerAndTotalAmountRangeAsync");
+    }
+
+    [Fact]
+    public void AdvancedFilters_ShouldSkipNonNumericProperties_ForAmountFilter()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    public DateTime OrderDate { get; set; }
+    public string OrderNumber { get; set; }
+    public decimal TotalAmount { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Should generate amount filter for numeric property
+        implementation.Should().Contain("FindCustomerTotalAmountAboveAsync");
+
+        // Should NOT generate amount filters for non-numeric properties
+        implementation.Should().NotContain("FindCustomerOrderNumberAboveAsync");
+        implementation.Should().NotContain("FindCustomerOrderDateAboveAsync");
+    }
+
+    #endregion
+
+    #region Foreign Key Column Detection Tests
+
+    [Fact]
+    public void OneToMany_ForeignKeyColumn_ShouldPreferFkPropertyOverNavigationPropertyName()
+    {
+        // Arrange - This test verifies the fix where GetForeignKeyColumnForOneToMany
+        // would incorrectly match the navigation property name ("Customer") instead of
+        // the FK property name ("CustomerId") in the fallback path.
+        //
+        // The bug was: the code checked for both "CustomerId" OR "Customer", and if
+        // "Customer" appeared first in the properties collection, it would incorrectly
+        // use that instead of "CustomerId".
+        //
+        // The fix: Only check for the FK property pattern (ending with "Id"), not the
+        // navigation property name.
+        //
+        // This test uses an explicit FK property (CustomerId) to verify that it's correctly
+        // used in the fallback path, even when a navigation property with the same base name exists.
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    // FK property - this is what we want to use in the fallback path
+    // The JoinColumn on the navigation property should be used first, but if that fails,
+    // the fallback should use this FK property's column name, NOT the navigation property name
+    [Column(""customer_id"")]
+    public int CustomerId { get; set; }
+    
+    // Navigation property - this should NOT be matched in the fallback path
+    // The JoinColumn on this property should be used first (primary path)
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should use the FK column name "customer_id" from the JoinColumn attribute
+        // (primary path) or from the CustomerId property's Column attribute (fallback path)
+        // The key is that it should NOT try to match the navigation property name "Customer"
+        implementation.Should().Contain("customer_id = @id");
+        
+        // Verify it's used in HasOrdersAsync
+        implementation.Should().Contain("HasOrdersAsync");
+        implementation.Should().Contain("SELECT COUNT(*) FROM orders WHERE customer_id = @id");
+    }
+
+    [Fact]
+    public void OneToMany_ForeignKeyColumn_ShouldUseFkPropertyWhenNavigationPropertyNameExists()
+    {
+        // Arrange - Test case where navigation property name matches a property name
+        // The FK property (CustomerId) should be preferred over any property named "Customer"
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    // FK property - MUST be used (has Column attribute with custom name)
+    [Column(""fk_customer_id"")]
+    public int CustomerId { get; set; }
+    
+    // Navigation property - should NOT be matched
+    [ManyToOne]
+    [JoinColumn(""fk_customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should use the FK property's column name "fk_customer_id" from CustomerId property
+        // NOT from the navigation property "Customer"
+        implementation.Should().Contain("fk_customer_id = @id");
+        
+        // Verify in GROUP BY methods too
+        implementation.Should().Contain("GROUP BY fk_customer_id");
+    }
+
+    #endregion
 }

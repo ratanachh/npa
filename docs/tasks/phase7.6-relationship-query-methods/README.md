@@ -7,7 +7,10 @@ Generate specialized query methods for navigating and querying entities based on
 
 **Current Status**: ✅ **MOSTLY IMPLEMENTED** (Core Features Complete)
 
-**Latest Update**: ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names.
+**Latest Updates**: 
+- ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names
+- ✅ Implemented GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX grouped by parent entity)
+- ✅ Implemented Advanced Filters (date ranges, amount filters, subquery-based filters)
 
 ### ✅ What's Implemented
 - **ManyToOne Relationships**: 
@@ -21,16 +24,23 @@ Generate specialized query methods for navigating and querying entities based on
   - `GetAverage{Property}{PropertyName}Async()` - AVG aggregate for numeric properties
   - `GetMin{Property}{PropertyName}Async()` - MIN aggregate for numeric properties
   - `GetMax{Property}{PropertyName}Async()` - MAX aggregate for numeric properties
+  - `Get{Property}CountsBy{ParentEntity}Async()` - COUNT grouped by parent entity (returns `Dictionary<KeyType, int>`)
+  - `GetTotal{Property}{PropertyName}By{ParentEntity}Async()` - SUM grouped by parent entity (returns `Dictionary<KeyType, AggregateType>`)
+  - `GetAverage{Property}{PropertyName}By{ParentEntity}Async()` - AVG grouped by parent entity
+  - `GetMin{Property}{PropertyName}By{ParentEntity}Async()` - MIN grouped by parent entity
+  - `GetMax{Property}{PropertyName}By{ParentEntity}Async()` - MAX grouped by parent entity
+- **Advanced Filters**:
+  - `FindBy{Property}And{PropertyName}RangeAsync()` - Date range filters on relationships (e.g., `FindByCustomerAndOrderDateRangeAsync`)
+  - `Find{Property}{PropertyName}AboveAsync()` - Amount/quantity filters (e.g., `FindCustomerTotalAmountAboveAsync`)
+  - `FindWithMinimum{Property}Async()` - Subquery-based filters (e.g., `FindWithMinimumOrdersAsync`)
 - **Interface Generation**: Separate partial interfaces for relationship query methods
 - **Efficient Queries**: Direct WHERE clauses and JOIN queries with no N+1 problems
 - **Type Safety**: Uses correct key types from related entities
 
 ### 📋 What's Planned
-- Advanced filters (date ranges, amounts, subqueries)
 - Pagination and sorting support
 - Multi-level navigation
 - Complex relationship filters (OR/AND combinations)
-- GROUP BY aggregations across multiple entities
 
 ## Objectives
 - ✅ Generate relationship navigation query methods (ID-based and property-based)
@@ -69,6 +79,18 @@ Generate specialized query methods for navigating and querying entities based on
 - ✅ Generate `GetMin{Property}{PropertyName}Async` for MIN aggregations
 - ✅ Generate `GetMax{Property}{PropertyName}Async` for MAX aggregations
 - ✅ Automatically generates aggregate methods for all numeric properties
+- ✅ Generate `Get{Property}CountsBy{ParentEntity}Async` for COUNT GROUP BY aggregations
+- ✅ Generate `GetTotal{Property}{PropertyName}By{ParentEntity}Async` for SUM GROUP BY aggregations
+- ✅ Generate `GetAverage{Property}{PropertyName}By{ParentEntity}Async` for AVG GROUP BY aggregations
+- ✅ Generate `GetMin{Property}{PropertyName}By{ParentEntity}Async` for MIN GROUP BY aggregations
+- ✅ Generate `GetMax{Property}{PropertyName}By{ParentEntity}Async` for MAX GROUP BY aggregations
+
+#### 5. Advanced Filters
+- ✅ Generate date range filters for DateTime properties (`FindByCustomerAndOrderDateRangeAsync`)
+- ✅ Generate amount/quantity filters for numeric properties (`FindCustomerTotalAmountAboveAsync`)
+- ✅ Generate subquery-based filters for OneToMany relationships (`FindWithMinimumOrdersAsync`)
+- ✅ Automatically generates filters for all DateTime and numeric properties
+- ✅ Supports filtering by relationship ID combined with date/amount conditions
 
 ### 📋 Planned Features
 
@@ -194,9 +216,9 @@ Task<IEnumerable<Customer>> FindWithOrderCountAsync(int minOrderCount);
 // Task<decimal> GetTotalOrdersTotalAmountAsync(int id); // ✅ Now implemented
 // Task<decimal?> GetAverageOrdersTotalAmountAsync(int id); // ✅ Now implemented
 
-// 📋 Planned: GROUP BY aggregations
-Task<Dictionary<int, decimal>> GetTotalOrderAmountsByCustomerAsync();
-Task<Dictionary<int, int>> GetOrderCountsByCustomerAsync();
+// ✅ Implemented: GROUP BY aggregations
+// Task<Dictionary<int, int>> GetOrdersCountsByCustomerAsync(); // ✅ Now implemented
+// Task<Dictionary<int, decimal>> GetTotalOrdersTotalAmountByCustomerAsync(); // ✅ Now implemented
 ```
 
 ## Generated Code Examples
@@ -253,41 +275,54 @@ public async Task<IEnumerable<Order>> FindByCustomerNameAsync(string name)
 }
 ```
 
-#### Advanced Relationship Queries
+#### Advanced Relationship Queries (✅ Implemented)
 ```csharp
-// 📋 Planned: Complex relationship filters
-public async Task<IEnumerable<Order>> FindByCustomerAndDateRangeAsync(
+// ✅ Implemented: Date range filters with relationships
+public async Task<IEnumerable<Order>> FindByCustomerAndOrderDateRangeAsync(
     int customerId, 
-    DateTime startDate, 
-    DateTime endDate)
+    DateTime startOrderDate, 
+    DateTime endOrderDate)
 {
-    const string sql = @"
-        SELECT o.*
-        FROM orders o
-        WHERE o.customer_id = @customerId
-            AND o.order_date >= @startDate
-            AND o.order_date <= @endDate
-        ORDER BY o.order_date DESC";
+    var sql = @"SELECT e.* FROM orders e
+                INNER JOIN customers r ON e.customer_id = r.Id
+                WHERE e.customer_id = @customerId
+                    AND e.order_date >= @startOrderDate
+                    AND e.order_date <= @endOrderDate
+                ORDER BY e.Id";
     
     return await _connection.QueryAsync<Order>(
         sql, 
-        new { customerId, startDate, endDate });
+        new { customerId, startOrderDate, endOrderDate });
 }
 
-// 📋 Planned: Subquery-based filters
-public async Task<IEnumerable<Order>> FindWithMinimumItemsAsync(int minItems)
+// ✅ Implemented: Amount filters with relationships
+public async Task<IEnumerable<Order>> FindCustomerTotalAmountAboveAsync(
+    int customerId, 
+    decimal minTotalAmount)
 {
-    const string sql = @"
-        SELECT o.*
-        FROM orders o
-        WHERE (
-            SELECT COUNT(*) 
-            FROM order_items oi 
-            WHERE oi.order_id = o.id
-        ) >= @minItems
-        ORDER BY o.order_date DESC";
+    var sql = @"SELECT e.* FROM orders e
+                INNER JOIN customers r ON e.customer_id = r.Id
+                WHERE e.customer_id = @customerId
+                    AND e.total_amount >= @minTotalAmount
+                ORDER BY e.Id";
     
-    return await _connection.QueryAsync<Order>(sql, new { minItems });
+    return await _connection.QueryAsync<Order>(
+        sql, 
+        new { customerId, minTotalAmount });
+}
+
+// ✅ Implemented: Subquery-based filters
+public async Task<IEnumerable<Customer>> FindWithMinimumOrdersAsync(int minCount)
+{
+    var sql = @"SELECT e.* FROM customers e
+                WHERE (
+                    SELECT COUNT(*)
+                    FROM orders c
+                    WHERE c.customer_id = e.Id
+                ) >= @minCount
+                ORDER BY e.Id";
+    
+    return await _connection.QueryAsync<Customer>(sql, new { minCount });
 }
 ```
 
@@ -364,8 +399,9 @@ The methods are declared in a separate partial interface:
 
 1. ✅ **Property-Based Queries**: Now supports finding by related entity properties (e.g., `FindByCustomerNameAsync`)
 2. ✅ **JOIN Queries**: Generates methods that use JOINs to filter by related entity properties
-3. ✅ **Aggregates**: Generates SUM, AVG, MIN, MAX methods (GROUP BY aggregations still planned)
-4. **No Complex Filters**: Does not support date ranges, amount filters, or subquery-based filters
+3. ✅ **Aggregates**: Generates SUM, AVG, MIN, MAX methods for single entities
+4. ✅ **GROUP BY Aggregations**: Generates COUNT, SUM, AVG, MIN, MAX methods grouped by parent entity (returns Dictionary)
+5. ✅ **Advanced Filters**: Generates date range filters, amount/quantity filters, and subquery-based filters
 5. **No Pagination**: Generated methods do not support pagination parameters
 6. **Fixed Sorting**: Sorting is fixed (by primary key column name) and not configurable
 7. **Single Relationship Only**: Does not support queries across multiple relationships
@@ -393,7 +429,7 @@ This ensures that when entities have custom column names via `[Column]` attribut
 - [ ] Navigation methods generated for all relationship types (OneToOne, ManyToMany)
 - [x] Methods to find by related entity properties (✅ Implemented: `FindBy{Property}{PropertyName}Async`)
 - [ ] Pagination support where appropriate
-- [x] Aggregate functions work correctly (✅ SUM, AVG, MIN, MAX implemented; GROUP BY planned)
+- [x] Aggregate functions work correctly (✅ SUM, AVG, MIN, MAX implemented; ✅ GROUP BY implemented)
 - [ ] Complex filters properly implemented (date ranges, amounts, subqueries)
 - [ ] Support for multi-level navigation
 - [ ] Configurable sorting options (currently fixed to primary key column)
@@ -414,6 +450,9 @@ This ensures that when entities have custom column names via `[Column]` attribut
 - ✅ Tests verify aggregate methods use correct foreign key column names
 - ✅ Tests verify ORDER BY clauses use column names instead of property names
 - ✅ Tests verify custom `[Column]` attributes are correctly handled in SQL generation
+- ✅ Tests verify GROUP BY aggregate methods are generated correctly
+- ✅ Tests verify GROUP BY methods use correct foreign key columns
+- ✅ Tests verify GROUP BY methods return Dictionary types
 
 ### 📋 Remaining Test Requirements
 - [ ] Integration tests for all generated methods
@@ -461,9 +500,10 @@ This ensures that when entities have custom column names via `[Column]` attribut
 
 ### Immediate Priorities
 1. ✅ **Property-Based Queries**: ✅ Implemented `FindBy{RelatedEntity}{Property}Async` methods (e.g., `FindByCustomerNameAsync`)
-2. ✅ **Aggregate Methods**: ✅ Implemented SUM, AVG, MIN, MAX methods (GROUP BY queries still planned)
-3. **Advanced Filters**: Support date ranges, amount filters, and subquery-based filters
-4. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names
+2. ✅ **Aggregate Methods**: ✅ Implemented SUM, AVG, MIN, MAX methods for single entities
+3. ✅ **GROUP BY Aggregations**: ✅ Implemented COUNT, SUM, AVG, MIN, MAX methods grouped by parent entity
+4. ✅ **Advanced Filters**: ✅ Implemented date ranges, amount filters, and subquery-based filters
+5. **Bug Fixes**: ✅ Fixed ORDER BY clause to use column names instead of property names
 
 ### Future Enhancements
 1. **Pagination Support**: Add skip/take parameters to collection queries
