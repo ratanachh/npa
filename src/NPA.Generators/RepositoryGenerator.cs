@@ -3536,11 +3536,12 @@ public class RepositoryGenerator : IIncrementalGenerator
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
         var keyPropertyName = GetKeyPropertyName(info);
+        var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync(int {paramName})");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName})");
         sb.AppendLine("        {");
         sb.AppendLine($"            var sql = \"SELECT * FROM {tableName} WHERE {foreignKeyColumn} = @{paramName} ORDER BY {keyPropertyName}\";");
         sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName} }});");
@@ -3552,11 +3553,12 @@ public class RepositoryGenerator : IIncrementalGenerator
     {
         var foreignKeyColumn = relationship.JoinColumn?.Name ?? $"{relationship.TargetEntityType}Id";
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Counts {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine($"        public async Task<int> CountBy{relationship.PropertyName}IdAsync(int {paramName})");
+        sb.AppendLine($"        public async Task<int> CountBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName})");
         sb.AppendLine("        {");
         sb.AppendLine($"            var sql = \"SELECT COUNT(*) FROM {tableName} WHERE {foreignKeyColumn} = @{paramName}\";");
         sb.AppendLine($"            return await _connection.ExecuteScalarAsync<int>(sql, new {{ {paramName} }});");
@@ -3714,22 +3716,24 @@ public class RepositoryGenerator : IIncrementalGenerator
     private static void GenerateFindByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync(int {paramName});");
+        sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> FindBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName});");
         sb.AppendLine();
     }
 
     private static void GenerateCountByParentSignature(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
         var paramName = ToCamelCase(relationship.TargetEntityType) + "Id";
+        var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
 
         sb.AppendLine("        /// <summary>");
         sb.AppendLine($"        /// Counts {info.EntityType} entities by {relationship.PropertyName}.");
         sb.AppendLine("        /// </summary>");
-        sb.AppendLine($"        Task<int> CountBy{relationship.PropertyName}IdAsync(int {paramName});");
+        sb.AppendLine($"        Task<int> CountBy{relationship.PropertyName}IdAsync({relatedKeyType} {paramName});");
         sb.AppendLine();
     }
 
