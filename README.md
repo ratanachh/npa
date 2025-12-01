@@ -2,7 +2,7 @@
 
 A lightweight, high-performance Object-Relational Mapping library for .NET that provides Java Persistence API (JPA) inspired features while leveraging Dapper's excellent performance as the underlying data access technology.
 
-> **🎉 Development Status**: This project is **100% COMPLETE** (34/34 tasks). **All 6 phases are 100% complete**. Core features including entity mapping, CRUD operations, CPQL queries, relationships, transactions, bulk operations, lazy loading, connection pooling, source generators, IntelliSense support, caching, migrations, monitoring, audit logging, multi-tenancy, performance profiling, and **CLI code generation tools** are **production-ready**. See the [Development Roadmap](#-development-roadmap) for detailed progress.
+> **🎉 Development Status**: This project is **100% COMPLETE** (33/33 tasks). **All 6 phases are 100% complete**. Core features including entity mapping, CRUD operations, CPQL queries, relationships, transactions, bulk operations, lazy loading, connection pooling, source generators, caching, migrations, monitoring, audit logging, multi-tenancy, performance profiling, and **CLI code generation tools** are **production-ready**. See the [Development Roadmap](#-development-roadmap) for detailed progress.
 
 ## 🎯 Project Goals
 
@@ -2995,17 +2995,8 @@ All 34 tasks across 6 phases have been successfully completed with 1,280 passing
   - Additional attributes for fine-grained control
   - Query customization attributes
   - Repository behavior configuration
-- [x] **4.7 IntelliSense support for generated code** [Completed] **COMPLETED**
-  - Roslyn diagnostic analyzers (6 rules: NPA001-NPA004, NPA100-NPA101)
-  - RepositoryGenerationAnalyzer for error detection
-  - RepositoryCodeFixProvider for auto-fixes (missing 'partial' keyword)
-  - RepositoryUsageAnalyzer for usage pattern detection
-  - RepositorySymbolHelper for symbol information
-  - 4 comprehensive analyzer tests passing
-  - Real-time error detection and code fixes
-  - **Note:** Full completion/signature help requires VS Code extension (Phase 6.1)
 
-**Phase 4 Status: ✅ COMPLETE (7/7 tasks)**
+**Phase 4 Status: ✅ COMPLETE (6/6 tasks)**
 
 ### Phase 5: Enterprise Features [Completed] ✅ COMPLETE
 - [x] **5.1 Caching support** [Completed] **COMPLETED**
@@ -3060,11 +3051,11 @@ All 34 tasks across 6 phases have been successfully completed with 1,280 passing
 
 **Phase 6 Status**: ✅ COMPLETE (3/3 tasks)
 
-**Note**: VS Code extension removed from roadmap - IntelliSense already provided via Roslyn analyzers (Phase 4.7) which work across all IDEs (Visual Studio, VS Code, Rider)
+**Note**: VS Code extension removed from roadmap - not needed for the project's current scope
 
 ---
 
-**Overall Progress: 34/34 tasks completed (100%)** | **1,280 tests passing** ✅
+**Overall Progress: 33/33 tasks completed (100%)** | **1,220 tests passing** ✅
 
 ## 🤝 Contributing
 

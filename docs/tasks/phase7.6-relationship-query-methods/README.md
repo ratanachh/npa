@@ -532,7 +532,7 @@ This ensures that when entities have custom column names via `[Column]` attribut
 - ✅ Tests verify SQL injection protection in configurable sorting (`GetColumnNameForProperty_ShouldPreventSqlInjection`)
 
 ### 📋 Remaining Test Requirements
-- [ ] Integration tests for all generated methods
+- [x] Integration tests for all generated methods (✅ Implemented: Integration tests using Testcontainers that compile and execute actual generated repository implementations)
 - [ ] Performance tests for complex queries
 - [x] Tests for edge cases (empty collections, null relationships) (✅ Implemented: 6 comprehensive edge case tests)
 - [x] Tests for aggregate functions accuracy (✅ Basic tests implemented)

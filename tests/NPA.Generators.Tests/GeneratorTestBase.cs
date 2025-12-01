@@ -290,4 +290,56 @@ namespace NPA.Core.Annotations
             
         return tree?.ToString() ?? string.Empty;
     }
+
+    /// <summary>
+    /// Gets the NPA annotations source code for use in integration tests.
+    /// </summary>
+    /// <returns>The complete NPA annotations source code.</returns>
+    public static string GetNpaAnnotationsSource() => NPA_ANNOTATIONS_SOURCE;
+
+    /// <summary>
+    /// Creates a compilation from multiple source files with all necessary references.
+    /// Extended version for integration tests that need multiple source files.
+    /// </summary>
+    /// <param name="sources">Array of source code strings to include in compilation.</param>
+    /// <param name="includeAnnotationSource">Whether to include the NPA annotation definitions.</param>
+    /// <param name="additionalReferences">Additional metadata references to include.</param>
+    /// <returns>A CSharpCompilation ready for generator testing.</returns>
+    public static Compilation CreateCompilationFromSources(
+        string[] sources,
+        bool includeAnnotationSource = true,
+        IEnumerable<MetadataReference>? additionalReferences = null)
+    {
+        var syntaxTreeList = new List<SyntaxTree>();
+        
+        if (includeAnnotationSource)
+        {
+            syntaxTreeList.Add(CSharpSyntaxTree.ParseText(NPA_ANNOTATIONS_SOURCE));
+        }
+        
+        foreach (var source in sources)
+        {
+            syntaxTreeList.Add(CSharpSyntaxTree.ParseText(source));
+        }
+        
+        var references = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(RepositoryAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Core.Repositories.IRepository<,>).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
+        };
+
+        if (additionalReferences != null)
+        {
+            references.AddRange(additionalReferences);
+        }
+
+        return CSharpCompilation.Create(
+            "TestAssembly",
+            syntaxTreeList,
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
 }

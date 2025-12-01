@@ -28,9 +28,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Generators\NPA.Generators.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.PostgreSql\NPA.Providers.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.SqlServer\NPA.Providers.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\NPA.Providers.Sqlite\NPA.Providers.Sqlite.csproj" />
+    <ProjectReference Include="..\NPA.Generators.Tests\NPA.Generators.Tests.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.5.0" />
   </ItemGroup>
 
   <ItemGroup>

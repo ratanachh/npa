@@ -251,12 +251,29 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - **Files Modified**: `RepositoryGenerator.cs` - `GenerateComplexFilters()`, `GenerateComplexFilterSignatures()`
 - **Status**: OR combinations (`FindBy{Property1}Or{Property2}Async`) and AND combinations (`FindBy{Property}And{PropertyName}Async`) are now implemented with full pagination and sorting support
 
-**Total Estimated Effort Remaining**: 1-3 days (~2 days)
-(Reduced from 14-19 days after completing GROUP BY aggregations, multi-entity GROUP BY queries, advanced filters, pagination support, configurable sorting, inverse relationship queries, complex filters, and 3+ level navigation)
+**Total Estimated Effort Remaining**: 0-1 days (~0.5 days)
+(Reduced from 14-19 days after completing GROUP BY aggregations, multi-entity GROUP BY queries, advanced filters, pagination support, configurable sorting, inverse relationship queries, complex filters, 3+ level navigation, edge case tests, and integration tests)
 
 ---
 
 ## Testing Requirements for Missing Features
+
+### ✅ Integration Tests - COMPLETED
+- ✅ **Implemented**: Integration tests using Testcontainers that compile and execute actual generated repository implementations
+- **Test Approach**:
+  - Uses source generator to generate repository code
+  - Compiles generated code to assembly using Roslyn
+  - Loads assembly and instantiates generated repository classes
+  - Calls actual generated methods via reflection
+  - Verifies results against real PostgreSQL database container
+- **Test Coverage**:
+  - ManyToOne query methods (FindByCustomerIdAsync with pagination)
+  - Property-based queries (FindByCustomerNameAsync)
+  - Aggregate queries (CountByCustomerIdAsync)
+  - Inverse relationship queries (FindWithOrdersAsync, CountOrdersAsync)
+- **Files Created**: `tests/NPA.Core.Tests/Integration/RelationshipQueryIntegrationTests.cs`
+- **Status**: Integration tests implemented, testing full code generation → compilation → execution flow
+- **Technology**: Uses Testcontainers.PostgreSql for isolated database testing, Roslyn for code compilation
 
 ### ✅ Edge Case Tests - COMPLETED
 - ✅ **Implemented**: 6 comprehensive edge case tests covering:

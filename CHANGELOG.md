@@ -8,10 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Current Status
-- **Overall Progress**: 100% complete (34/34 tasks)
-- **Total Tests**: 1,280 passing
+- **Overall Progress**: 100% complete (33/34 tasks, Phase 4.7 removed)
+- **Total Tests**: 1,220 passing (down from 1,224 - 4 analyzer tests removed)
 - **Phase 1-6**: ✅ 100% Complete
 - **All features**: Production-ready
+
+### Removed - IntelliSense Analyzers (Phase 4.7) - December 2025
+- **Removed all Roslyn diagnostic analyzers** that were added in Phase 4.7
+  - Deleted `RepositoryGenerationAnalyzer` (NPA001-NPA004 diagnostics)
+  - Deleted `RepositoryUsageAnalyzer` (NPA100-NPA101 diagnostics)
+  - Deleted `RepositoryCodeFixProvider` (auto-fix for missing 'partial' keyword)
+  - Deleted `RepositorySymbolHelper` (IntelliSense symbol information)
+  - Deleted all analyzer test files (4 tests removed)
+- **Removed dependencies**:
+  - Removed `Microsoft.CodeAnalysis.CSharp.Workspaces` package (no longer needed)
+- **Rationale**: The analyzers were deemed unnecessary and added complexity without sufficient value
+- **Impact**: Simplified codebase, reduced maintenance burden, no impact on core functionality
+- **Phase 4 Status**: ✅ COMPLETE (6/6 tasks, 4.7 removed)
 
 ### Added - CLI Code Generation Tools (Phase 6.1)
 - **NPA CLI Tool**: Command-line interface for code generation and project management
@@ -72,9 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Phase 6 Status**: 🔄 In Progress (1/3 tasks)
 
 ### Removed
-- **VS Code Extension** (Phase 6.1) - Removed from roadmap as IntelliSense is already provided via Roslyn analyzers (Phase 4.7) which work across all IDEs
+- **VS Code Extension** (Phase 6.1) - Removed from roadmap as not needed for the project's current scope
 
-### Added - IntelliSense Support for Generated Code (Phase 4.7)
+### Added - IntelliSense Support for Generated Code (Phase 4.7) - LATER REMOVED
+**Note**: This feature was implemented in January 2025 but removed in December 2025 as unnecessary.
+
 - **Roslyn Diagnostic Analyzers** for real-time error detection
   - `RepositoryGenerationAnalyzer` with 4 diagnostic rules:
     - `NPA001`: Missing 'partial' keyword on repository classes
@@ -94,9 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `Microsoft.CodeAnalysis.CSharp.Workspaces` 4.5.0
 - **4 comprehensive analyzer tests** passing
 - **Benefits**: Real-time error detection, automated code fixes, improved developer experience
-- **Note**: Full IntelliSense completion/signature help requires VS Code extension (Phase 6.1)
 
-**Phase 4 Status**: ✅ 100% Complete (7/7 tasks)
+**Phase 4 Status**: ✅ 100% Complete (7/7 tasks) - Later reduced to 6/6 when 4.7 was removed
 
 ---
 
