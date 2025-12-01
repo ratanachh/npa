@@ -2,7 +2,7 @@
 
 A lightweight, high-performance Object-Relational Mapping library for .NET that provides Java Persistence API (JPA) inspired features while leveraging Dapper's excellent performance as the underlying data access technology.
 
-> **🎉 Development Status**: This project is **100% COMPLETE** (33/33 tasks). **All 6 phases are 100% complete**. Core features including entity mapping, CRUD operations, CPQL queries, relationships, transactions, bulk operations, lazy loading, connection pooling, source generators, caching, migrations, monitoring, audit logging, multi-tenancy, performance profiling, and **CLI code generation tools** are **production-ready**. See the [Development Roadmap](#-development-roadmap) for detailed progress.
+> **🎉 Development Status**: This project is **100% COMPLETE** (39/39 tasks). **All 7 phases are 100% complete**. Core features including entity mapping, CRUD operations, CPQL queries, relationships, transactions, bulk operations, lazy loading, connection pooling, source generators, caching, migrations, monitoring, audit logging, multi-tenancy, performance profiling, CLI code generation tools, and **advanced relationship management** are **production-ready**. See the [Development Roadmap](#-development-roadmap) for detailed progress.
 
 ## 🎯 Project Goals
 
@@ -3051,11 +3051,41 @@ All 34 tasks across 6 phases have been successfully completed with 1,280 passing
 
 **Phase 6 Status**: ✅ COMPLETE (3/3 tasks)
 
+### Phase 7: Advanced Relationship Management
+- [x] **7.1 Relationship-Aware Repository Generation** [Completed] **COMPLETED**
+  - Automatic detection of relationship metadata
+  - Enhanced CRUD operations with relationship awareness
+  - Validation for relationship constraints
+- [x] **7.2 Eager Loading Support** [Completed] **COMPLETED**
+  - Fetch type configuration (Eager/Lazy)
+  - Automatic JOIN generation for eager relationships
+  - N+1 query prevention
+- [x] **7.3 Cascade Operations Enhancement** [Completed] **COMPLETED**
+  - Cascade type configuration (Persist, Update, Remove, Merge, Refresh)
+  - Automatic cascade operation execution
+  - Transaction support for cascaded operations
+- [x] **7.4 Bidirectional Relationship Management** [Completed] **COMPLETED**
+  - Automatic synchronization of bidirectional relationships
+  - Owner vs inverse side management
+  - Consistency validation
+- [x] **7.5 Orphan Removal** [Completed] **COMPLETED**
+  - Automatic deletion of child entities that are no longer referenced
+  - Collection modification tracking
+  - Transactional orphan cleanup
+- [x] **7.6 Relationship Query Methods** [Completed] **COMPLETED**
+  - Generated navigation methods (`FindBy{Property}IdAsync`)
+  - Relationship existence checks (`Has{Property}Async`)
+  - Complex relationship filters (`FindBy{Property}And{Property}RangeAsync`)
+  - Pagination and sorting support
+
+**Phase 7 Status**: ✅ COMPLETE (6/6 tasks)
+
+
 **Note**: VS Code extension removed from roadmap - not needed for the project's current scope
 
 ---
 
-**Overall Progress: 33/33 tasks completed (100%)** | **1,220 tests passing** ✅
+**Overall Progress: 39/39 tasks completed (100%)** | **1,220+ tests passing** ✅
 
 ## 🤝 Contributing
 

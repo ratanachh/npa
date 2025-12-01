@@ -3786,7 +3786,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine("        {");
             sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
             sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
-            sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
             sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
             sb.AppendLine($"                WHERE r.{property.ColumnName} = @{propertyParamName}");
             sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
@@ -3891,7 +3891,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine("        {");
             sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
             sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
-            sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
             sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
             sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
             sb.AppendLine($"                    AND e.{propertyColumnName} >= @start{property.Name}");
@@ -3967,7 +3967,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine("        {");
             sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
             sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
-            sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+            sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
             sb.AppendLine($"                INNER JOIN {relatedTableName} r ON e.{foreignKeyColumn} = r.{relatedKeyColumnName}");
             sb.AppendLine($"                WHERE e.{foreignKeyColumn} = @{relatedKeyParamName}");
             sb.AppendLine($"                    AND e.{propertyColumnName} >= @min{property.Name}");
@@ -4683,7 +4683,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 sb.AppendLine("        {");
                 sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
                 sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
-                sb.AppendLine($"            var sql = $\"SELECT * FROM {tableName}");
+                sb.AppendLine($"            var sql = @\"SELECT * FROM {tableName}");
                 sb.AppendLine($"                WHERE {foreignKeyColumn} = @{paramName} AND {property.ColumnName} = @{propertyParamName}");
                 sb.AppendLine($"                ORDER BY {{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
                 sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {paramName}, {propertyParamName}, skip, take }});");
@@ -5007,7 +5007,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         var selectClause = string.Join(", ", selectParts);
 
         // Build SQL with JOIN
-        sb.AppendLine($"            var sql = $\"SELECT {selectClause}");
+        sb.AppendLine($"            var sql = @\"SELECT {selectClause}");
         sb.AppendLine($"                FROM {parentTableName} p");
         sb.AppendLine($"                LEFT JOIN {childTableName} c ON p.{parentKeyColumn} = c.{foreignKeyColumn}");
         sb.AppendLine($"                GROUP BY p.{parentKeyColumn}");

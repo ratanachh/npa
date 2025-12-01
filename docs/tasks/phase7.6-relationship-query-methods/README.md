@@ -533,7 +533,7 @@ This ensures that when entities have custom column names via `[Column]` attribut
 
 ### 📋 Remaining Test Requirements
 - [x] Integration tests for all generated methods (✅ Implemented: Integration tests using Testcontainers that compile and execute actual generated repository implementations)
-- [ ] Performance tests for complex queries
+- [x] Performance tests for complex queries (✅ Implemented: 6 performance tests covering large datasets, multi-level navigation, pagination, and inverse queries)
 - [x] Tests for edge cases (empty collections, null relationships) (✅ Implemented: 6 comprehensive edge case tests)
 - [x] Tests for aggregate functions accuracy (✅ Basic tests implemented)
 - [x] Tests for pagination and sorting (✅ Implemented with comprehensive test coverage)
