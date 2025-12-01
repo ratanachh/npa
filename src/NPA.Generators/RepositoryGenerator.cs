@@ -3531,7 +3531,9 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("            if (string.IsNullOrEmpty(propertyName))");
         sb.AppendLine("                return defaultColumnName;");
         sb.AppendLine();
-        sb.AppendLine("            return _propertyColumnMap.TryGetValue(propertyName, out var columnName) ? columnName : propertyName;");
+        sb.AppendLine("            // Security: Only return column names that exist in the map to prevent SQL injection");
+        sb.AppendLine("            // If property name is not found, return default column name instead of unsanitized input");
+        sb.AppendLine("            return _propertyColumnMap.TryGetValue(propertyName, out var columnName) ? columnName : defaultColumnName;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        #endregion");
@@ -4287,9 +4289,6 @@ public class RepositoryGenerator : IIncrementalGenerator
     /// </summary>
     private static void GenerateComplexFilters(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship, string tableName)
     {
-        if (info.Relationships.Count < 2)
-            return; // Need at least 2 relationships for OR/AND combinations
-
         var entityName = info.EntityType.Split('.').Last();
         var keyColumnName = GetKeyColumnName(info);
         var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
@@ -4297,8 +4296,10 @@ public class RepositoryGenerator : IIncrementalGenerator
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
         var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
 
-        // Generate OR combinations: FindBy{Property1}Or{Property2}Async
-        foreach (var otherRel in info.Relationships)
+        // Generate OR combinations: FindBy{Property1}Or{Property2}Async (requires at least 2 relationships)
+        if (info.Relationships.Count >= 2)
+        {
+            foreach (var otherRel in info.Relationships)
         {
             if (otherRel == relationship || otherRel.Type != Models.RelationshipType.ManyToOne)
                 continue;
@@ -4403,6 +4404,7 @@ public class RepositoryGenerator : IIncrementalGenerator
             sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, parameters);");
             sb.AppendLine("        }");
             sb.AppendLine();
+            }
         }
 
         // Generate AND combinations with entity properties: FindBy{Property}And{PropertyName}Async
@@ -5167,44 +5169,44 @@ public class RepositoryGenerator : IIncrementalGenerator
     /// </summary>
     private static void GenerateComplexFilterSignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
     {
-        if (info.Relationships.Count < 2)
-            return;
-
         var targetEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
         var relatedKeyType = GetRelatedEntityKeyType(info, relationship.TargetEntityType);
         var paramName = ToCamelCase(targetEntitySimpleName) + "Id";
 
-        // Generate OR combination signatures
-        foreach (var otherRel in info.Relationships)
+        // Generate OR combination signatures (requires at least 2 relationships)
+        if (info.Relationships.Count >= 2)
         {
-            if (otherRel == relationship || otherRel.Type != Models.RelationshipType.ManyToOne)
-                continue;
+            foreach (var otherRel in info.Relationships)
+            {
+                if (otherRel == relationship || otherRel.Type != Models.RelationshipType.ManyToOne)
+                    continue;
 
-            var otherEntitySimpleName = otherRel.TargetEntityType.Split('.').Last();
-            var otherKeyType = GetRelatedEntityKeyType(info, otherRel.TargetEntityType);
-            var otherParamName = ToCamelCase(otherEntitySimpleName) + "Id";
-            var orMethodName = $"FindBy{relationship.PropertyName}Or{otherRel.PropertyName}Async";
+                var otherEntitySimpleName = otherRel.TargetEntityType.Split('.').Last();
+                var otherKeyType = GetRelatedEntityKeyType(info, otherRel.TargetEntityType);
+                var otherParamName = ToCamelCase(otherEntitySimpleName) + "Id";
+                var orMethodName = $"FindBy{relationship.PropertyName}Or{otherRel.PropertyName}Async";
 
-            // Signature without pagination
-            sb.AppendLine("        /// <summary>");
-            sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}.");
-            sb.AppendLine("        /// </summary>");
-            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName});");
-            sb.AppendLine();
+                // Signature without pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds all {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName});");
+                sb.AppendLine();
 
-            // Signature with pagination
-            sb.AppendLine("        /// <summary>");
-            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination support.");
-            sb.AppendLine("        /// </summary>");
-            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take);");
-            sb.AppendLine();
+                // Signature with pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take);");
+                sb.AppendLine();
 
-            // Signature with pagination and sorting
-            sb.AppendLine("        /// <summary>");
-            sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination and sorting support.");
-            sb.AppendLine("        /// </summary>");
-            sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
-            sb.AppendLine();
+                // Signature with pagination and sorting
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by {relationship.PropertyName} or {otherRel.PropertyName}, with pagination and sorting support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {orMethodName}({relatedKeyType}? {paramName}, {otherKeyType}? {otherParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
+                sb.AppendLine();
+            }
         }
 
         // Generate AND combination signatures with entity properties

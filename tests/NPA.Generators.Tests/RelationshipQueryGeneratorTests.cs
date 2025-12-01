@@ -2773,6 +2773,76 @@ public class Customer
         implementation.Should().Contain("\"TotalAmount\", \"total_amount\"");
     }
 
+    [Fact]
+    public void GetColumnNameForProperty_ShouldPreventSqlInjection()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    [Column(""order_id"")]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""order_date"")]
+    public DateTime OrderDate { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            .ToString();
+
+        // Verify GetColumnNameForProperty method exists and has security fix
+        implementation.Should().Contain("GetColumnNameForProperty");
+        
+        // Verify that if property name is not found, it returns defaultColumnName (not the unsanitized input)
+        // This prevents SQL injection by ensuring only known property names are used
+        var getColumnMethod = implementation.Split('\n')
+            .SkipWhile(l => !l.Contains("GetColumnNameForProperty"))
+            .Take(10)
+            .ToList();
+        
+        var methodBody = string.Join("\n", getColumnMethod);
+        
+        // Should return defaultColumnName if property not found (security fix)
+        methodBody.Should().Contain("defaultColumnName");
+        methodBody.Should().NotContain("return propertyName;"); // Should NOT return unsanitized input
+        
+        // Verify the security comment is present
+        methodBody.Should().Contain("Security");
+        methodBody.Should().Contain("SQL injection");
+    }
+
     #endregion
 
     #region Fully Qualified Type Name Bug Fix Tests
@@ -3847,15 +3917,24 @@ namespace NPA.Models
         // Assert
         diagnostics.Should().BeEmpty();
         
-        var generatedCode = outputCompilation.SyntaxTrees
+        // Check interface for method signatures
+        var interfaceCode = outputCompilation.SyntaxTrees
             .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryExtensions"))
             ?.ToString() ?? "";
         
-        generatedCode.Should().NotBeEmpty("Generated code should not be empty");
-        generatedCode.Should().Contain("FindByCustomerOrSupplierAsync");
-        generatedCode.Should().Contain("customer_id = @customerId");
-        generatedCode.Should().Contain("supplier_id = @supplierId");
-        generatedCode.Should().Contain("OR");
+        interfaceCode.Should().NotBeEmpty("Generated interface code should not be empty");
+        interfaceCode.Should().Contain("FindByCustomerOrSupplierAsync");
+        
+        // Check implementation for SQL code
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+        
+        implementation.Should().NotBeEmpty("Generated implementation code should not be empty");
+        implementation.Should().Contain("FindByCustomerOrSupplierAsync");
+        implementation.Should().Contain("customer_id = @customerId");
+        implementation.Should().Contain("supplier_id = @supplierId");
+        implementation.Should().Contain("OR");
     }
 
     [Fact]
@@ -3900,15 +3979,24 @@ namespace NPA.Models
         // Assert
         diagnostics.Should().BeEmpty();
         
-        var generatedCode = outputCompilation.SyntaxTrees
+        // Check interface for method signatures
+        var interfaceCode = outputCompilation.SyntaxTrees
             .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryExtensions"))
             ?.ToString() ?? "";
         
-        generatedCode.Should().NotBeEmpty("Generated code should not be empty");
-        generatedCode.Should().Contain("FindByCustomerAndStatusAsync");
-        generatedCode.Should().Contain("customer_id = @customerId");
-        generatedCode.Should().Contain("order_status = @status");
-        generatedCode.Should().Contain("AND");
+        interfaceCode.Should().NotBeEmpty("Generated interface code should not be empty");
+        interfaceCode.Should().Contain("FindByCustomerAndStatusAsync");
+        
+        // Check implementation for SQL code
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+        
+        implementation.Should().NotBeEmpty("Generated implementation code should not be empty");
+        implementation.Should().Contain("FindByCustomerAndStatusAsync");
+        implementation.Should().Contain("customer_id = @customerId");
+        implementation.Should().Contain("order_status = @status");
+        implementation.Should().Contain("AND");
     }
 
     [Fact]
@@ -3960,13 +4048,22 @@ namespace NPA.Models
         // Assert
         diagnostics.Should().BeEmpty();
         
-        var generatedCode = outputCompilation.SyntaxTrees
+        // Check interface for method signatures
+        var interfaceCode = outputCompilation.SyntaxTrees
             .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryExtensions"))
             ?.ToString() ?? "";
         
-        generatedCode.Should().NotBeEmpty("Generated code should not be empty");
-        generatedCode.Should().Contain("FindByCustomerOrSupplierAsync");
-        generatedCode.Should().Contain("OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY");
+        interfaceCode.Should().NotBeEmpty("Generated interface code should not be empty");
+        interfaceCode.Should().Contain("FindByCustomerOrSupplierAsync");
+        
+        // Check implementation for SQL code with pagination
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+        
+        implementation.Should().NotBeEmpty("Generated implementation code should not be empty");
+        implementation.Should().Contain("FindByCustomerOrSupplierAsync");
+        implementation.Should().Contain("OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY");
     }
 
     [Fact]
