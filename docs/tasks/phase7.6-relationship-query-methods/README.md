@@ -11,11 +11,13 @@ Generate specialized query methods for navigating and querying entities based on
 - ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes instead of property names
 - ✅ Fixed fully qualified type name bugs - parameter names and FK column names now use simple type names
 - ✅ Fixed multi-level navigation bug - now extracts relationships from intermediate entity instead of current entity
+- ✅ **Fixed SQL injection vulnerability** - `GetColumnNameForProperty` now validates property names and returns safe default instead of unsanitized input
 - ✅ Implemented GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX grouped by parent entity)
 - ✅ Implemented Advanced Filters (date ranges, amount filters, subquery-based filters)
 - ✅ Implemented Pagination Support (skip/take parameters for all collection queries)
 - ✅ Implemented Configurable Sorting (orderBy and ascending parameters for all pagination overloads)
 - ✅ Implemented Inverse Relationship Queries (FindWith/Without/WithCount methods for OneToMany relationships)
+- ✅ Implemented Complex Filters (OR/AND combinations for relationship queries)
 - ⚠️ Partially Implemented Multi-Level Navigation (2-level navigation with relationship extraction from intermediate entities)
 
 ### ✅ What's Implemented
@@ -49,6 +51,8 @@ Generate specialized query methods for navigating and querying entities based on
   - Defaults to primary key column if `orderBy` is null or empty
   - Supports ascending/descending sort direction
   - Respects `[Column]` attributes for custom column names
+  - **Security**: `GetColumnNameForProperty` validates property names against the mapping dictionary to prevent SQL injection
+  - Invalid property names fall back to the default column name (primary key) instead of being used directly in SQL
 - **Interface Generation**: Separate partial interfaces for relationship query methods
 - **Efficient Queries**: Direct WHERE clauses and JOIN queries with no N+1 problems
 - **Type Safety**: Uses correct key types from related entities
@@ -439,7 +443,7 @@ The methods are declared in a separate partial interface:
 6. ✅ **Pagination**: ✅ Implemented - skip/take parameters added to all collection queries
 7. ✅ **Configurable Sorting**: ✅ Implemented - orderBy and ascending parameters for all pagination overloads
 8. ⚠️ **Multi-Level Navigation**: ⚠️ Partially Implemented - 2-level navigation working (e.g., OrderItem → Order → Customer). Requires successful relationship extraction from intermediate entities. If extraction fails, methods are not generated to prevent incorrect SQL.
-9. **Complex Filters**: OR/AND combinations not yet implemented
+9. ✅ **Complex Filters**: ✅ Implemented - OR combinations (`FindBy{Property1}Or{Property2}Async`) and AND combinations (`FindBy{Property}And{PropertyName}Async`) with full pagination and sorting support
 
 ### Column Name Handling
 
@@ -449,6 +453,14 @@ The methods are declared in a separate partial interface:
 - **WHERE clauses**: Uses property column names for filtering
 
 This ensures that when entities have custom column names via `[Column]` attributes, the generated SQL queries use the correct database column names, preventing runtime query failures.
+
+### Security: SQL Injection Protection
+
+✅ **SQL Injection Protection in Configurable Sorting**: The `GetColumnNameForProperty` method validates all property names before using them in SQL queries:
+- **Validation**: Only property names that exist in the `_propertyColumnMap` dictionary are allowed
+- **Fallback**: Invalid property names fall back to the safe default column name (primary key) instead of being used directly in SQL
+- **Protection**: This prevents SQL injection attacks through the `orderBy` parameter in all pagination overloads that support custom sorting
+- **Implementation**: The method returns `defaultColumnName` instead of the unsanitized `propertyName` when validation fails
 
 ### Multi-Level Navigation Details
 
@@ -509,6 +521,8 @@ This ensures that when entities have custom column names via `[Column]` attribut
 - ✅ Tests verify GROUP BY aggregate methods are generated correctly
 - ✅ Tests verify GROUP BY methods use correct foreign key columns
 - ✅ Tests verify GROUP BY methods return Dictionary types
+- ✅ Tests verify complex filters (OR/AND combinations) are generated correctly
+- ✅ Tests verify SQL injection protection in configurable sorting (`GetColumnNameForProperty_ShouldPreventSqlInjection`)
 
 ### 📋 Remaining Test Requirements
 - [ ] Integration tests for all generated methods

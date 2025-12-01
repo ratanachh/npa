@@ -6,7 +6,9 @@
 - ✅ Fixed ORDER BY clause bug - now correctly uses column names from `[Column]` attributes
 - ✅ Fixed foreign key column detection bug - `GetForeignKeyColumnForOneToMany` now only matches FK properties, not navigation property names
 - ✅ Fixed multi-level navigation bug - now extracts relationships from intermediate entity instead of current entity, ensuring correct FK column usage
-- ✅ Added comprehensive tests for bug fixes (66+ total relationship query tests)
+- ✅ **Fixed SQL injection vulnerability** - `GetColumnNameForProperty` now validates property names and returns safe default instead of unsanitized input
+- ✅ Implemented Complex Filters (OR/AND combinations for relationship queries)
+- ✅ Added comprehensive tests for bug fixes (70+ total relationship query tests including security test)
 
 ## Overview
 
@@ -39,7 +41,9 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - ✅ Efficient SQL queries (no N+1 problems)
 - ✅ Correct column name handling (uses `[Column]` attributes in JOIN, ORDER BY, and WHERE clauses)
 - ✅ Type-safe key handling (supports different key types)
-- ✅ **Bug fixes**: ORDER BY clause now uses column names; FK column detection correctly identifies FK properties
+- ✅ **Complex Filters**: OR/AND combinations (`FindBy{Property1}Or{Property2}Async`, `FindBy{Property}And{PropertyName}Async`)
+- ✅ **Security**: SQL injection protection in configurable sorting - only validated property names are used in ORDER BY clauses
+- ✅ **Bug fixes**: ORDER BY clause now uses column names; FK column detection correctly identifies FK properties; SQL injection vulnerability fixed in `GetColumnNameForProperty`
 
 ### 📋 What's Still Missing
 
@@ -130,20 +134,20 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
   // Uses Order's relationship to Customer (with correct JoinColumn if specified)
   ```
 
-#### 5. Complex Relationship Filters
-- **Missing**: OR/AND combinations in relationship queries
+#### 5. Complex Relationship Filters ✅ COMPLETED
+- ✅ **Implemented**: OR combinations in relationship queries
   ```csharp
-  // Not yet implemented
+  // ✅ Now implemented
   Task<IEnumerable<Order>> FindByCustomerOrSupplierAsync(
       int? customerId, 
       int? supplierId);
   ```
-- **Missing**: Multiple relationship filters in single query
+- ✅ **Implemented**: AND combinations with entity properties
   ```csharp
-  // Not yet implemented
+  // ✅ Now implemented
   Task<IEnumerable<Order>> FindByCustomerAndStatusAsync(
       int customerId, 
-      OrderStatus status);
+      string status);
   ```
 
 #### 6. Inverse Relationship Queries ✅ COMPLETED
@@ -228,11 +232,11 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - **Bug Fix**: Fixed issue where second-level FK was incorrectly searched in current entity's relationships. Now correctly extracts from intermediate entity.
 - **Remaining Work**: 3+ level navigation, additional relationship type support, performance optimizations
 
-### Complex Filters
-- **Effort**: 3-4 days
+### Complex Filters ✅ COMPLETED
+- **Effort**: ✅ Completed
 - **Complexity**: Medium-High
-- **Files to Modify**: `RepositoryGenerator.cs`
-- **New Methods**: `GenerateComplexFilterQueries()`
+- **Files Modified**: `RepositoryGenerator.cs` - `GenerateComplexFilters()`, `GenerateComplexFilterSignatures()`
+- **Status**: OR combinations (`FindBy{Property1}Or{Property2}Async`) and AND combinations (`FindBy{Property}And{PropertyName}Async`) are now implemented with full pagination and sorting support
 
 **Total Estimated Effort Remaining**: 3-8 days (~1 week)
 (Reduced from 14-19 days after completing GROUP BY aggregations, advanced filters, pagination support, configurable sorting, and inverse relationship queries)
@@ -311,14 +315,15 @@ When implementing missing features, update:
 
 - **Property-based queries, aggregate methods, GROUP BY aggregations, advanced filters, pagination support, configurable sorting, and inverse relationship queries** were recently implemented (December 2024) and are fully tested (57 relationship query tests passing, including 5 tests for fully qualified type name bug fixes).
 
-- **Bug Fixes**: Three critical bugs were fixed:
+- **Bug Fixes**: Four critical bugs were fixed:
   1. ORDER BY clause now correctly uses column names from `[Column]` attributes instead of property names
   2. Foreign key column detection now only matches FK properties (ending with "Id"), not navigation property names
   3. Multi-level navigation now correctly extracts relationships from intermediate entities instead of current entity, ensuring correct FK column usage
+  4. **Security Fix**: SQL injection vulnerability in `GetColumnNameForProperty` - now validates property names and returns safe default instead of unsanitized input
 
 - All missing features are enhancements to Phase 7.6. The core Phase 7 functionality (7.1-7.5) is complete and production-ready.
 
-- **Test Coverage**: Phase 7.6 now has 66+ comprehensive unit tests covering:
+- **Test Coverage**: Phase 7.6 now has 70+ comprehensive unit tests covering:
   - Basic relationship queries (ManyToOne, OneToMany)
   - Property-based queries
   - Aggregate methods (SUM, AVG, MIN, MAX)
@@ -327,5 +332,7 @@ When implementing missing features, update:
   - Pagination and sorting
   - Inverse relationship queries
   - Multi-level navigation (2-level navigation with relationship extraction)
-  - Bug fixes (column name handling, FK column detection, multi-level navigation FK extraction)
+  - Complex filters (OR/AND combinations)
+  - Security (SQL injection protection in configurable sorting)
+  - Bug fixes (column name handling, FK column detection, multi-level navigation FK extraction, SQL injection vulnerability)
 
