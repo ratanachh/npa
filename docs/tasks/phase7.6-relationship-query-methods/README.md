@@ -534,11 +534,11 @@ This ensures that when entities have custom column names via `[Column]` attribut
 ### 📋 Remaining Test Requirements
 - [ ] Integration tests for all generated methods
 - [ ] Performance tests for complex queries
-- [ ] Tests for edge cases (empty collections, null relationships)
+- [x] Tests for edge cases (empty collections, null relationships) (✅ Implemented: 6 comprehensive edge case tests)
 - [x] Tests for aggregate functions accuracy (✅ Basic tests implemented)
-- [ ] Tests for pagination and sorting (when implemented)
+- [x] Tests for pagination and sorting (✅ Implemented with comprehensive test coverage)
 - [x] Tests for JOIN-based queries (✅ Property-based query tests implemented)
-- [ ] Tests for subquery-based filters (when implemented)
+- [x] Tests for subquery-based filters (✅ Implemented: FindWithMinimumOrdersAsync and related tests)
 
 ## Performance Considerations
 

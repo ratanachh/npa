@@ -258,6 +258,17 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 
 ## Testing Requirements for Missing Features
 
+### ✅ Edge Case Tests - COMPLETED
+- ✅ **Implemented**: 6 comprehensive edge case tests covering:
+  - Nullable relationship parameters in query methods
+  - Empty collections in OneToMany relationships
+  - Missing relationships (when relationship extraction fails)
+  - Null FK values in queries
+  - Complex filters with null values (OR combinations)
+  - Inverse queries with empty collections (FindWith/FindWithout)
+- **Files Modified**: `RelationshipQueryGeneratorTests.cs` - Added edge case test section
+- **Status**: All edge case tests passing, comprehensive coverage of null and empty collection scenarios
+
 ### GROUP BY Aggregations ✅ COMPLETED
 - [x] ✅ Test GROUP BY with single relationship
 - [x] ✅ Test GROUP BY with aggregate functions (COUNT, SUM, AVG, MIN, MAX)

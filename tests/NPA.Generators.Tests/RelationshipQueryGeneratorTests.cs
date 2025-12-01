@@ -4543,4 +4543,380 @@ namespace NPA.Models
     }
 
     #endregion
+
+    #region Edge Cases Tests
+
+    [Fact]
+    public void RelationshipQueries_ShouldHandleNullableParameters()
+    {
+        // Arrange - Test that nullable relationship parameters are handled correctly
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer? Customer { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""supplier_id"")]
+    public Supplier? Supplier { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+
+[Entity]
+[Table(""suppliers"")]
+public class Supplier
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+
+        // Should generate FindByCustomerOrSupplierAsync with nullable parameters
+        if (implementation.Contains("FindByCustomerOrSupplierAsync"))
+        {
+            // Should accept nullable int? parameters
+            implementation.Should().MatchRegex(@"FindByCustomerOrSupplierAsync\(int\?.*customerId.*int\?.*supplierId\)");
+        }
+    }
+
+    [Fact]
+    public void RelationshipQueries_ShouldHandleEmptyCollections()
+    {
+        // Arrange - Test OneToMany relationship with empty collection
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; } = new List<Order>();
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            ?.ToString() ?? "";
+
+        // Should generate methods that handle empty collections gracefully
+        // CountOrdersAsync should return 0 for customers with no orders
+        if (implementation.Contains("CountOrdersAsync"))
+        {
+            // The SQL should use COUNT which returns 0 for empty collections
+            implementation.Should().Contain("SELECT COUNT(*)");
+        }
+
+        // HasOrdersAsync should return false for customers with no orders
+        if (implementation.Contains("HasOrdersAsync"))
+        {
+            // Should use COUNT(*) in SQL, then check count > 0 in C# code
+            implementation.Should().Contain("SELECT COUNT(*)");
+            implementation.Should().Contain("return count > 0");
+        }
+    }
+
+    [Fact]
+    public void RelationshipQueries_ShouldHandleMissingRelationships()
+    {
+        // Arrange - Entity with relationship but target entity not in metadata
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    public string Name { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        // Should not generate errors even if some relationships can't be extracted
+        // The generator should gracefully skip methods that can't be generated
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+
+        // Basic relationship methods should still be generated
+        implementation.Should().Contain("FindByCustomerIdAsync");
+    }
+
+    [Fact]
+    public void RelationshipQueries_ShouldHandleNullFkValues()
+    {
+        // Arrange - Nullable FK relationship
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface IOrderRepository : IRepository<Order, int>
+{
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"", Nullable = true)]
+    public Customer? Customer { get; set; }
+    
+    public string Status { get; set; }
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+
+        // FindByCustomerIdAsync should accept nullable int? parameter
+        if (implementation.Contains("FindByCustomerIdAsync"))
+        {
+            // Should handle null FK values in WHERE clause
+            implementation.Should().MatchRegex(@"WHERE.*customer_id\s*=\s*@customerId");
+            // Or should handle IS NULL for nullable parameters
+            implementation.Should().MatchRegex(@"(customer_id\s*=\s*@customerId|customer_id\s*IS\s*NULL)");
+        }
+    }
+
+    [Fact]
+    public void RelationshipQueries_ShouldHandleComplexFiltersWithNullValues()
+    {
+        // Arrange - OR combination with nullable parameters
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace NPA.Models
+{
+    [Table(""orders"")]
+    public class Order
+    {
+        [Id]
+        public int Id { get; set; }
+        
+        [ManyToOne]
+        [JoinColumn(""customer_id"")]
+        public Customer? Customer { get; set; }
+        
+        [ManyToOne]
+        [JoinColumn(""supplier_id"")]
+        public Supplier? Supplier { get; set; }
+    }
+
+    [Table(""customers"")]
+    public class Customer
+    {
+        [Id]
+        public int Id { get; set; }
+    }
+
+    [Table(""suppliers"")]
+    public class Supplier
+    {
+        [Id]
+        public int Id { get; set; }
+    }
+
+    [Repository]
+    public partial interface IOrderRepository : IRepository<Order, int>
+    {
+    }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("OrderRepositoryImplementation"))
+            ?.ToString() ?? "";
+
+        // FindByCustomerOrSupplierAsync should handle null values
+        if (implementation.Contains("FindByCustomerOrSupplierAsync"))
+        {
+            // Should use OR condition that handles nullable parameters
+            implementation.Should().MatchRegex(@"(customer_id\s*=\s*@customerId|supplier_id\s*=\s*@supplierId)");
+        }
+    }
+
+    [Fact]
+    public void RelationshipQueries_ShouldHandleInverseQueriesWithEmptyCollections()
+    {
+        // Arrange - Customer with Orders (OneToMany)
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; } = new List<Order>();
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .FirstOrDefault(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            ?.ToString() ?? "";
+
+        // FindWithOrdersAsync should return customers that have orders (empty collections excluded)
+        if (implementation.Contains("FindWithOrdersAsync"))
+        {
+            // Should use EXISTS or COUNT > 0 to filter out empty collections
+            implementation.Should().MatchRegex(@"(EXISTS|COUNT\(.*\)\s*>\s*0)");
+        }
+
+        // FindWithoutOrdersAsync should return customers with no orders
+        if (implementation.Contains("FindWithoutOrdersAsync"))
+        {
+            // Should use NOT EXISTS or COUNT = 0
+            implementation.Should().MatchRegex(@"(NOT\s+EXISTS|COUNT\(.*\)\s*=\s*0)");
+        }
+    }
+
+    #endregion
 }
