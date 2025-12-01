@@ -279,29 +279,24 @@ namespace TestApp.Entities
     // Helper methods
     private MethodInfo GetDetectManyToManyRelationshipsMethod()
     {
-        var generatorType = typeof(RepositoryGenerator);
-        var method = generatorType.GetMethod("DetectManyToManyRelationships", BindingFlags.NonPublic | BindingFlags.Static);
-        method.Should().NotBeNull("DetectManyToManyRelationships method should exist");
+        var method = GetGeneratorMethod("NPA.Design.Generators.Analyzers.EntityAnalyzer", "DetectManyToManyRelationships");
+        method.Should().NotBeNull("DetectManyToManyRelationships method should exist in EntityAnalyzer");
         return method!;
     }
 
     private MethodInfo GetGenerateManyToManyMethodsMethod()
     {
-        var generatorType = typeof(RepositoryGenerator);
-        var method = generatorType.GetMethod("GenerateManyToManyMethods", BindingFlags.NonPublic | BindingFlags.Static);
-        method.Should().NotBeNull("GenerateManyToManyMethods method should exist");
+        var method = GetGeneratorMethod("NPA.Design.Generators.CodeGenerators.ManyToManyGenerator", "GenerateManyToManyMethods");
+        method.Should().NotBeNull("GenerateManyToManyMethods method should exist in ManyToManyGenerator");
         return method!;
     }
 
     private object CreateRepositoryInfoWithManyToMany()
     {
-        var assembly = typeof(RepositoryGenerator).Assembly;
-        var repositoryInfoType = assembly.GetType("NPA.Design.RepositoryInfo");
-        var relationshipInfoType = assembly.GetType("NPA.Design.ManyToManyRelationshipInfo");
+        var repositoryInfo = CreateRepositoryInfo("TestApp.Entities.User", "int");
         
-        var repositoryInfo = Activator.CreateInstance(repositoryInfoType!)!;
-        SetPropertyValue(repositoryInfo, "EntityType", "TestApp.Entities.User");
-        SetPropertyValue(repositoryInfo, "KeyType", "int");
+        var relationshipInfoType = GetGeneratorType("NPA.Design.Models.ManyToManyRelationshipInfo");
+        relationshipInfoType.Should().NotBeNull("ManyToManyRelationshipInfo type should exist");
         
         var relationship = Activator.CreateInstance(relationshipInfoType!)!;
         SetPropertyValue(relationship, "PropertyName", "Roles");
@@ -321,13 +316,10 @@ namespace TestApp.Entities
 
     private object CreateRepositoryInfoWithSchema()
     {
-        var assembly = typeof(RepositoryGenerator).Assembly;
-        var repositoryInfoType = assembly.GetType("NPA.Design.RepositoryInfo");
-        var relationshipInfoType = assembly.GetType("NPA.Design.ManyToManyRelationshipInfo");
+        var repositoryInfo = CreateRepositoryInfo("TestApp.Entities.User", "int");
         
-        var repositoryInfo = Activator.CreateInstance(repositoryInfoType!)!;
-        SetPropertyValue(repositoryInfo, "EntityType", "TestApp.Entities.User");
-        SetPropertyValue(repositoryInfo, "KeyType", "int");
+        var relationshipInfoType = GetGeneratorType("NPA.Design.Models.ManyToManyRelationshipInfo");
+        relationshipInfoType.Should().NotBeNull("ManyToManyRelationshipInfo type should exist");
         
         var relationship = Activator.CreateInstance(relationshipInfoType!)!;
         SetPropertyValue(relationship, "PropertyName", "Roles");
@@ -347,13 +339,10 @@ namespace TestApp.Entities
 
     private object CreateRepositoryInfoWithoutColumnNames()
     {
-        var assembly = typeof(RepositoryGenerator).Assembly;
-        var repositoryInfoType = assembly.GetType("NPA.Design.RepositoryInfo");
-        var relationshipInfoType = assembly.GetType("NPA.Design.ManyToManyRelationshipInfo");
+        var repositoryInfo = CreateRepositoryInfo("TestApp.Entities.User", "int");
         
-        var repositoryInfo = Activator.CreateInstance(repositoryInfoType!)!;
-        SetPropertyValue(repositoryInfo, "EntityType", "TestApp.Entities.User");
-        SetPropertyValue(repositoryInfo, "KeyType", "int");
+        var relationshipInfoType = GetGeneratorType("NPA.Design.Models.ManyToManyRelationshipInfo");
+        relationshipInfoType.Should().NotBeNull("ManyToManyRelationshipInfo type should exist");
         
         var relationship = Activator.CreateInstance(relationshipInfoType!)!;
         SetPropertyValue(relationship, "PropertyName", "Roles");
@@ -371,18 +360,5 @@ namespace TestApp.Entities
         return repositoryInfo;
     }
 
-    private void SetPropertyValue(object obj, string propertyName, object? value)
-    {
-        var property = obj.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        property.Should().NotBeNull($"Property {propertyName} should exist");
-        property!.SetValue(obj, value);
-    }
-
-    private object? GetPropertyValue(object obj, string propertyName)
-    {
-        var property = obj.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        property.Should().NotBeNull($"Property {propertyName} should exist");
-        return property!.GetValue(obj);
-    }
 
 }

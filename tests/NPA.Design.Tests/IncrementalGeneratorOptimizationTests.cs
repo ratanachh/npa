@@ -3,6 +3,7 @@ using Xunit;
 using System.Reflection;
 using NPA.Design.Generators;
 using NPA.Design.Comparers;
+using System.Collections.Generic;
 
 namespace NPA.Design.Tests;
 
@@ -168,14 +169,12 @@ public class IncrementalGeneratorOptimizationTests
 
     private static Type? GetComparerType()
     {
-        var generatorAssembly = typeof(RepositoryGenerator).Assembly;
-        return generatorAssembly.GetType("NPA.Design.RepositoryInfoComparer");
+        return GetGeneratorType("NPA.Design.Comparers.RepositoryInfoComparer");
     }
 
     private static Type? GetRepositoryInfoType()
     {
-        var generatorAssembly = typeof(RepositoryGenerator).Assembly;
-        return generatorAssembly.GetType("NPA.Design.RepositoryInfo");
+        return GetGeneratorType("NPA.Design.Models.RepositoryInfo");
     }
 
     private static object CreateComparer()
@@ -186,39 +185,9 @@ public class IncrementalGeneratorOptimizationTests
 
     private static object CreateRepositoryInfo(string interfaceName, string @namespace, string entityType, string keyType)
     {
-        var repositoryInfoType = GetRepositoryInfoType();
-        var instance = Activator.CreateInstance(repositoryInfoType!)!;
-
-        // Set properties using reflection
-        SetProperty(instance, "InterfaceName", interfaceName);
-        SetProperty(instance, "FullInterfaceName", $"{@namespace}.{interfaceName}");
-        SetProperty(instance, "Namespace", @namespace);
-        SetProperty(instance, "EntityType", entityType);
-        SetProperty(instance, "KeyType", keyType);
-        SetProperty(instance, "HasCompositeKey", false);
-        
-        // Initialize collections
-        var methodsProperty = repositoryInfoType!.GetProperty("Methods");
-        var listType = typeof(List<>).MakeGenericType(repositoryInfoType.Assembly.GetType("NPA.Design.MethodInfo")!);
-        var methods = Activator.CreateInstance(listType)!;
-        methodsProperty!.SetValue(instance, methods);
-
-        var compositeKeyPropsProperty = repositoryInfoType.GetProperty("CompositeKeyProperties");
-        var compositeKeyProps = new List<string>();
-        compositeKeyPropsProperty!.SetValue(instance, compositeKeyProps);
-
-        var manyToManyProperty = repositoryInfoType.GetProperty("ManyToManyRelationships");
-        var manyToManyListType = typeof(List<>).MakeGenericType(repositoryInfoType.Assembly.GetType("NPA.Design.ManyToManyRelationshipInfo")!);
-        var manyToMany = Activator.CreateInstance(manyToManyListType)!;
-        manyToManyProperty!.SetValue(instance, manyToMany);
-
+        var instance = CreateRepositoryInfo(entityType, keyType, interfaceName, @namespace);
+        SetPropertyValue(instance, "HasCompositeKey", false);
         return instance;
-    }
-
-    private static void SetProperty(object obj, string propertyName, object value)
-    {
-        var property = obj.GetType().GetProperty(propertyName);
-        property?.SetValue(obj, value);
     }
 
     private static bool InvokeEquals(object comparer, object? x, object? y)

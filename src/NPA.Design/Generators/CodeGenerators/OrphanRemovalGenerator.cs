@@ -88,10 +88,10 @@ internal static class OrphanRemovalGenerator
         sb.AppendLine($"            // Orphan removal for {rel.PropertyName} collection (OneToMany)");
         sb.AppendLine($"            if (entity.{rel.PropertyName} != null)");
         sb.AppendLine($"            {{");
-        sb.AppendLine($"                var currentItems = entity.{rel.PropertyName}.ToList();");
-        sb.AppendLine($"                ");
-        sb.AppendLine($"                // Load existing items from database");
-        sb.AppendLine($"                var fkColumnName = \"{fkColumn}\";");
+                sb.AppendLine($"                var currentItems = entity.{rel.PropertyName}.ToList();");
+                sb.AppendLine($"                ");
+                sb.AppendLine($"                // Load existing items to detect orphans (OrphanRemoval=true)");
+                sb.AppendLine($"                var fkColumnName = \"{fkColumn}\";");
         sb.AppendLine($"                var sql = $\"SELECT * FROM {relatedTableName} WHERE {{fkColumnName}} = @ParentId\";");
         sb.AppendLine($"                var existingItems = (await _connection.QueryAsync<{rel.TargetEntityFullType}>(sql, new {{ ParentId = entity.{keyPropertyName} }})).ToList();");
         sb.AppendLine($"                ");

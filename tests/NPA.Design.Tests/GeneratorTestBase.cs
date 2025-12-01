@@ -1,7 +1,11 @@
 using System.Collections.Immutable;
+using System.Collections.Generic;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NPA.Core.Annotations;
+using NPA.Design.Generators;
+using FluentAssertions;
 
 namespace NPA.Design.Tests;
 
@@ -342,4 +346,152 @@ namespace NPA.Core.Annotations
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
+
+    #region Reflection Helpers for Testing Internal Generator Components
+
+    /// <summary>
+    /// Gets a type from the generator assembly by its full name.
+    /// </summary>
+    /// <param name="fullTypeName">The fully qualified type name (e.g., "NPA.Design.Models.RepositoryInfo").</param>
+    /// <returns>The Type if found, otherwise null.</returns>
+    protected static Type? GetGeneratorType(string fullTypeName)
+    {
+        var assembly = typeof(RepositoryGenerator).Assembly;
+        return assembly.GetType(fullTypeName);
+    }
+
+    /// <summary>
+    /// Gets a method from a type using reflection.
+    /// </summary>
+    /// <param name="typeName">The fully qualified type name.</param>
+    /// <param name="methodName">The method name.</param>
+    /// <param name="bindingFlags">The binding flags for the method lookup.</param>
+    /// <returns>The MethodInfo if found, otherwise null.</returns>
+    protected static MethodInfo? GetGeneratorMethod(string typeName, string methodName, BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Static)
+    {
+        var type = GetGeneratorType(typeName);
+        return type?.GetMethod(methodName, bindingFlags);
+    }
+
+    /// <summary>
+    /// Sets a property value on an object using reflection.
+    /// </summary>
+    /// <param name="obj">The object to set the property on.</param>
+    /// <param name="propertyName">The name of the property.</param>
+    /// <param name="value">The value to set.</param>
+    protected static void SetPropertyValue(object obj, string propertyName, object? value)
+    {
+        var property = obj.GetType().GetProperty(propertyName);
+        property?.SetValue(obj, value);
+    }
+
+    /// <summary>
+    /// Gets a property value from an object using reflection.
+    /// </summary>
+    /// <param name="obj">The object to get the property from.</param>
+    /// <param name="propertyName">The name of the property.</param>
+    /// <returns>The property value, or null if not found.</returns>
+    protected static object? GetPropertyValue(object obj, string propertyName)
+    {
+        var property = obj.GetType().GetProperty(propertyName);
+        return property?.GetValue(obj);
+    }
+
+    /// <summary>
+    /// Creates a RepositoryInfo instance with basic properties set.
+    /// </summary>
+    /// <param name="entityType">The entity type name.</param>
+    /// <param name="keyType">The key type name.</param>
+    /// <param name="interfaceName">Optional interface name.</param>
+    /// <param name="namespace">Optional namespace.</param>
+    /// <returns>A RepositoryInfo instance with properties initialized.</returns>
+    protected static object CreateRepositoryInfo(
+        string entityType,
+        string keyType,
+        string? interfaceName = null,
+        string? @namespace = null)
+    {
+        var repositoryInfoType = GetGeneratorType("NPA.Design.Models.RepositoryInfo");
+        repositoryInfoType.Should().NotBeNull("RepositoryInfo type should exist");
+        var instance = Activator.CreateInstance(repositoryInfoType!)!;
+
+        SetPropertyValue(instance, "EntityType", entityType);
+        SetPropertyValue(instance, "KeyType", keyType);
+        
+        if (!string.IsNullOrEmpty(interfaceName))
+        {
+            SetPropertyValue(instance, "InterfaceName", interfaceName);
+        }
+        
+        if (!string.IsNullOrEmpty(@namespace))
+        {
+            SetPropertyValue(instance, "Namespace", @namespace);
+            if (!string.IsNullOrEmpty(interfaceName))
+            {
+                SetPropertyValue(instance, "FullInterfaceName", $"{@namespace}.{interfaceName}");
+            }
+        }
+
+        // Initialize collections
+        InitializeRepositoryInfoCollections(instance, repositoryInfoType!);
+
+        return instance;
+    }
+
+    /// <summary>
+    /// Initializes all collection properties on a RepositoryInfo instance.
+    /// </summary>
+    /// <param name="instance">The RepositoryInfo instance.</param>
+    /// <param name="repositoryInfoType">The RepositoryInfo type.</param>
+    private static void InitializeRepositoryInfoCollections(object instance, Type repositoryInfoType)
+    {
+        // Initialize Methods collection
+        var methodsProperty = repositoryInfoType.GetProperty("Methods");
+        if (methodsProperty != null)
+        {
+            var methodInfoType = repositoryInfoType.Assembly.GetType("NPA.Design.Models.MethodInfo");
+            if (methodInfoType != null)
+            {
+                var listType = typeof(List<>).MakeGenericType(methodInfoType);
+                var methods = Activator.CreateInstance(listType)!;
+                methodsProperty.SetValue(instance, methods);
+            }
+        }
+
+        // Initialize CompositeKeyProperties
+        var compositeKeyPropsProperty = repositoryInfoType.GetProperty("CompositeKeyProperties");
+        if (compositeKeyPropsProperty != null)
+        {
+            var compositeKeyProps = new List<string>();
+            compositeKeyPropsProperty.SetValue(instance, compositeKeyProps);
+        }
+
+        // Initialize ManyToManyRelationships
+        var manyToManyProperty = repositoryInfoType.GetProperty("ManyToManyRelationships");
+        if (manyToManyProperty != null)
+        {
+            var manyToManyType = repositoryInfoType.Assembly.GetType("NPA.Design.Models.ManyToManyRelationshipInfo");
+            if (manyToManyType != null)
+            {
+                var manyToManyListType = typeof(List<>).MakeGenericType(manyToManyType);
+                var manyToMany = Activator.CreateInstance(manyToManyListType)!;
+                manyToManyProperty.SetValue(instance, manyToMany);
+            }
+        }
+
+        // Initialize Relationships collection
+        var relationshipsProperty = repositoryInfoType.GetProperty("Relationships");
+        if (relationshipsProperty != null)
+        {
+            var relationshipType = repositoryInfoType.Assembly.GetType("NPA.Design.Models.RelationshipMetadata");
+            if (relationshipType != null)
+            {
+                var relationshipsListType = typeof(List<>).MakeGenericType(relationshipType);
+                var relationships = Activator.CreateInstance(relationshipsListType)!;
+                relationshipsProperty.SetValue(instance, relationships);
+            }
+        }
+    }
+
+    #endregion
 }

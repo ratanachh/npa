@@ -201,42 +201,30 @@ namespace Test
 
     private MethodInfo GetDetectCompositeKeyMethod()
     {
-        var generatorType = typeof(RepositoryGenerator);
-        var method = generatorType.GetMethod("DetectCompositeKey", BindingFlags.NonPublic | BindingFlags.Static);
-        method.Should().NotBeNull("DetectCompositeKey method should exist");
+        var method = GetGeneratorMethod("NPA.Design.Generators.Analyzers.EntityAnalyzer", "DetectCompositeKey");
+        method.Should().NotBeNull("DetectCompositeKey method should exist in EntityAnalyzer");
         return method!;
     }
 
     private MethodInfo GetToCamelCaseMethod()
     {
-        var generatorType = typeof(RepositoryGenerator);
-        var method = generatorType.GetMethod("ToCamelCase", BindingFlags.NonPublic | BindingFlags.Static);
-        method.Should().NotBeNull("ToCamelCase method should exist");
+        var method = GetGeneratorMethod("NPA.Design.Generators.Helpers.StringHelper", "ToCamelCase");
+        method.Should().NotBeNull("ToCamelCase method should exist in StringHelper");
         return method!;
     }
 
     private MethodInfo GetGenerateCompositeKeyMethodsMethod()
     {
-        var generatorType = typeof(RepositoryGenerator);
-        var method = generatorType.GetMethod("GenerateCompositeKeyMethods", BindingFlags.NonPublic | BindingFlags.Static);
-        method.Should().NotBeNull("GenerateCompositeKeyMethods method should exist");
+        var method = GetGeneratorMethod("NPA.Design.Generators.CodeGenerators.CompositeKeyGenerator", "GenerateCompositeKeyMethods");
+        method.Should().NotBeNull("GenerateCompositeKeyMethods method should exist in CompositeKeyGenerator");
         return method!;
     }
 
     private object CreateRepositoryInfo(string entityType, bool hasCompositeKey, System.Collections.Generic.List<string> compositeKeyProperties)
     {
-        var generatorType = typeof(RepositoryGenerator);
-        var repositoryInfoType = generatorType.Assembly.GetTypes()
-            .FirstOrDefault(t => t.Name == "RepositoryInfo");
-            
-        repositoryInfoType.Should().NotBeNull("RepositoryInfo type should exist");
-        
-        var instance = Activator.CreateInstance(repositoryInfoType!)!;
-        
-        repositoryInfoType!.GetProperty("EntityType")!.SetValue(instance, entityType);
-        repositoryInfoType.GetProperty("HasCompositeKey")!.SetValue(instance, hasCompositeKey);
-        repositoryInfoType.GetProperty("CompositeKeyProperties")!.SetValue(instance, compositeKeyProperties);
-        
-        return instance;
+        var repositoryInfo = CreateRepositoryInfo(entityType, "int");
+        SetPropertyValue(repositoryInfo, "HasCompositeKey", hasCompositeKey);
+        SetPropertyValue(repositoryInfo, "CompositeKeyProperties", compositeKeyProperties);
+        return repositoryInfo;
     }
 }

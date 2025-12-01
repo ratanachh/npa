@@ -189,7 +189,8 @@ namespace TestNamespace
         generatedCode.Should().Contain("Delete orphaned items",
             "Should delete items not in current collection");
 
-        generatedCode.Should().Contain("await _entityManager.RemoveAsync(existing)",
+        // Generated code uses 'existingItem' variable name, not 'existing'
+        generatedCode.Should().MatchRegex(@"await _entityManager\.RemoveAsync\(existing(Item|Related)?\)",
             "Should use EntityManager to remove orphans");
     }
 

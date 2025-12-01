@@ -64,11 +64,12 @@ internal static class RepositoryCodeGenerator
         sb.AppendLine($"    /// </summary>");
 
         // Build the interface list - add Partial interface if relationships exist
-        var interfaces = info.FullInterfaceName;
+        // Use unqualified names since the class is in the same namespace as the interfaces
+        var interfaces = info.InterfaceName;
         if (info.Relationships.Count > 0)
         {
             var partialInterfaceName = info.InterfaceName + "Partial";
-            interfaces = $"{info.FullInterfaceName}, {partialInterfaceName}";
+            interfaces = $"{info.InterfaceName}, {partialInterfaceName}";
         }
 
         sb.AppendLine($"    public class {StringHelper.GetImplementationName(info.InterfaceName)} : BaseRepository<{info.EntityType}, {info.KeyType}>, {interfaces}");
