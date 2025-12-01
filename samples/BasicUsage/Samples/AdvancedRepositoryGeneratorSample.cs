@@ -106,7 +106,7 @@ public class AdvancedRepositoryGeneratorSample : ISample
         Console.WriteLine();
         Console.WriteLine("===============================");
         Console.WriteLine("See the generated code in:");
-        Console.WriteLine("  obj/Debug/net8.0/generated/NPA.Generators.RepositoryGenerator/");
+        Console.WriteLine("  obj/Debug/net8.0/generated/NPA.Design.RepositoryGenerator/");
         Console.WriteLine("===============================");
 
         return Task.CompletedTask;

@@ -15,7 +15,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Providers.SqlServer", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Extensions", "src\NPA.Extensions\NPA.Extensions.csproj", "{C2D7E3B5-A1D6-4BE2-9C88-7E1F2A3B4C03}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Generators", "src\NPA.Generators\NPA.Generators.csproj", "{D3C8F4C6-B2E7-4AF1-8D99-8F2A3B4C5D04}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Design", "src\NPA.Design\NPA.Design.csproj", "{D3C8F4C6-B2E7-4AF1-8D99-8F2A3B4C5D04}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Migrations", "src\NPA.Migrations\NPA.Migrations.csproj", "{E4B9A5D7-C3F8-49E0-87AA-9A3B4C5D6E05}"
 EndProject
@@ -29,7 +29,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Core.Tests", "tests\NPA
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Extensions.Tests", "tests\NPA.Extensions.Tests\NPA.Extensions.Tests.csproj", "{39E4FA2C-18ED-449B-821F-EE801112230A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Generators.Tests", "tests\NPA.Generators.Tests\NPA.Generators.Tests.csproj", "{4AF50B3D-29FE-438A-8120-FF911223340B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Design.Tests", "tests\NPA.Design.Tests\NPA.Design.Tests.csproj", "{4AF50B3D-29FE-438A-8120-FF911223340B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NPA.Migrations.Tests", "tests\NPA.Migrations.Tests\NPA.Migrations.Tests.csproj", "{5B061C4E-3A0F-4279-8031-00A12234450C}"
 EndProject

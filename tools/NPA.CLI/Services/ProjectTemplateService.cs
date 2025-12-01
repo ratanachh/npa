@@ -112,7 +112,7 @@ public class ProjectTemplateService : IProjectTemplateService
   <ItemGroup>
     <PackageReference Include=""NPA.Core"" Version=""0.1.0"" />
     <PackageReference Include=""NPA.Extensions"" Version=""0.1.0"" />
-    <PackageReference Include=""NPA.Generators"" Version=""0.1.0"" />
+    <PackageReference Include=""NPA.Design"" Version=""0.1.0"" />
     <PackageReference Include=""Microsoft.Extensions.DependencyInjection"" Version=""7.0.0"" />
     <PackageReference Include=""Microsoft.Extensions.Logging"" Version=""7.0.0"" />
   </ItemGroup>
@@ -130,7 +130,7 @@ public class ProjectTemplateService : IProjectTemplateService
   <ItemGroup>
     <PackageReference Include=""NPA.Core"" Version=""0.1.0"" />
     <PackageReference Include=""NPA.Extensions"" Version=""0.1.0"" />
-    <PackageReference Include=""NPA.Generators"" Version=""0.1.0"" />
+    <PackageReference Include=""NPA.Design"" Version=""0.1.0"" />
     <PackageReference Include=""Microsoft.AspNetCore.OpenApi"" Version=""8.0.0"" />
     <PackageReference Include=""Swashbuckle.AspNetCore"" Version=""6.5.0"" />
   </ItemGroup>

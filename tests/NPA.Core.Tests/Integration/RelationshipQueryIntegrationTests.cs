@@ -4,8 +4,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using NPA.Core.Core;
 using NPA.Core.Metadata;
 using NPA.Core.Providers;
-using NPA.Generators;
-using NPA.Generators.Tests;
+using NPA.Design;
+using NPA.Design.Tests;
 using Npgsql;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -13,7 +13,7 @@ using Testcontainers.PostgreSql;
 using Xunit;
 using Microsoft.Extensions.Logging.Abstractions;
 using Dapper;
-using NPA.Generators.Generators;
+using NPA.Design.Generators;
 
 namespace NPA.Core.Tests.Integration;
 
@@ -370,8 +370,8 @@ namespace TestRepositories
         var assembly = AssemblyLoadContext.Default.LoadFromStream(ms);
 
         // Find and instantiate the repository class
-        // Generated code is in NPA.Generators namespace
-        var repositoryType = assembly.GetType($"NPA.Generators.{repositoryImplementationName}") 
+        // Generated code is in NPA.Design namespace
+        var repositoryType = assembly.GetType($"NPA.Design.{repositoryImplementationName}") 
             ?? assembly.GetTypes().FirstOrDefault(t => t.Name == repositoryImplementationName);
         
         if (repositoryType == null)

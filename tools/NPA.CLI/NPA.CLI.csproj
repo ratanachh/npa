@@ -14,6 +14,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NPA.Core\NPA.Core.csproj" />
     <ProjectReference Include="..\..\src\NPA.Migrations\NPA.Migrations.csproj" />
-    <ProjectReference Include="..\..\src\NPA.Generators\NPA.Generators.csproj" />
+    <ProjectReference Include="..\..\src\NPA.Design\NPA.Design.csproj" />
   </ItemGroup>
 </Project>

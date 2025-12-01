@@ -40,7 +40,7 @@ public class SourceGeneratorSample : ISample
         Console.WriteLine("HOW TO SEE THE GENERATED CODE:");
         Console.WriteLine("1. Build the solution.");
         Console.WriteLine("2. In the Solution Explorer, navigate to: ");
-        Console.WriteLine("   BasicUsage > Dependencies > Analyzers > NPA.Generators");
+        Console.WriteLine("   BasicUsage > Dependencies > Analyzers > NPA.Design");
         Console.WriteLine("3. Here you will find the generated files, such as 'GeneratedMetadataProvider.g.cs'.");
         Console.WriteLine("--------------------------------------------------");
 
