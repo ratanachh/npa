@@ -2,6 +2,8 @@ using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
 using System.Linq;
 
+using NPA.Generators.Models;
+
 namespace NPA.Generators.Shared;
 
 /// <summary>

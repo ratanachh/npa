@@ -1,6 +1,7 @@
 using Xunit;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using NPA.Generators.Generators;
 
 namespace NPA.Generators.Tests;
 

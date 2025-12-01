@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using NPA.Generators.Models;
 
-namespace NPA.Generators;
+namespace NPA.Generators.Services;
 
 /// <summary>
 /// Converts CPQL (Custom Persistence Query Language) style queries to standard SQL.

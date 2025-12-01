@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NPA.Core.Annotations; // Reference the real attributes
+using NPA.Generators.Generators;
 
 namespace NPA.Generators.Tests;
 

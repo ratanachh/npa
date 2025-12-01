@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NPA.Core.Annotations;
 using Xunit;
+using NPA.Generators.Generators;
 
 namespace NPA.Generators.Tests;
 

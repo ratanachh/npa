@@ -6,7 +6,9 @@ using System.Linq;
 using System.Text;
 using NPA.Generators.Shared;
 
-namespace NPA.Generators;
+using NPA.Generators.Models;
+
+namespace NPA.Generators.Generators;
 
 /// <summary>
 /// Generator for bidirectional relationship synchronization helper methods.

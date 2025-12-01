@@ -1,6 +1,7 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
+using NPA.Generators.Models;
 
-namespace NPA.Generators;
+namespace NPA.Generators.Models;
 
 internal class RepositoryInfo
 {
@@ -18,21 +19,22 @@ internal class RepositoryInfo
     public Dictionary<string, EntityMetadataInfo> EntitiesMetadata { get; set; } = new();
 
     // Relationship-aware repository generation
-    public List<Models.RelationshipMetadata> Relationships { get; set; } = new();
+    public List<RelationshipMetadata> Relationships { get; set; } = new();
     public bool HasRelationships => Relationships != null && Relationships.Count > 0;
     
     // Compilation for extracting relationships from related entities
     public Compilation? Compilation { get; set; }
 
     // Eager loading support
-    public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == Models.FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
-    public List<Models.RelationshipMetadata> EagerRelationships => Relationships?.Where(r => r.FetchType == Models.FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy))).ToList() ?? new();
+    public bool HasEagerRelationships => Relationships != null && Relationships.Any(r => r.FetchType == FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy)));
+    public List<RelationshipMetadata> EagerRelationships => Relationships?.Where(r => r.FetchType == FetchType.Eager && (r.IsOwner || string.IsNullOrEmpty(r.MappedBy))).ToList() ?? new();
 
     // Cascade operations
     public bool HasCascadeRelationships => Relationships != null && Relationships.Any(r => r.CascadeTypes != 0);
-    public List<Models.RelationshipMetadata> CascadeRelationships => Relationships?.Where(r => r.CascadeTypes != 0).ToList() ?? new();
+    public List<RelationshipMetadata> CascadeRelationships => Relationships?.Where(r => r.CascadeTypes != 0).ToList() ?? new();
 
     // Orphan removal support
     public bool HasOrphanRemovalRelationships => Relationships != null && Relationships.Any(r => r.OrphanRemoval);
-    public List<Models.RelationshipMetadata> OrphanRemovalRelationships => Relationships?.Where(r => r.OrphanRemoval).ToList() ?? new();
+    public List<RelationshipMetadata> OrphanRemovalRelationships => Relationships?.Where(r => r.OrphanRemoval).ToList() ?? new();
 }
+

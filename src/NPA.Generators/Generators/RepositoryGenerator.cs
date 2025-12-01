@@ -7,8 +7,11 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using NPA.Generators.Shared;
+using NPA.Generators.Models;
+using NPA.Generators.Services;
+using NPA.Generators.Comparers;
 
-namespace NPA.Generators;
+namespace NPA.Generators.Generators;
 
 /// <summary>
 /// Source generator for creating repository implementations from interfaces marked with [Repository] attribute.
@@ -30,7 +33,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 transform: static (ctx, _) => GetRepositoryInfo(ctx))
             .Where(static info => info is not null)
             .Select(static (info, _) => info!)  // Convert IncrementalValuesProvider<RepositoryInfo?> to IncrementalValuesProvider<RepositoryInfo>
-            .WithComparer(new RepositoryInfoComparer()); // Enable incremental caching
+            .WithComparer(new Comparers.RepositoryInfoComparer()); // Enable incremental caching
 
         // Register the source output for individual repositories
         context.RegisterSourceOutput(repositoryInterfaces, static (spc, source) => GenerateRepository(spc, source));

@@ -1,6 +1,7 @@
 using Xunit;
 using FluentAssertions;
-using NPA.Generators;
+using NPA.Generators.Models;
+using NPA.Generators.Services;
 
 namespace NPA.Generators.Tests;
 
@@ -525,11 +526,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_ShouldUseExplicitColumnList()
     {
         // Arrange
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Student",
             TableName = "students",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "id" },
                 new() { Name = "Email", ColumnName = "email" },
@@ -554,11 +555,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_ShouldUseTableNameFromMetadata()
     {
         // Arrange - Table name different from entity name
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Product",
             TableName = "tbl_products", // Custom table name
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "product_id" },
                 new() { Name = "Name", ColumnName = "product_name" },
@@ -580,11 +581,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_AggregateFunction_ShouldUseColumnName()
     {
         // Arrange
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Product",
             TableName = "products",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Price", ColumnName = "unit_price" }
             }
@@ -603,11 +604,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_ListReturnType_ShouldGenerateExplicitColumns()
     {
         // Arrange - Simulating List<Student> return type
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Student",
             TableName = "students",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "id" },
                 new() { Name = "Email", ColumnName = "email" },
@@ -628,11 +629,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_SingleReturnType_ShouldGenerateExplicitColumns()
     {
         // Arrange - Simulating single Student return type
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Student",
             TableName = "students",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "id" },
                 new() { Name = "Email", ColumnName = "email" }
@@ -653,11 +654,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_ComplexQuery_ShouldHandleAllClauses()
     {
         // Arrange - Complex query with ORDER BY, multiple WHERE conditions
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Product",
             TableName = "products",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "product_id" },
                 new() { Name = "Name", ColumnName = "product_name" },
@@ -682,11 +683,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_DISTINCT_ShouldPreserveDistinct()
     {
         // Arrange
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Student",
             TableName = "students",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "id" },
                 new() { Name = "Email", ColumnName = "email" }
@@ -720,11 +721,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_EmptyProperties_ShouldFallbackToSelectStar()
     {
         // Arrange - Metadata with no properties
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Student",
             TableName = "students",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>()
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>()
         };
         var cpql = "SELECT s FROM Student s";
 
@@ -739,11 +740,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_JoinQuery_ShouldHandleMultipleTables()
     {
         // Arrange - Main entity metadata (Product)
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Product",
             TableName = "products",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "product_id" },
                 new() { Name = "Name", ColumnName = "product_name" },
@@ -767,11 +768,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_GROUP_BY_ShouldUseColumnNames()
     {
         // Arrange
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Product",
             TableName = "products",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "CategoryId", ColumnName = "category_id" }
             }
@@ -791,11 +792,11 @@ public class CpqlToSqlConverterTests
     public void ConvertToSql_WithMetadata_LIMIT_ShouldPreserveLimit()
     {
         // Arrange
-        var metadata = new NPA.Generators.EntityMetadataInfo
+        var metadata = new NPA.Generators.Models.EntityMetadataInfo
         {
             Name = "Student",
             TableName = "students",
-            Properties = new List<NPA.Generators.PropertyMetadataInfo>
+            Properties = new List<NPA.Generators.Models.PropertyMetadataInfo>
             {
                 new() { Name = "Id", ColumnName = "id" },
                 new() { Name = "Email", ColumnName = "email" }

@@ -1,4 +1,4 @@
-﻿namespace NPA.Generators;
+namespace NPA.Generators.Models;
 
 internal class MethodAttributeInfo
 {
@@ -91,3 +91,4 @@ internal class MethodAttributeInfo
     public string? AuditDescription { get; set; }
     public bool AuditCaptureIpAddress { get; set; }
 }
+

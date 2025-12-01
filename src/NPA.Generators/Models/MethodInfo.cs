@@ -1,6 +1,6 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 
-namespace NPA.Generators;
+namespace NPA.Generators.Models;
 
 internal class MethodInfo
 {
@@ -10,3 +10,4 @@ internal class MethodInfo
     public MethodAttributeInfo Attributes { get; set; } = new();
     public IMethodSymbol? Symbol { get; set; }
 }
+

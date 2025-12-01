@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 using System.Linq;
 using System.Reflection;
+using NPA.Generators.Generators;
 
 namespace NPA.Generators.Tests;
 

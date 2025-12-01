@@ -13,6 +13,7 @@ using Testcontainers.PostgreSql;
 using Xunit;
 using Microsoft.Extensions.Logging.Abstractions;
 using Dapper;
+using NPA.Generators.Generators;
 
 namespace NPA.Core.Tests.Integration;
 

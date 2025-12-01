@@ -1,4 +1,4 @@
-﻿namespace NPA.Generators;
+namespace NPA.Generators.Models;
 
 internal class MultiTenantInfo
 {
@@ -7,3 +7,4 @@ internal class MultiTenantInfo
     public bool EnforceTenantIsolation { get; set; } = true;
     public bool AllowCrossTenantQueries { get; set; } = false;
 }
+

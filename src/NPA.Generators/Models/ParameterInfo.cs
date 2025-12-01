@@ -1,4 +1,4 @@
-﻿namespace NPA.Generators;
+namespace NPA.Generators.Models;
 
 /// <summary>
 /// Represents parameter information for a method.
@@ -15,3 +15,4 @@ public class ParameterInfo
     /// </summary>
     public string Type { get; set; } = string.Empty;
 }
+

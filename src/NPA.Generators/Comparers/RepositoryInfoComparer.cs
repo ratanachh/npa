@@ -1,4 +1,6 @@
-﻿namespace NPA.Generators;
+using NPA.Generators.Models;
+
+namespace NPA.Generators.Comparers;
 
 /// <summary>
 /// Equality comparer for RepositoryInfo to enable incremental generator caching.
@@ -181,3 +183,4 @@ internal class RepositoryInfoComparer : IEqualityComparer<RepositoryInfo>
         }
     }
 }
+

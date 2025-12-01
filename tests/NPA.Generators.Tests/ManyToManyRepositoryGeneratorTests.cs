@@ -3,6 +3,7 @@ using Xunit;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NPA.Generators.Generators;
 
 namespace NPA.Generators.Tests;
 

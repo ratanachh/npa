@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Xunit;
 using System.Reflection;
+using NPA.Generators.Generators;
+using NPA.Generators.Comparers;
 
 namespace NPA.Generators.Tests;
 

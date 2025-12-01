@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
+using NPA.Generators.Models;
 
-namespace NPA.Generators;
+namespace NPA.Generators.Services;
 
 /// <summary>
 /// Analyzes repository method names to determine query intent and generate appropriate SQL.

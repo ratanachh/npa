@@ -1,4 +1,4 @@
-﻿namespace NPA.Generators;
+namespace NPA.Generators.Models;
 
 internal class ManyToManyRelationshipInfo
 {
@@ -11,3 +11,4 @@ internal class ManyToManyRelationshipInfo
     public string[] InverseJoinColumns { get; set; } = Array.Empty<string>();
     public string MappedBy { get; set; } = string.Empty;
 }
+
