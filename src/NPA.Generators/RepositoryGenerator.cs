@@ -3576,6 +3576,8 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GenerateAggregateMethods(sb, info, relationship);
                 // Generate GROUP BY aggregate methods
                 GenerateGroupByAggregateMethods(sb, info, relationship);
+                // Generate multi-entity GROUP BY aggregate methods (with JOINs)
+                GenerateMultiEntityGroupByAggregateMethods(sb, info, relationship);
                 // Generate subquery-based filters
                 GenerateSubqueryFilters(sb, info, relationship);
                 // Generate inverse relationship queries (FindWith/Without/WithCount)
@@ -4047,7 +4049,7 @@ public class RepositoryGenerator : IIncrementalGenerator
         sb.AppendLine("        {");
         sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
         sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
-        sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
+        sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
         sb.AppendLine($"                WHERE (");
         sb.AppendLine($"                    SELECT COUNT(*)");
         sb.AppendLine($"                    FROM {childTableName} c");
@@ -4679,6 +4681,127 @@ public class RepositoryGenerator : IIncrementalGenerator
     }
 
     /// <summary>
+    /// Generates multi-entity GROUP BY aggregate methods with JOINs for OneToMany relationships.
+    /// For example, GetCustomerOrderSummaryAsync that returns CustomerId, CustomerName, OrderCount, TotalAmount.
+    /// These methods JOIN the parent table with the child table and return tuples with parent properties and aggregates.
+    /// </summary>
+    private static void GenerateMultiEntityGroupByAggregateMethods(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Get child entity metadata
+        var childEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(childEntitySimpleName, out var childMetadata))
+        {
+            return; // Can't generate methods without metadata
+        }
+
+        if (childMetadata.Properties == null || info.EntityMetadata?.Properties == null)
+        {
+            return;
+        }
+
+        var childTableName = GetTableNameFromMetadata(info, relationship.TargetEntityType) ?? childEntitySimpleName;
+        var parentTableName = info.EntityMetadata.TableName ?? info.EntityType.Split('.').Last();
+        var parentEntityName = info.EntityType.Split('.').Last();
+        
+        // For OneToMany, the JoinColumn is on the inverse ManyToOne relationship
+        var foreignKeyColumn = GetForeignKeyColumnForOneToMany(info, relationship, parentEntityName);
+        
+        // Get parent entity key type and column name
+        var parentKeyType = info.KeyType;
+        var parentKeyColumnName = GetKeyColumnName(info, info.EntityType);
+
+        // Find the inverse ManyToOne relationship to get the correct FK column
+        // The FK column is on the child table pointing to the parent
+        var parentKeyColumn = parentKeyColumnName;
+
+        // Generate summary method with COUNT and all numeric aggregates
+        // First, find all numeric properties in the child entity
+        var numericProperties = childMetadata.Properties
+            .Where(p => !p.IsPrimaryKey && IsNumericType(p.TypeName) && 
+                       !p.TypeName.Contains("ICollection") && !p.TypeName.Contains("List") && 
+                       !p.TypeName.Contains("IEnumerable"))
+            .ToList();
+
+        if (numericProperties.Count == 0)
+        {
+            return; // No numeric properties to aggregate
+        }
+
+        // Get parent entity simple properties (for inclusion in result)
+        var parentSimpleProperties = info.EntityMetadata.Properties
+            .Where(p => !p.IsPrimaryKey && IsSimpleType(p.TypeName) && 
+                       !p.TypeName.Contains("ICollection") && !p.TypeName.Contains("List") && 
+                       !p.TypeName.Contains("IEnumerable"))
+            .Take(5) // Limit to 5 properties to avoid overly complex tuples
+            .ToList();
+
+        // Build tuple type for return value
+        var tupleElements = new List<string>();
+        tupleElements.Add($"{parentKeyType} {parentEntityName}Id");
+        
+        foreach (var prop in parentSimpleProperties)
+        {
+            tupleElements.Add($"{prop.TypeName} {prop.Name}");
+        }
+        
+        var countPropertyName = $"{relationship.PropertyName}Count";
+        tupleElements.Add($"int {countPropertyName}");
+        
+        foreach (var prop in numericProperties)
+        {
+            var returnType = prop.TypeName.TrimEnd('?');
+            tupleElements.Add($"{returnType} Total{prop.Name}");
+        }
+
+        var tupleType = $"({string.Join(", ", tupleElements)})";
+
+        // Generate method name
+        var methodName = $"Get{parentEntityName}{relationship.PropertyName}SummaryAsync";
+
+        // Generate method
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets a summary of {relationship.PropertyName} grouped by {parentEntityName}, including parent entity properties and aggregates.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{tupleType}>> {methodName}()");
+        sb.AppendLine("        {");
+        
+        // Build SELECT clause
+        var selectParts = new List<string>();
+        selectParts.Add($"p.{parentKeyColumn} AS {parentEntityName}Id");
+        
+        foreach (var prop in parentSimpleProperties)
+        {
+            selectParts.Add($"p.{prop.ColumnName} AS {prop.Name}");
+        }
+        
+        selectParts.Add($"COUNT(c.{foreignKeyColumn}) AS {countPropertyName}");
+        
+        foreach (var prop in numericProperties)
+        {
+            selectParts.Add($"COALESCE(SUM(c.{prop.ColumnName}), 0) AS Total{prop.Name}");
+        }
+
+        var selectClause = string.Join(", ", selectParts);
+
+        // Build SQL with JOIN
+        sb.AppendLine($"            var sql = $\"SELECT {selectClause}");
+        sb.AppendLine($"                FROM {parentTableName} p");
+        sb.AppendLine($"                LEFT JOIN {childTableName} c ON p.{parentKeyColumn} = c.{foreignKeyColumn}");
+        sb.AppendLine($"                GROUP BY p.{parentKeyColumn}");
+        
+        // Add parent properties to GROUP BY
+        foreach (var prop in parentSimpleProperties)
+        {
+            sb.AppendLine($", p.{prop.ColumnName}");
+        }
+        
+        sb.AppendLine("\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{tupleType}>(sql);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    /// <summary>
     /// Checks if a type is a simple type that can be used in WHERE clauses.
     /// </summary>
     private static bool IsSimpleType(string typeName)
@@ -4752,6 +4875,7 @@ public class RepositoryGenerator : IIncrementalGenerator
                 GenerateCountChildrenSignature(sb, info, relationship);
                 GenerateAggregateMethodSignatures(sb, info, relationship);
                 GenerateGroupByAggregateMethodSignatures(sb, info, relationship);
+                GenerateMultiEntityGroupByAggregateMethodSignatures(sb, info, relationship);
                 GenerateSubqueryFilterSignatures(sb, info, relationship);
                 GenerateInverseRelationshipQuerySignatures(sb, info, relationship);
             }
@@ -5246,6 +5370,75 @@ public class RepositoryGenerator : IIncrementalGenerator
                 sb.AppendLine();
             }
         }
+    }
+
+    /// <summary>
+    /// Generates multi-entity GROUP BY aggregate method signatures for the interface.
+    /// </summary>
+    private static void GenerateMultiEntityGroupByAggregateMethodSignatures(StringBuilder sb, RepositoryInfo info, Models.RelationshipMetadata relationship)
+    {
+        // Get child entity metadata
+        var childEntitySimpleName = relationship.TargetEntityType.Split('.').Last();
+        if (info.EntitiesMetadata == null || !info.EntitiesMetadata.TryGetValue(childEntitySimpleName, out var childMetadata))
+        {
+            return; // Can't generate signatures without metadata
+        }
+
+        if (childMetadata.Properties == null || info.EntityMetadata?.Properties == null)
+        {
+            return;
+        }
+
+        var parentEntityName = info.EntityType.Split('.').Last();
+        var parentKeyType = info.KeyType;
+
+        // Find numeric properties in child entity
+        var numericProperties = childMetadata.Properties
+            .Where(p => !p.IsPrimaryKey && IsNumericType(p.TypeName) && 
+                       !p.TypeName.Contains("ICollection") && !p.TypeName.Contains("List") && 
+                       !p.TypeName.Contains("IEnumerable"))
+            .ToList();
+
+        if (numericProperties.Count == 0)
+        {
+            return; // No numeric properties to aggregate
+        }
+
+        // Get parent entity simple properties
+        var parentSimpleProperties = info.EntityMetadata.Properties
+            .Where(p => !p.IsPrimaryKey && IsSimpleType(p.TypeName) && 
+                       !p.TypeName.Contains("ICollection") && !p.TypeName.Contains("List") && 
+                       !p.TypeName.Contains("IEnumerable"))
+            .Take(5)
+            .ToList();
+
+        // Build tuple type
+        var tupleElements = new List<string>();
+        tupleElements.Add($"{parentKeyType} {parentEntityName}Id");
+        
+        foreach (var prop in parentSimpleProperties)
+        {
+            tupleElements.Add($"{prop.TypeName} {prop.Name}");
+        }
+        
+        var countPropertyName = $"{relationship.PropertyName}Count";
+        tupleElements.Add($"int {countPropertyName}");
+        
+        foreach (var prop in numericProperties)
+        {
+            var returnType = prop.TypeName.TrimEnd('?');
+            tupleElements.Add($"{returnType} Total{prop.Name}");
+        }
+
+        var tupleType = $"({string.Join(", ", tupleElements)})";
+        var methodName = $"Get{parentEntityName}{relationship.PropertyName}SummaryAsync";
+
+        // Generate signature
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Gets a summary of {relationship.PropertyName} grouped by {parentEntityName}, including parent entity properties and aggregates.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        Task<IEnumerable<{tupleType}>> {methodName}();");
+        sb.AppendLine();
     }
 
     /// <summary>

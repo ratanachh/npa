@@ -51,15 +51,15 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - ✅ **Implemented**: `GetOrdersCountsByCustomerAsync()` - Returns `Dictionary<int, int>`
 - ✅ **Implemented**: `GetTotalOrdersTotalAmountByCustomerAsync()` - Returns `Dictionary<int, decimal>`
 - ✅ **Implemented**: `GetAverageOrdersTotalAmountByCustomerAsync()`, `GetMin...`, `GetMax...`
-- **Remaining**: Multi-entity GROUP BY queries (with JOINs across multiple relationships)
+- ✅ **Implemented**: Multi-entity GROUP BY queries (with JOINs across multiple relationships)
 - **Example**:
   ```csharp
   // ✅ Now implemented
   Task<Dictionary<int, int>> GetOrdersCountsByCustomerAsync();
   Task<Dictionary<int, decimal>> GetTotalOrdersTotalAmountByCustomerAsync();
-  // 📋 Still planned: Multi-entity GROUP BY with JOINs
-  Task<IEnumerable<(int CustomerId, string CustomerName, int OrderCount, decimal TotalAmount)>> 
-      GetCustomerOrderSummaryAsync();
+  // ✅ Now implemented: Multi-entity GROUP BY with JOINs
+  Task<IEnumerable<(int CustomerId, string Name, string Email, int OrdersCount, decimal TotalTotalAmount, int TotalQuantity)>> 
+      GetCustomerOrdersSummaryAsync();
   ```
 
 #### 2. Advanced Filters ✅ COMPLETED
@@ -238,8 +238,8 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - **Files Modified**: `RepositoryGenerator.cs` - `GenerateComplexFilters()`, `GenerateComplexFilterSignatures()`
 - **Status**: OR combinations (`FindBy{Property1}Or{Property2}Async`) and AND combinations (`FindBy{Property}And{PropertyName}Async`) are now implemented with full pagination and sorting support
 
-**Total Estimated Effort Remaining**: 3-8 days (~1 week)
-(Reduced from 14-19 days after completing GROUP BY aggregations, advanced filters, pagination support, configurable sorting, and inverse relationship queries)
+**Total Estimated Effort Remaining**: 2-5 days (~3-4 days)
+(Reduced from 14-19 days after completing GROUP BY aggregations, multi-entity GROUP BY queries, advanced filters, pagination support, configurable sorting, inverse relationship queries, and complex filters)
 
 ---
 

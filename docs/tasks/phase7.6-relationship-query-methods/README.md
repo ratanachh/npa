@@ -18,6 +18,7 @@ Generate specialized query methods for navigating and querying entities based on
 - ✅ Implemented Configurable Sorting (orderBy and ascending parameters for all pagination overloads)
 - ✅ Implemented Inverse Relationship Queries (FindWith/Without/WithCount methods for OneToMany relationships)
 - ✅ Implemented Complex Filters (OR/AND combinations for relationship queries)
+- ✅ Implemented Multi-Entity GROUP BY Queries (with JOINs to include parent entity properties in results)
 - ⚠️ Partially Implemented Multi-Level Navigation (2-level navigation with relationship extraction from intermediate entities)
 
 ### ✅ What's Implemented
@@ -37,6 +38,7 @@ Generate specialized query methods for navigating and querying entities based on
   - `GetAverage{Property}{PropertyName}By{ParentEntity}Async()` - AVG grouped by parent entity
   - `GetMin{Property}{PropertyName}By{ParentEntity}Async()` - MIN grouped by parent entity
   - `GetMax{Property}{PropertyName}By{ParentEntity}Async()` - MAX grouped by parent entity
+  - `Get{ParentEntity}{Property}SummaryAsync()` - Multi-entity GROUP BY with JOINs (returns tuple with parent properties and aggregates)
 - **Advanced Filters**:
   - `FindBy{Property}And{PropertyName}RangeAsync()` - Date range filters on relationships (e.g., `FindByCustomerAndOrderDateRangeAsync`)
   - `Find{Property}{PropertyName}AboveAsync()` - Amount/quantity filters (e.g., `FindCustomerTotalAmountAboveAsync`)
@@ -392,20 +394,24 @@ public async Task<decimal?> GetMaxOrdersTotalAmountAsync(int id)
 }
 ```
 
-### 📋 Planned Code Examples (Not Yet Implemented)
+### ✅ Implemented Code Examples
 
-#### GROUP BY Aggregations
+#### Multi-Entity GROUP BY Aggregations
 ```csharp
-// 📋 Planned: GROUP BY aggregations across multiple entities
-public async Task<Dictionary<int, int>> GetOrderCountsByCustomerAsync()
+// ✅ Implemented: Multi-entity GROUP BY with JOINs
+// Returns tuple with parent entity properties and aggregates
+public async Task<IEnumerable<(int CustomerId, string Name, string Email, int OrdersCount, decimal TotalTotalAmount, int TotalQuantity)>> 
+    GetCustomerOrdersSummaryAsync()
 {
-    const string sql = @"
-        SELECT customer_id, COUNT(*) as order_count
-        FROM orders
-        GROUP BY customer_id";
+    var sql = @"SELECT p.customer_id AS CustomerId, p.customer_name AS Name, p.customer_email AS Email, 
+                COUNT(c.customer_id) AS OrdersCount, 
+                COALESCE(SUM(c.total_amount), 0) AS TotalTotalAmount, 
+                COALESCE(SUM(c.order_quantity), 0) AS TotalQuantity
+                FROM customers p
+                LEFT JOIN orders c ON p.customer_id = c.customer_id
+                GROUP BY p.customer_id, p.customer_name, p.customer_email";
     
-    var results = await _connection.QueryAsync<(int CustomerId, int OrderCount)>(sql);
-    return results.ToDictionary(r => r.CustomerId, r => r.OrderCount);
+    return await _connection.QueryAsync<(int CustomerId, string Name, string Email, int OrdersCount, decimal TotalTotalAmount, int TotalQuantity)>(sql);
 }
 ```
 

@@ -2240,6 +2240,154 @@ public class Order
         implementation.Should().Contain("GROUP BY fk_customer_id");
     }
 
+    [Fact]
+    public void OneToMany_ShouldGenerateMultiEntityGroupBySummaryMethod()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    [Column(""customer_id"")]
+    public int Id { get; set; }
+    
+    [Column(""customer_name"")]
+    public string Name { get; set; }
+    
+    [Column(""customer_email"")]
+    public string Email { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    [Column(""order_id"")]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    [Column(""total_amount"")]
+    public decimal TotalAmount { get; set; }
+    
+    [Column(""order_quantity"")]
+    public int Quantity { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var implementation = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryImplementation"))
+            .ToString();
+
+        // Should generate multi-entity GROUP BY summary method
+        implementation.Should().Contain("GetCustomerOrdersSummaryAsync()");
+        
+        // Should return tuple with parent properties and aggregates
+        implementation.Should().Contain("Task<IEnumerable<");
+        implementation.Should().Contain("int CustomerId");
+        implementation.Should().Contain("string Name");
+        implementation.Should().Contain("string Email");
+        implementation.Should().Contain("int OrdersCount");
+        implementation.Should().Contain("decimal TotalTotalAmount");
+        implementation.Should().Contain("int TotalQuantity");
+        
+        // Should use JOIN
+        implementation.Should().Contain("FROM customers p");
+        implementation.Should().Contain("LEFT JOIN orders c ON");
+        implementation.Should().Contain("GROUP BY p.customer_id");
+        
+        // Should include parent properties in SELECT and GROUP BY
+        implementation.Should().Contain("p.customer_name AS Name");
+        implementation.Should().Contain("p.customer_email AS Email");
+        implementation.Should().Contain("COUNT(c.customer_id) AS OrdersCount");
+        implementation.Should().Contain("COALESCE(SUM(c.total_amount), 0) AS TotalTotalAmount");
+    }
+
+    [Fact]
+    public void MultiEntityGroupBy_ShouldBeInInterface()
+    {
+        // Arrange
+        var source = @"
+using NPA.Core.Annotations;
+using System.Collections.Generic;
+
+namespace TestNamespace;
+
+[Repository]
+public partial interface ICustomerRepository : IRepository<Customer, int>
+{
+}
+
+[Entity]
+[Table(""customers"")]
+public class Customer
+{
+    [Id]
+    public int Id { get; set; }
+    
+    public string Name { get; set; }
+    
+    [OneToMany(MappedBy = ""Customer"")]
+    public ICollection<Order> Orders { get; set; }
+}
+
+[Entity]
+[Table(""orders"")]
+public class Order
+{
+    [Id]
+    public int Id { get; set; }
+    
+    [ManyToOne]
+    [JoinColumn(""customer_id"")]
+    public Customer Customer { get; set; }
+    
+    public decimal TotalAmount { get; set; }
+}
+";
+
+        // Act
+        RunGeneratorWithOutput<RepositoryGenerator>(source, out var outputCompilation, out var diagnostics);
+
+        // Assert
+        diagnostics.Should().BeEmpty();
+
+        var interfaceCode = outputCompilation.SyntaxTrees
+            .First(t => t.FilePath.Contains("CustomerRepositoryExtensions"))
+            .ToString();
+
+        // Should have multi-entity GROUP BY summary method signature in interface
+        interfaceCode.Should().Contain("GetCustomerOrdersSummaryAsync()");
+        interfaceCode.Should().Contain("Task<IEnumerable<");
+        interfaceCode.Should().Contain("int CustomerId");
+        interfaceCode.Should().Contain("string Name");
+        interfaceCode.Should().Contain("int OrdersCount");
+    }
+
     #endregion
 
     #region Pagination Support Tests
