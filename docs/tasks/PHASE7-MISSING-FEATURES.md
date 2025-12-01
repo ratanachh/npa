@@ -121,17 +121,30 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
       bool ascending = true);
   ```
 
-#### 4. Multi-Level Navigation ⚠️ PARTIALLY IMPLEMENTED
-- ⚠️ **Partially Implemented**: Basic 2-level navigation queries (e.g., OrderItem → Order → Customer)
-- **How It Works**: The generator extracts relationships from the intermediate entity (e.g., `Order`) using `ExtractRelationships` to find its relationship to the target entity (e.g., `Customer`). This ensures the correct foreign key column is used from the intermediate entity's relationship metadata.
-- **Bug Fix**: Previously, the code incorrectly searched for the second-level relationship in the current entity's relationships. This has been fixed to extract relationships from the intermediate entity, ensuring correct FK column usage and respecting custom `[JoinColumn]` attributes.
-- **Limitation**: Requires successful relationship extraction from the intermediate entity. If the relationship cannot be extracted (e.g., due to compilation/metadata issues), the query method will not be generated. This is intentional to prevent incorrect SQL generation.
+#### 4. Multi-Level Navigation ✅ COMPLETED
+- ✅ **Implemented**: Recursive multi-level navigation queries supporting 2+ levels (e.g., OrderItem → Order → Customer → Address)
+- **How It Works**: The generator uses a recursive path-finding algorithm (`FindNavigationPaths`) that:
+  - Starts from the current entity and explores all valid relationship paths
+  - Extracts relationships from intermediate entities using `ExtractRelationships` to find valid navigation chains
+  - Builds navigation paths up to 5 levels deep (configurable via `maxDepth` parameter)
+  - Generates SQL queries with multiple JOINs for each path level
+  - Ensures correct foreign key column usage from each entity's relationship metadata
+- **Features**:
+  - ✅ Supports ManyToOne, OneToOne (both owner and inverse sides), and ManyToMany relationships in navigation paths
+  - Respects custom `[JoinColumn]` attributes at each level
+  - Handles ManyToMany join tables with proper two-join SQL generation
+  - Generates methods with pagination and sorting support
+  - Prevents cycles by tracking visited entities
+- **Limitation**: Requires successful relationship extraction from intermediate entities. If relationships cannot be extracted (e.g., due to compilation/metadata issues), the query method will not be generated. This is intentional to prevent incorrect SQL generation.
 - **Example**:
   ```csharp
-  // ⚠️ Partially implemented - generates when relationship extraction succeeds
+  // ✅ Now fully implemented - supports 2+ levels
   Task<IEnumerable<OrderItem>> FindByOrderCustomerNameAsync(string customerName);
   // Navigates: OrderItem → Order → Customer
-  // Uses Order's relationship to Customer (with correct JoinColumn if specified)
+  
+  // ✅ 3-level navigation also supported
+  Task<IEnumerable<OrderItem>> FindByOrderCustomerAddressCityAsync(string city);
+  // Navigates: OrderItem → Order → Customer → Address
   ```
 
 #### 5. Complex Relationship Filters ✅ COMPLETED
@@ -225,12 +238,12 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - **Tests**: ✅ 9 comprehensive tests added (6 pagination + 3 sorting)
 
 ### Multi-Level Navigation ⚠️ PARTIALLY IMPLEMENTED
-- **Effort**: ⚠️ Partially Completed (2-level navigation implemented, ~2-3 days remaining for 3+ levels)
+- **Effort**: ✅ Completed (3+ level navigation implemented with recursive path finding)
 - **Complexity**: High
-- **Files Modified**: `RepositoryGenerator.cs` - `GenerateMultiLevelNavigationQueries()`, `GenerateMultiLevelNavigationQuerySignatures()`
-- **Status**: Basic 2-level navigation working. Relationship extraction from intermediate entities implemented. Bug fix ensures correct FK column usage.
+- **Files Modified**: `RepositoryGenerator.cs` - `GenerateMultiLevelNavigationQueries()`, `GenerateMultiLevelNavigationQuerySignatures()`, `FindNavigationPaths()`, `GenerateNavigationPathQuery()`, `GetRelationshipsForEntity()`
+- **Status**: ✅ Fully implemented with recursive path finding supporting 2+ levels (up to 5 levels by default). Relationship extraction from intermediate entities working correctly. Bug fix ensures correct FK column usage.
 - **Bug Fix**: Fixed issue where second-level FK was incorrectly searched in current entity's relationships. Now correctly extracts from intermediate entity.
-- **Remaining Work**: 3+ level navigation, additional relationship type support, performance optimizations
+- **Remaining Work**: Performance optimizations for very deep paths (5+ levels)
 
 ### Complex Filters ✅ COMPLETED
 - **Effort**: ✅ Completed
@@ -238,8 +251,8 @@ This document summarizes what's still missing or incomplete in Phase 7 implement
 - **Files Modified**: `RepositoryGenerator.cs` - `GenerateComplexFilters()`, `GenerateComplexFilterSignatures()`
 - **Status**: OR combinations (`FindBy{Property1}Or{Property2}Async`) and AND combinations (`FindBy{Property}And{PropertyName}Async`) are now implemented with full pagination and sorting support
 
-**Total Estimated Effort Remaining**: 2-5 days (~3-4 days)
-(Reduced from 14-19 days after completing GROUP BY aggregations, multi-entity GROUP BY queries, advanced filters, pagination support, configurable sorting, inverse relationship queries, and complex filters)
+**Total Estimated Effort Remaining**: 1-3 days (~2 days)
+(Reduced from 14-19 days after completing GROUP BY aggregations, multi-entity GROUP BY queries, advanced filters, pagination support, configurable sorting, inverse relationship queries, complex filters, and 3+ level navigation)
 
 ---
 

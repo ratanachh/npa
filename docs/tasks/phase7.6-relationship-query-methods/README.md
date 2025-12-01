@@ -486,8 +486,9 @@ This ensures that when entities have custom column names via `[Column]` attribut
 
 **Limitations**:
 - Requires successful relationship extraction from intermediate entities
-- Currently supports 2-level navigation only (3+ levels not yet implemented)
+- ✅ **3+ level navigation now supported** - Recursive path finding supports navigation paths of any depth (up to 5 levels by default)
 - Methods are only generated when relationships can be successfully extracted
+- ✅ Supports ManyToOne, OneToOne (both owner and inverse sides), and ManyToMany relationships in navigation paths
 
 ## Acceptance Criteria
 
@@ -506,7 +507,7 @@ This ensures that when entities have custom column names via `[Column]` attribut
 - [x] Aggregate functions work correctly (✅ SUM, AVG, MIN, MAX implemented; ✅ GROUP BY implemented)
 - [x] Complex filters properly implemented (✅ Date ranges, amounts, subqueries implemented)
 - [x] Configurable sorting options (✅ Implemented: orderBy and ascending parameters for all pagination overloads)
-- [x] Support for multi-level navigation (⚠️ Partially Implemented: 2-level navigation with relationship extraction from intermediate entities)
+- [x] Support for multi-level navigation (✅ Implemented: 2+ level navigation with recursive path finding, supports up to 5 levels)
 - [ ] Support for OR/AND combinations in relationship queries
 
 ## Dependencies

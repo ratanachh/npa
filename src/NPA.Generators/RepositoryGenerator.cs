@@ -4133,157 +4133,380 @@ public class RepositoryGenerator : IIncrementalGenerator
     }
 
     /// <summary>
+    /// Represents a navigation path through multiple relationships.
+    /// </summary>
+    private class NavigationPath
+    {
+        public List<Models.RelationshipMetadata> Relationships { get; set; } = new();
+        public List<string> EntityNames { get; set; } = new();
+        public List<string> TableNames { get; set; } = new();
+        public List<string> FkColumns { get; set; } = new();
+        public List<string> KeyColumns { get; set; } = new();
+        public List<string?> JoinTableNames { get; set; } = new(); // For ManyToMany relationships
+        public List<string?> JoinTableOwnerFkColumns { get; set; } = new(); // FK column in join table pointing to owner
+        public List<string?> JoinTableTargetFkColumns { get; set; } = new(); // FK column in join table pointing to target
+        public string PathDescription => string.Join(" → ", EntityNames);
+    }
+
+    /// <summary>
     /// Generates multi-level navigation queries.
     /// For example, FindByCustomerNameAsync on OrderItemRepository navigates: OrderItem → Order → Customer
-    /// Currently supports 2-level navigation through ManyToOne relationships.
+    /// Supports 2+ level navigation through ManyToOne, OneToOne, and ManyToMany relationships.
     /// </summary>
     private static void GenerateMultiLevelNavigationQueries(StringBuilder sb, RepositoryInfo info, string tableName)
     {
         if (info.EntitiesMetadata == null || info.EntitiesMetadata.Count == 0)
             return; // Can't generate multi-level queries without metadata
 
+        if (info.Compilation == null)
+            return; // Need compilation to extract relationships
+
         var entityName = info.EntityType.Split('.').Last();
         var keyColumnName = GetKeyColumnName(info);
 
-        // Find 2-level navigation paths: Current Entity → Intermediate Entity → Target Entity
-        // Only support ManyToOne → ManyToOne chains for now
-        foreach (var firstLevelRel in info.Relationships)
+        // Find all valid navigation paths (2+ levels)
+        var navigationPaths = FindNavigationPaths(info, entityName, tableName, maxDepth: 5);
+
+        // Generate queries for each navigation path
+        foreach (var path in navigationPaths)
         {
-            if (firstLevelRel.Type != Models.RelationshipType.ManyToOne)
+            if (path.Relationships.Count < 2)
+                continue; // Skip single-level paths (handled elsewhere)
+
+            var targetEntityName = path.EntityNames.Last();
+            var targetMetadata = info.EntitiesMetadata.TryGetValue(targetEntityName, out var metadata) ? metadata : null;
+            if (targetMetadata?.Properties == null)
                 continue;
 
-            var intermediateEntitySimpleName = firstLevelRel.TargetEntityType.Split('.').Last();
-            
-            // For multi-level navigation, we need to find entities that the intermediate entity relates to.
-            // Since we don't have relationship metadata for intermediate entities, we'll check all entities
-            // in metadata and generate queries assuming they might be reachable through the intermediate entity.
-            // This is a simplified approach - in practice, we'd need full relationship metadata for all entities.
-            
-            // Check all entities in metadata to see if they could be targets of a second-level relationship
-            foreach (var entityMetadataEntry in info.EntitiesMetadata)
+            // Generate property-based queries for target entity properties
+            foreach (var property in targetMetadata.Properties)
             {
-                var targetEntitySimpleName = entityMetadataEntry.Key;
-                var targetMetadata = entityMetadataEntry.Value;
-                
-                // Skip if target is the same as intermediate (no second level needed)
-                if (targetEntitySimpleName == intermediateEntitySimpleName)
-                    continue;
-                
-                // Skip if target is the current entity (can't navigate to itself)
-                if (targetEntitySimpleName == entityName)
-                    continue;
-                
-                // Skip if we don't have properties for the target
-                if (targetMetadata.Properties == null || targetMetadata.Properties.Count == 0)
-                    continue;
-                
-                // Extract relationships from the intermediate entity to find its relationship to the target entity
-                // For example, when generating OrderItem → Order → Customer, we need Order's relationship to Customer
-                Models.RelationshipMetadata? secondLevelRel = null;
-                if (info.Compilation != null)
-                {
-                    // Try to extract relationships from the intermediate entity
-                    var intermediateEntityFullType = firstLevelRel.TargetEntityFullType;
-                    var intermediateEntitySimpleNameForExtraction = intermediateEntitySimpleName;
-                    
-                    var intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntityFullType);
-                    if (intermediateRelationships.Count == 0)
-                    {
-                        // Try with just the simple name (might need namespace)
-                        intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntitySimpleNameForExtraction);
-                    }
-                    
-                    // Find the ManyToOne relationship from intermediate entity to target entity
-                    secondLevelRel = intermediateRelationships.FirstOrDefault(r => 
-                        r.Type == Models.RelationshipType.ManyToOne && 
-                        r.TargetEntityType.Split('.').Last() == targetEntitySimpleName);
-                }
-                
-                // Only generate queries if the intermediate entity actually has a relationship to the target entity
-                if (secondLevelRel == null)
+                if (property.IsPrimaryKey)
                     continue;
 
-                // Use JoinColumn from the intermediate entity's relationship
-                var secondLevelFkColumn = secondLevelRel.JoinColumn?.Name ?? $"{targetEntitySimpleName}Id";
-                var secondLevelKeyColumn = GetKeyColumnName(info, targetEntitySimpleName);
-
-                // Generate property-based queries for target entity properties
-                if (targetMetadata.Properties == null)
+                if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
+                    property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
                     continue;
-                    
-                foreach (var property in targetMetadata.Properties)
-                {
-                    if (property.IsPrimaryKey)
-                        continue;
 
-                    if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
-                        property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
-                        continue;
-
-                    var methodName = $"FindBy{firstLevelRel.PropertyName}{targetEntitySimpleName}{property.Name}Async";
-                    var propertyParamName = ToCamelCase(property.Name);
-
-                    // Build SQL with two JOINs
-                    var intermediateTableName = GetTableNameFromMetadata(info, firstLevelRel.TargetEntityType) ?? intermediateEntitySimpleName;
-                    var targetTableName = GetTableNameFromMetadata(info, targetEntitySimpleName) ?? targetEntitySimpleName;
-                    
-                    var firstFkColumn = firstLevelRel.JoinColumn?.Name ?? $"{intermediateEntitySimpleName}Id";
-                    var firstKeyColumn = GetKeyColumnName(info, firstLevelRel.TargetEntityType);
-                    
-                    // Use the pre-calculated FK column and key column
-                    var secondFkColumn = secondLevelFkColumn;
-                    var secondKeyColumn = secondLevelKeyColumn;
-
-                    // Generate method without pagination
-                    sb.AppendLine("        /// <summary>");
-                    sb.AppendLine($"        /// Finds all {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}.");
-                    sb.AppendLine("        /// </summary>");
-                    sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName})");
-                    sb.AppendLine("        {");
-                    sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
-                    sb.AppendLine($"                INNER JOIN {intermediateTableName} r1 ON e.{firstFkColumn} = r1.{firstKeyColumn}");
-                    sb.AppendLine($"                INNER JOIN {targetTableName} r2 ON r1.{secondFkColumn} = r2.{secondKeyColumn}");
-                    sb.AppendLine($"                WHERE r2.{property.ColumnName} = @{propertyParamName}");
-                    sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
-                    sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName} }});");
-                    sb.AppendLine("        }");
-                    sb.AppendLine();
-
-                    // Generate method with pagination
-                    sb.AppendLine("        /// <summary>");
-                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination support.");
-                    sb.AppendLine("        /// </summary>");
-                    sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take)");
-                    sb.AppendLine("        {");
-                    sb.AppendLine($"            var sql = @\"SELECT e.* FROM {tableName} e");
-                    sb.AppendLine($"                INNER JOIN {intermediateTableName} r1 ON e.{firstFkColumn} = r1.{firstKeyColumn}");
-                    sb.AppendLine($"                INNER JOIN {targetTableName} r2 ON r1.{secondFkColumn} = r2.{secondKeyColumn}");
-                    sb.AppendLine($"                WHERE r2.{property.ColumnName} = @{propertyParamName}");
-                    sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
-                    sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
-                    sb.AppendLine("        }");
-                    sb.AppendLine();
-
-                    // Generate method with pagination and sorting
-                    sb.AppendLine("        /// <summary>");
-                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination and sorting support.");
-                    sb.AppendLine("        /// </summary>");
-                    sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true)");
-                    sb.AppendLine("        {");
-                    sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
-                    sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
-                    sb.AppendLine($"            var sql = $\"SELECT e.* FROM {tableName} e");
-                    sb.AppendLine($"                INNER JOIN {intermediateTableName} r1 ON e.{firstFkColumn} = r1.{firstKeyColumn}");
-                    sb.AppendLine($"                INNER JOIN {targetTableName} r2 ON r1.{secondFkColumn} = r2.{secondKeyColumn}");
-                    sb.AppendLine($"                WHERE r2.{property.ColumnName} = @{propertyParamName}");
-                    sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
-                    sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
-                    sb.AppendLine("        }");
-                    sb.AppendLine();
-                }
+                GenerateNavigationPathQuery(sb, info, path, property, tableName, keyColumnName);
             }
         }
     }
+
+    /// <summary>
+    /// Finds all valid navigation paths from the current entity to other entities.
+    /// </summary>
+    private static List<NavigationPath> FindNavigationPaths(RepositoryInfo info, string currentEntityName, string currentTableName, int maxDepth = 5)
+    {
+        var paths = new List<NavigationPath>();
+        var visited = new HashSet<string>(); // Track visited entities to avoid cycles
+
+        void FindPathsRecursive(NavigationPath currentPath, string entityName, string tableName, int depth)
+        {
+            if (depth > maxDepth)
+                return;
+
+            if (visited.Contains(entityName))
+                return; // Avoid cycles
+
+            visited.Add(entityName);
+
+            // Get relationships for current entity
+            var relationships = GetRelationshipsForEntity(info, entityName);
+            
+            foreach (var rel in relationships)
+            {
+                // Only support navigation through ManyToOne, OneToOne, and ManyToMany (for now)
+                if (rel.Type != Models.RelationshipType.ManyToOne &&
+                    rel.Type != Models.RelationshipType.OneToOne &&
+                    rel.Type != Models.RelationshipType.ManyToMany)
+                    continue;
+
+                var targetEntityName = rel.TargetEntityType.Split('.').Last();
+                
+                // Skip if target is the starting entity (avoid cycles)
+                if (targetEntityName == currentEntityName)
+                    continue;
+
+                // Skip if we don't have metadata for target
+                if (!info.EntitiesMetadata.ContainsKey(targetEntityName))
+                    continue;
+
+                // Create new path
+                var newPath = new NavigationPath
+                {
+                    Relationships = new List<Models.RelationshipMetadata>(currentPath.Relationships) { rel },
+                    EntityNames = new List<string>(currentPath.EntityNames) { targetEntityName },
+                    TableNames = new List<string>(currentPath.TableNames),
+                    FkColumns = new List<string>(currentPath.FkColumns),
+                    KeyColumns = new List<string>(currentPath.KeyColumns),
+                    JoinTableNames = new List<string?>(currentPath.JoinTableNames),
+                    JoinTableOwnerFkColumns = new List<string?>(currentPath.JoinTableOwnerFkColumns),
+                    JoinTableTargetFkColumns = new List<string?>(currentPath.JoinTableTargetFkColumns)
+                };
+
+                // Add table name, FK column, and key column for this relationship
+                var targetTableName = GetTableNameFromMetadata(info, targetEntityName) ?? targetEntityName;
+                newPath.TableNames.Add(targetTableName);
+
+                // Determine FK column and key column based on relationship type
+                string fkColumn;
+                string keyColumn;
+                string? joinTableName = null;
+                string? joinTableOwnerFkColumn = null;
+                string? joinTableTargetFkColumn = null;
+                
+                if (rel.Type == Models.RelationshipType.ManyToOne)
+                {
+                    // ManyToOne: FK is always on the source entity (current entity)
+                    // Join: source.FK = target.Key
+                    fkColumn = rel.JoinColumn?.Name ?? $"{targetEntityName}Id";
+                    keyColumn = GetKeyColumnName(info, targetEntityName);
+                }
+                else if (rel.Type == Models.RelationshipType.OneToOne)
+                {
+                    // OneToOne: FK location depends on ownership
+                    if (rel.IsOwner)
+                    {
+                        // Owner side: FK is on the target entity pointing back to source
+                        // Join: source.Key = target.FK
+                        var sourceKeyColumn = GetKeyColumnName(info, entityName);
+                        var targetFkColumn = rel.JoinColumn?.Name ?? $"{entityName}Id";
+                        fkColumn = sourceKeyColumn; // Source key
+                        keyColumn = targetFkColumn; // Target FK (on target table)
+                    }
+                    else
+                    {
+                        // Inverse side: FK is on the source entity (like ManyToOne)
+                        // Join: source.FK = target.Key
+                        fkColumn = rel.JoinColumn?.Name ?? $"{targetEntityName}Id";
+                        keyColumn = GetKeyColumnName(info, targetEntityName);
+                    }
+                }
+                else if (rel.Type == Models.RelationshipType.ManyToMany)
+                {
+                    // ManyToMany: Requires join table
+                    if (rel.JoinTable == null)
+                    {
+                        // Skip if no join table metadata
+                        continue;
+                    }
+                    
+                    // Store join table information
+                    joinTableName = string.IsNullOrEmpty(rel.JoinTable.Schema)
+                        ? rel.JoinTable.Name
+                        : $"{rel.JoinTable.Schema}.{rel.JoinTable.Name}";
+                    
+                    // Get FK column names from join table
+                    joinTableOwnerFkColumn = rel.JoinTable.JoinColumns?.FirstOrDefault() 
+                        ?? $"{entityName}Id";
+                    joinTableTargetFkColumn = rel.JoinTable.InverseJoinColumns?.FirstOrDefault() 
+                        ?? $"{targetEntityName}Id";
+                    
+                    // For ManyToMany, we'll use special SQL generation
+                    // Store source key for first join: source.Key = joinTable.ownerFK
+                    fkColumn = GetKeyColumnName(info, entityName);
+                    keyColumn = joinTableOwnerFkColumn;
+                }
+                else
+                {
+                    continue;
+                }
+
+                // Store FK and key columns
+                newPath.FkColumns.Add(fkColumn);
+                newPath.KeyColumns.Add(keyColumn);
+                
+                // Store join table info for ManyToMany
+                newPath.JoinTableNames.Add(joinTableName);
+                newPath.JoinTableOwnerFkColumns.Add(joinTableOwnerFkColumn);
+                newPath.JoinTableTargetFkColumns.Add(joinTableTargetFkColumn);
+
+                // If path has 2+ levels, add it to results
+                if (newPath.Relationships.Count >= 2)
+                {
+                    paths.Add(newPath);
+                }
+
+                // Continue recursively
+                FindPathsRecursive(newPath, targetEntityName, targetTableName, depth + 1);
+            }
+
+            visited.Remove(entityName); // Backtrack
+        }
+
+        // Start from current entity
+        var initialPath = new NavigationPath
+        {
+            EntityNames = new List<string> { currentEntityName },
+            TableNames = new List<string> { currentTableName },
+            JoinTableNames = new List<string?>(),
+            JoinTableOwnerFkColumns = new List<string?>(),
+            JoinTableTargetFkColumns = new List<string?>()
+        };
+
+        FindPathsRecursive(initialPath, currentEntityName, currentTableName, 1);
+
+        return paths;
+    }
+
+    /// <summary>
+    /// Gets relationships for an entity by extracting them from the compilation.
+    /// </summary>
+    private static List<Models.RelationshipMetadata> GetRelationshipsForEntity(RepositoryInfo info, string entityName)
+    {
+        if (info.Compilation == null)
+            return new List<Models.RelationshipMetadata>();
+
+        // If this is the current entity, use existing relationships
+        if (entityName == info.EntityType.Split('.').Last())
+        {
+            return info.Relationships;
+        }
+
+        // Otherwise, extract relationships from the entity
+        // Try to find the entity type in metadata
+        if (info.EntitiesMetadata.TryGetValue(entityName, out var metadata))
+        {
+            // Try to find the full type name
+            var entityFullType = metadata.Name; // EntityMetadataInfo.Name should contain full type name
+            if (string.IsNullOrEmpty(entityFullType))
+            {
+                // Fallback: try to construct from namespace
+                entityFullType = entityName;
+            }
+
+            return ExtractRelationships(info.Compilation, entityFullType);
+        }
+
+        return new List<Models.RelationshipMetadata>();
+    }
+
+    /// <summary>
+    /// Generates query methods for a specific navigation path.
+    /// </summary>
+    private static void GenerateNavigationPathQuery(StringBuilder sb, RepositoryInfo info, NavigationPath path, 
+        PropertyMetadataInfo property, string tableName, string keyColumnName)
+    {
+        var entityName = info.EntityType.Split('.').Last();
+        var targetEntityName = path.EntityNames.Last();
+        var pathDescription = path.PathDescription;
+        
+        // Build method name from path
+        var methodNameParts = new List<string> { "FindBy" };
+        for (int i = 1; i < path.EntityNames.Count; i++)
+        {
+            methodNameParts.Add(path.EntityNames[i]);
+        }
+        methodNameParts.Add(property.Name);
+        var methodName = string.Join("", methodNameParts) + "Async";
+
+        var propertyParamName = ToCamelCase(property.Name);
+
+        // Build SQL with multiple JOINs
+        var sqlBuilder = new StringBuilder();
+        sqlBuilder.AppendLine($"SELECT e.* FROM {tableName} e");
+        
+        // Add JOINs for each level
+        for (int i = 0; i < path.Relationships.Count; i++)
+        {
+            var rel = path.Relationships[i];
+            var fkColumn = path.FkColumns[i];
+            var keyColumn = path.KeyColumns[i];
+            
+            // Determine source and target aliases
+            string sourceAlias;
+            if (i == 0)
+            {
+                sourceAlias = "e"; // Base table
+            }
+            else
+            {
+                sourceAlias = $"r{i}"; // Previous intermediate table
+            }
+            
+            if (rel.Type == Models.RelationshipType.ManyToMany)
+            {
+                // ManyToMany: Need two joins through join table
+                var joinTableName = path.JoinTableNames[i] ?? "";
+                var joinTableOwnerFk = path.JoinTableOwnerFkColumns[i] ?? "";
+                var joinTableTargetFk = path.JoinTableTargetFkColumns[i] ?? "";
+                var targetTableName = path.TableNames[i + 1];
+                var targetAlias = $"r{i + 1}";
+                var joinTableAlias = $"jt{i + 1}";
+                
+                // First join: source -> join table
+                // source.Key = joinTable.ownerFK
+                sqlBuilder.AppendLine($"                INNER JOIN {joinTableName} {joinTableAlias} ON {sourceAlias}.{fkColumn} = {joinTableAlias}.{joinTableOwnerFk}");
+                
+                // Second join: join table -> target
+                // joinTable.targetFK = target.Key
+                var targetKeyColumn = GetKeyColumnName(info, path.EntityNames[i + 1]);
+                sqlBuilder.AppendLine($"                INNER JOIN {targetTableName} {targetAlias} ON {joinTableAlias}.{joinTableTargetFk} = {targetAlias}.{targetKeyColumn}");
+            }
+            else if (rel.Type == Models.RelationshipType.OneToOne && rel.IsOwner)
+            {
+                // OneToOne owner: FK is on target, join is reversed
+                // source.Key = target.FK
+                var targetTableName = path.TableNames[i + 1];
+                var targetAlias = $"r{i + 1}";
+                var joinCondition = $"{sourceAlias}.{fkColumn} = {targetAlias}.{keyColumn}";
+                sqlBuilder.AppendLine($"                INNER JOIN {targetTableName} {targetAlias} ON {joinCondition}");
+            }
+            else
+            {
+                // ManyToOne or OneToOne inverse: Standard join
+                // source.FK = target.Key
+                var targetTableName = path.TableNames[i + 1];
+                var targetAlias = $"r{i + 1}";
+                var joinCondition = $"{sourceAlias}.{fkColumn} = {targetAlias}.{keyColumn}";
+                sqlBuilder.AppendLine($"                INNER JOIN {targetTableName} {targetAlias} ON {joinCondition}");
+            }
+        }
+
+        // Add WHERE clause
+        var lastTableAlias = path.Relationships.Count > 0 ? $"r{path.Relationships.Count}" : "e";
+        sqlBuilder.AppendLine($"                WHERE {lastTableAlias}.{property.ColumnName} = @{propertyParamName}");
+
+        // Generate method without pagination
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds all {info.EntityType} entities by navigating through {pathDescription} to {targetEntityName}.{property.Name}.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName})");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = @\"{sqlBuilder.ToString().TrimEnd()}");
+        sb.AppendLine($"                ORDER BY e.{keyColumnName}\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName} }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // Generate method with pagination
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {pathDescription} to {targetEntityName}.{property.Name}, with pagination support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var sql = @\"{sqlBuilder.ToString().TrimEnd()}");
+        sb.AppendLine($"                ORDER BY e.{keyColumnName} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        // Generate method with pagination and sorting
+        sb.AppendLine("        /// <summary>");
+        sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {pathDescription} to {targetEntityName}.{property.Name}, with pagination and sorting support.");
+        sb.AppendLine("        /// </summary>");
+        sb.AppendLine($"        public async Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true)");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var orderByColumn = GetColumnNameForProperty(orderBy, \"{keyColumnName}\");");
+        sb.AppendLine($"            var direction = ascending ? \"ASC\" : \"DESC\";");
+        sb.AppendLine($"            var sql = $\"{sqlBuilder.ToString().TrimEnd()}");
+        sb.AppendLine($"                ORDER BY e.{{orderByColumn}} {{direction}} OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY\";");
+        sb.AppendLine($"            return await _connection.QueryAsync<{info.EntityType}>(sql, new {{ {propertyParamName}, skip, take }});");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
 
     /// <summary>
     /// Generates complex filter queries with OR/AND combinations for ManyToOne relationships.
@@ -5503,82 +5726,68 @@ public class RepositoryGenerator : IIncrementalGenerator
         if (info.EntitiesMetadata == null || info.EntitiesMetadata.Count == 0)
             return;
 
-        // Generate signatures for 2-level navigation paths
-        foreach (var firstLevelRel in info.Relationships)
+        if (info.Compilation == null)
+            return; // Need compilation to extract relationships
+
+        var entityName = info.EntityType.Split('.').Last();
+        var tableName = info.EntityMetadata.TableName;
+
+        // Find all valid navigation paths (2+ levels) - same logic as implementation
+        var navigationPaths = FindNavigationPaths(info, entityName, tableName, maxDepth: 5);
+
+        // Generate signatures for each navigation path
+        foreach (var path in navigationPaths)
         {
-            if (firstLevelRel.Type != Models.RelationshipType.ManyToOne)
+            if (path.Relationships.Count < 2)
+                continue; // Skip single-level paths (handled elsewhere)
+
+            var targetEntityName = path.EntityNames.Last();
+            var targetMetadata = info.EntitiesMetadata.TryGetValue(targetEntityName, out var metadata) ? metadata : null;
+            if (targetMetadata?.Properties == null)
                 continue;
 
-            var intermediateEntitySimpleName = firstLevelRel.TargetEntityType.Split('.').Last();
+            var pathDescription = path.PathDescription;
 
-            // Check all entities in metadata as potential targets
-            foreach (var entityMetadataEntry in info.EntitiesMetadata)
+            // Generate property-based query signatures for target entity properties
+            foreach (var property in targetMetadata.Properties)
             {
-                var targetEntitySimpleName = entityMetadataEntry.Key;
-                var targetMetadata = entityMetadataEntry.Value;
-                
-                if (targetEntitySimpleName == intermediateEntitySimpleName)
-                    continue;
-                
-                if (targetMetadata.Properties == null)
+                if (property.IsPrimaryKey)
                     continue;
 
-                // Verify that the intermediate entity actually has a relationship to the target entity
-                // This ensures we only generate signatures for valid navigation paths
-                Models.RelationshipMetadata? secondLevelRel = null;
-                if (info.Compilation != null)
+                if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
+                    property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
+                    continue;
+
+                // Build method name from path
+                var methodNameParts = new List<string> { "FindBy" };
+                for (int i = 1; i < path.EntityNames.Count; i++)
                 {
-                    var intermediateEntityFullType = firstLevelRel.TargetEntityFullType;
-                    var intermediateEntitySimpleNameForExtraction = intermediateEntitySimpleName;
-                    
-                    var intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntityFullType);
-                    if (intermediateRelationships.Count == 0)
-                    {
-                        intermediateRelationships = ExtractRelationships(info.Compilation, intermediateEntitySimpleNameForExtraction);
-                    }
-                    
-                    secondLevelRel = intermediateRelationships.FirstOrDefault(r => 
-                        r.Type == Models.RelationshipType.ManyToOne && 
-                        r.TargetEntityType.Split('.').Last() == targetEntitySimpleName);
+                    methodNameParts.Add(path.EntityNames[i]);
                 }
-                
-                // Only generate signatures if the relationship actually exists
-                if (secondLevelRel == null)
-                    continue;
+                methodNameParts.Add(property.Name);
+                var methodName = string.Join("", methodNameParts) + "Async";
+                var propertyParamName = ToCamelCase(property.Name);
 
-                foreach (var property in targetMetadata.Properties)
-                {
-                    if (property.IsPrimaryKey)
-                        continue;
+                // Signature without pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds all {info.EntityType} entities by navigating through {pathDescription} to {targetEntityName}.{property.Name}.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName});");
+                sb.AppendLine();
 
-                    if (property.TypeName.Contains("ICollection") || property.TypeName.Contains("List") ||
-                        property.TypeName.Contains("IEnumerable") || !IsSimpleType(property.TypeName))
-                        continue;
+                // Signature with pagination
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {pathDescription} to {targetEntityName}.{property.Name}, with pagination support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take);");
+                sb.AppendLine();
 
-                    var methodName = $"FindBy{firstLevelRel.PropertyName}{targetEntitySimpleName}{property.Name}Async";
-                    var propertyParamName = ToCamelCase(property.Name);
-
-                    // Signature without pagination
-                    sb.AppendLine("        /// <summary>");
-                    sb.AppendLine($"        /// Finds all {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}.");
-                    sb.AppendLine("        /// </summary>");
-                    sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName});");
-                    sb.AppendLine();
-
-                    // Signature with pagination
-                    sb.AppendLine("        /// <summary>");
-                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination support.");
-                    sb.AppendLine("        /// </summary>");
-                    sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take);");
-                    sb.AppendLine();
-
-                    // Signature with pagination and sorting
-                    sb.AppendLine("        /// <summary>");
-                    sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {firstLevelRel.PropertyName} → {targetEntitySimpleName} to {targetEntitySimpleName}.{property.Name}, with pagination and sorting support.");
-                    sb.AppendLine("        /// </summary>");
-                    sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
-                    sb.AppendLine();
-                }
+                // Signature with pagination and sorting
+                sb.AppendLine("        /// <summary>");
+                sb.AppendLine($"        /// Finds {info.EntityType} entities by navigating through {pathDescription} to {targetEntityName}.{property.Name}, with pagination and sorting support.");
+                sb.AppendLine("        /// </summary>");
+                sb.AppendLine($"        Task<IEnumerable<{info.EntityType}>> {methodName}({property.TypeName} {propertyParamName}, int skip, int take, string? orderBy = null, bool ascending = true);");
+                sb.AppendLine();
             }
         }
     }
