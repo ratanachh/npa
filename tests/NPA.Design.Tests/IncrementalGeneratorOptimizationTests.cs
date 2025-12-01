@@ -11,7 +11,7 @@ namespace NPA.Design.Tests;
 /// Tests for incremental generator optimizations (Phase 4.5).
 /// Verifies that the generator properly implements value equality and caching.
 /// </summary>
-public class IncrementalGeneratorOptimizationTests
+public class IncrementalGeneratorOptimizationTests : GeneratorTestBase
 {
     [Fact]
     public void RepositoryInfoComparer_ShouldExist()
