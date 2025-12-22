@@ -1,9 +1,5 @@
 using FluentAssertions;
 using Xunit;
-using System.Reflection;
-using NPA.Design.Generators;
-using NPA.Design.Comparers;
-using System.Collections.Generic;
 
 namespace NPA.Design.Tests;
 

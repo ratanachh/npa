@@ -9,34 +9,37 @@
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AUserRepositoryImplementation_002Eg_002Ecs_002Fl_003AC_0021_003FUsers_003Fchhormra_003FAppData_003FLocal_003FTemp_003FSourceGeneratedDocuments_003F8D3C4F16EC4475F5B116CFD9_003FNPA_002EGenerators_003FNPA_002EGenerators_002ERepositoryGenerator_003FUserRepositoryImplementation_002Eg_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AXUnit2TestFramework_002Ecs_002Fl_003AC_0021_003FUsers_003Fchhormra_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E2_003Fresharper_002Dhost_003FSourcesCache_003Fc62dbcc4ba2718769223d2edcbb462defa1d97c8f2ef066639d41ddd521e_003FXUnit2TestFramework_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/SourceGeneratedFilesToSkip/=Phase7Demo_005CNPA_002EGenerators_002FNPA_002EGenerators_002EBidirectionalRelationshipGenerator_002FCustomerRelationshipHelper_002Eg_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
-	<s:String x:Key="/Default/dotCover/Editor/HighlightingSourceSnapshotLocation/@EntryValue">/Users/ratana/Library/Caches/JetBrains/Rider2025.2/resharper-host/temp/Rider/vAny/CoverageData/_NPA.-1380819662/Snapshot/snapshot.utdcvr</s:String>
-	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=2beb8ee2_002D4a18_002D4bd1_002Db85e_002Ddb17bfade8ed/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="Session" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;
-  &lt;Or&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Extensions.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Extensions.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Generators.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Generators.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Integration.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Integration.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Migrations.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Migrations.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Monitoring.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Monitoring.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.MySql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.MySql.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.PostgreSql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.PostgreSql.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.Sqlite.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.Sqlite.Tests&amp;gt;" /&gt;
-    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.SqlServer.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.SqlServer.Tests&amp;gt;" /&gt;
-  &lt;/Or&gt;
+	
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=2beb8ee2_002D4a18_002D4bd1_002Db85e_002Ddb17bfade8ed/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" Name="Session" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;Or&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Extensions.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Extensions.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Generators.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Generators.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Integration.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Integration.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Migrations.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Migrations.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Monitoring.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Monitoring.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.MySql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.MySql.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.PostgreSql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.PostgreSql.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.Sqlite.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.Sqlite.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.SqlServer.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.SqlServer.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Design.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Design.Tests&amp;gt;" /&gt;&#xD;
+  &lt;/Or&gt;&#xD;
 &lt;/SessionState&gt;</s:String>
-	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=fdd61263_002D394e_002D442a_002Dafdf_002Dec6c2ad2d1a6/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="All tests from &amp;lt;tests&amp;gt;\&amp;lt;NPA.CLI.Tests&amp;gt;" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;
-  &lt;Or&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.CLI.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.CLI.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Core.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Extensions.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Extensions.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Generators.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Generators.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Monitoring.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Monitoring.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Providers.MySql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.MySql.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Providers.PostgreSql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.PostgreSql.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Providers.Sqlite.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.Sqlite.Tests&amp;gt;" /&gt;
-    &lt;Project Location="/Users/ratana/development/projects/npa/tests/NPA.Providers.SqlServer.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.SqlServer.Tests&amp;gt;" /&gt;
-  &lt;/Or&gt;
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=fdd61263_002D394e_002D442a_002Dafdf_002Dec6c2ad2d1a6/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="All tests from &amp;lt;tests&amp;gt;\&amp;lt;NPA.CLI.Tests&amp;gt;" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;Or&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.CLI.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.CLI.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Core.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Core.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Design.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Design.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Extensions.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Extensions.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Migrations.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Migrations.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Monitoring.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Monitoring.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.MySql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.MySql.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.PostgreSql.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.PostgreSql.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.Sqlite.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.Sqlite.Tests&amp;gt;" /&gt;&#xD;
+    &lt;Project Location="D:\Ratana\npa\tests\NPA.Providers.SqlServer.Tests" Presentation="&amp;lt;tests&amp;gt;\&amp;lt;NPA.Providers.SqlServer.Tests&amp;gt;" /&gt;&#xD;
+  &lt;/Or&gt;&#xD;
 &lt;/SessionState&gt;</s:String>
+	
 	
 	
 	
